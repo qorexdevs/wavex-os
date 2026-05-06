@@ -1,0 +1,17 @@
+{
+  "name": "@wavex-os/onboarding-server-client",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "TypeScript client for the (future) WaveX OS hosted onboarding/optimizer backend.",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
+  }
+}

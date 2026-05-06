@@ -1,0 +1,31 @@
+{
+  "name": "wavex-os-installer",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "npx wavex-os init — bootstraps a WaveX OS company on your machine.",
+  "license": "MIT",
+  "bin": {
+    "wavex-os": "./bin/init.js"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node bin/init.js"
+  },
+  "dependencies": {
+    "execa": "^9.4.0",
+    "kleur": "^4.1.5",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

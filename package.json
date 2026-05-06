@@ -1,0 +1,25 @@
+{
+  "name": "wavex-os",
+  "version": "0.1.0",
+  "description": "Open-source operating system for running an AI agent company. Clone, run, configure your fleet in 45 minutes.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./packages/onboarding-ui\" --filter \"./packages/core\" dev",
+    "dev:ui": "pnpm --filter \"./packages/onboarding-ui\" dev",
+    "build": "pnpm -r build",
+    "ingest:templates": "node scripts/ingest-agency-agents.mjs",
+    "lint": "echo 'TODO: eslint'",
+    "test": "echo 'TODO: vitest'"
+  },
+  "packageManager": "pnpm@8.15.0"
+}
