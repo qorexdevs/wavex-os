@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import App from "./App";
+import MissionControl from "./pages/MissionControl";
 import { OnboardingLayout } from "./components/OnboardingLayout";
 import Welcome from "./pages/onboarding/01-welcome";
 import Goal from "./pages/onboarding/02-goal";
@@ -20,7 +20,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/onboarding/welcome" replace />} />
+        <Route path="/" element={<MissionControl />} />
         <Route path="/onboarding" element={<OnboardingLayout />}>
           <Route index element={<Navigate to="welcome" replace />} />
           <Route path="welcome" element={<Welcome />} />
@@ -35,7 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="handoff" element={<Handoff />} />
           <Route path="subscription" element={<Subscription />} />
         </Route>
-        <Route path="*" element={<App />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

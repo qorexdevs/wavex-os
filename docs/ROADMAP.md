@@ -83,12 +83,16 @@
 
 ---
 
-## Phase G — Mission Control v2 (post-onboarding)
+## 🚧 Phase G — Mission Control v2 (post-onboarding)
 
-- [ ] After step 11, route `/` to a Mission Control dashboard
-- [ ] KPI scoreboard (live, with sparkline trend per supporting KPI)
-- [ ] Agent org graph (reactflow, drag-drop reassign)
-- [ ] Workflows queue (issues by status, filterable)
+- [x] Root route `/` renders a real Mission Control dashboard (replaces App.tsx placeholder)
+- [x] Top bar with WaveX OS brand, live core health strip (5s polling), re-onboard link
+- [x] KPI scoreboard (primary goal card with progress bar + supporting KPIs from templates)
+- [x] Live fleet graph (reactflow, polls `/api/paperclip/agents` every 8s, status dots per agent)
+- [x] Empty-state UX (prompts onboarding when no fleet present)
+- [ ] KPI sparkline trends (Phase G continuation)
+- [ ] Drag-drop agent reassign + persist back to mock-core
+- [ ] Workflows queue (issues by status, filterable) — needs real Paperclip core
 - [ ] Approvals tray (board approvals routed to Telegram + UI)
 - [ ] Workspace tray (live ngrok status, Composio connector health, etc.)
 

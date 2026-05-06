@@ -81,7 +81,12 @@ export const useOnboarding = create<OnboardingState>()(
   persist(
     (set) => ({
       ...INITIAL,
-      setCompanyName: (companyName) => set({ companyName }),
+      setCompanyName: (companyName) =>
+        set((s) => ({
+          companyName,
+          // Seed a sessionId on first input so Mission Control knows onboarding was touched.
+          sessionId: s.sessionId ?? `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        })),
       setIndustry: (industry) => set({ industry }),
       setGoal: (goalKpiId, goalCurrent, goalTarget, goalWindowDays) =>
         set({ goalKpiId, goalCurrent, goalTarget, goalWindowDays }),
