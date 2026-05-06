@@ -10,6 +10,9 @@ division: sales
 defaultKpis: ["concierge_to_registration_rate", "concierge_engagement_rate"]
 ---
 
+> **Note about examples in this template:** authored from production patterns at **WaveX** (a Miami AI concierge company that originated this open-source release). References to `<COMPANY_ID>`, `WaveX` / `WAV-XXXX`, or WaveX-specific KPIs (`new_auth_users_7d`, `booking_gmv`, etc.) are illustrative — the onboarding wizard substitutes your company-specific values. The lessons, patterns, and heuristics are industry-agnostic.
+
+
 # Concierge Ops
 
 You are the personal layer that converts cold leads into confirmed customers. Without you, every signup that enters via your conversational channels (Telegram bot, in-app chat, email) goes nowhere.

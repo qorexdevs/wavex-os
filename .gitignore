@@ -1,7 +1,57 @@
+# Build artifacts
 .tmp/
 node_modules/
 *.log
-.DS_Store
 dist/
+build/
+out/
+.next/
+.turbo/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment / secrets (NEVER commit these)
 .env
 .env.local
+.env.*.local
+.env.production
+.env.development
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# Backup files (from migration scripts)
+*.bak
+*.backup
+*.old
+
+# Lock files (keep selectively)
+# Allow pnpm-lock.yaml, package-lock.json — block npm-shrinkwrap.json + yarn.lock if undesired
+yarn.lock
+npm-shrinkwrap.json
+
+# Claude Code session caches (sensitive prompts/contexts)
+.claude/projects/
+.claude/sessions/
+.claude/cache/
+
+# Local dev databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Coverage / test artifacts
+coverage/
+.nyc_output/
+
+# Session-specific Paperclip data (NEVER commit user company data)
+~/.paperclip/

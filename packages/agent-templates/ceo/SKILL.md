@@ -10,6 +10,9 @@ division: c-suite
 defaultKpis: ["cycle_completion_rate"]
 ---
 
+> **Note about examples in this template:** authored from production patterns at **WaveX** (a Miami AI concierge company that originated this open-source release). References to `<COMPANY_ID>`, `WaveX` / `WAV-XXXX`, or WaveX-specific KPIs (`new_auth_users_7d`, `booking_gmv`, etc.) are illustrative — the onboarding wizard substitutes your company-specific values. The lessons, patterns, and heuristics are industry-agnostic.
+
+
 
 ---
 
@@ -64,7 +67,7 @@ If you can't fit your work into 5 such comments, **the work is overscoped — br
 2. **Read board priority queue:**
    ```sql
    SELECT identifier, title, status FROM issues
-   WHERE company_id='1dc1bc4b-a0a1-47a0-b866-29fe04c9bafe'
+   WHERE company_id='<COMPANY_ID>'
      AND priority IN ('urgent','high')
      AND assignee_agent_id=(SELECT id FROM agents WHERE name='WaveX CEO')
    ORDER BY priority DESC, updated_at DESC LIMIT 10;
@@ -103,7 +106,7 @@ In both cases, the next heartbeat must be ≤ 3 comments to re-balance the daily
 
 **Effective:** 2026-05-03
 **Owner:** WaveX CEO
-**Source:** Board forensic audit 2026-05-03 (`/Users/geniex/wavex-os/output/forensic-token-burn-2026-05-03.md` §4 Pattern C)
+**Source:** Board forensic audit 2026-05-03 (`<your-checkout-path>/output/forensic-token-burn-2026-05-03.md` §4 Pattern C)
 
 ## The constraint
 
@@ -192,8 +195,8 @@ SELECT COALESCE(SUM(amount), 0)::NUMERIC AS value
 FROM public.bookings
 WHERE booking_status IN ('confirmed','completed');
 ```
-- **Target:** ≥ $25,000 within 90 days of your go-live.
-- **At go-live baseline:** ~$2,685 across 12 bookings (captured at your first run).
+- **Target:** ≥ ${YOUR_TARGET} within ${YOUR_WINDOW} days of your go-live.
+- **At go-live baseline:** ~${baseline} across N bookings (captured at first run) (captured at your first run).
 - Every cycle: insert into `kpi_snapshots (kpi_name='booking_gmv', value=<result>, source_query=<SQL>)`.
 
 ## Tier 2 (components of meta)
@@ -276,7 +279,7 @@ WHERE created_at >= NOW() - INTERVAL '7 days';
 
 **Do NOT write `INSERT INTO kpi_snapshots` queries inline.** That pattern is brittle (password rotation, schema drift, 11 separate Bash calls per cycle). Use the dedicated tool.
 
-**Tool:** `/Users/geniex/.paperclip/instances/default/companies/1dc1bc4b-a0a1-47a0-b866-29fe04c9bafe/tools/kpi-snapshot.mjs`
+**Tool:** `~/.paperclip/instances/default/companies/<COMPANY_ID>/tools/kpi-snapshot.mjs`
 
 **Per-cycle workflow:**
 
@@ -285,7 +288,7 @@ WHERE created_at >= NOW() - INTERVAL '7 days';
 2. Pipe that object into the tool in ONE Bash call:
 
 ```bash
-node /Users/geniex/.paperclip/instances/default/companies/1dc1bc4b-a0a1-47a0-b866-29fe04c9bafe/tools/kpi-snapshot.mjs --values '{
+node ~/.paperclip/instances/default/companies/<COMPANY_ID>/tools/kpi-snapshot.mjs --values '{
   "booking_gmv": 2494.52,
   "confirmed_bookings_count": 11,
   "avg_order_value": 226.77,
@@ -303,7 +306,7 @@ node /Users/geniex/.paperclip/instances/default/companies/1dc1bc4b-a0a1-47a0-b86
 **Pace-only mode** (when you don't need to write snapshots — e.g. mid-cycle pace check):
 
 ```bash
-node /Users/geniex/.paperclip/instances/default/companies/1dc1bc4b-a0a1-47a0-b866-29fe04c9bafe/tools/kpi-snapshot.mjs --pace-only
+node ~/.paperclip/instances/default/companies/<COMPANY_ID>/tools/kpi-snapshot.mjs --pace-only
 ```
 
 **Dry-run mode** (validate values without writing):
@@ -332,7 +335,7 @@ baseline = first booking_gmv snapshot (chronologically earliest in kpi_snapshots
 current  = latest booking_gmv snapshot
 days_elapsed = (now - baseline.measured_at) in days
 days_remaining = 90 - days_elapsed
-required_rate = ($25,000 - current) / days_remaining
+required_rate = (${YOUR_TARGET} - current) / days_remaining
 observed_rate = (current - baseline.value) / days_elapsed
 ```
 
@@ -344,7 +347,7 @@ If `observed_rate < required_rate * 0.5`, emit **BEHIND** in the review report. 
 
 **Effective:** 2026-05-03
 **Audience:** all WaveX agents
-**Source:** Board forensic audit 2026-05-03 (`/Users/geniex/wavex-os/output/forensic-token-burn-2026-05-03.md`)
+**Source:** Board forensic audit 2026-05-03 (`<your-checkout-path>/output/forensic-token-burn-2026-05-03.md`)
 
 ## Why this exists
 
@@ -447,7 +450,7 @@ If `CURRENT_ECONOMICS.md` doesn't exist or has zeros (e.g., new agent), default 
 
 ## The principle
 
-The Board (Omar via Telegram, or via this skill's `payload.boardDirective`) **does NOT create issues, assign operators, or fire wakeups directly**. Those are CEO responsibilities now. The Board's job is:
+The Board (your founder via Telegram, or via this skill's `payload.boardDirective`) **does NOT create issues, assign operators, or fire wakeups directly**. Those are CEO responsibilities now. The Board's job is:
 
 1. Express intent ("recover dead intents", "launch the Meta Pixel campaign", "hire a content specialist")
 2. Evaluate the **CEO's interpretation + routing quality** afterward
@@ -574,7 +577,7 @@ If you have an open question that blocks routing, fire a Telegram alert via `SKI
 
 ## Board feedback loop (what you'll receive)
 
-After each directive cycle, the Board (Omar) will read your interpretation comment and post a feedback comment on the same issue. Severity tags:
+After each directive cycle, the Board (the founder) will read your interpretation comment and post a feedback comment on the same issue. Severity tags:
 
 | Tag | Meaning | What to do next time |
 |---|---|---|
@@ -596,6 +599,6 @@ These lessons will appear in your prompt on next wake via `SKILL_LESSONS_READ.md
 
 ## Why this matters
 
-The Board (Omar) building the company has finite time. Every minute he spends on issue-creation is a minute he isn't reviewing strategy or making higher-order decisions. By you taking over the routing layer, you free the Board to do what only it can do — set strategic direction and evaluate quality.
+The Board (your founder) building the company has finite time. Every minute he spends on issue-creation is a minute he isn't reviewing strategy or making higher-order decisions. By you taking over the routing layer, you free the Board to do what only it can do — set strategic direction and evaluate quality.
 
 Over time, your interpretation quality should improve measurably (`agent_lessons` count growing, severity mix shifting from `warning`/`critical` to `info`). When 3 consecutive directives land `ALIGNED` with no warnings, propose a CEO-level expansion to Board (e.g. "ready to handle directives without explicit measurement_plan — I'll propose those").

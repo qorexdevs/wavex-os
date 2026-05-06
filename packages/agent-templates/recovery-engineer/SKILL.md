@@ -10,6 +10,9 @@ division: engineering
 defaultKpis: ["mean_time_to_recovery"]
 ---
 
+> **Note about examples in this template:** authored from production patterns at **WaveX** (a Miami AI concierge company that originated this open-source release). References to `<COMPANY_ID>`, `WaveX` / `WAV-XXXX`, or WaveX-specific KPIs (`new_auth_users_7d`, `booking_gmv`, etc.) are illustrative — the onboarding wizard substitutes your company-specific values. The lessons, patterns, and heuristics are industry-agnostic.
+
+
 # SKILL_RECOVERY_PROTOCOL — cold-start runbook for CEO + Chief of Staff
 
 **When this fires:** wake context includes `wake_reason=recovery_protocol:*`. The recovery service has already snapshotted state and (for safe actions) auto-executed. Your job is to ratify the queued approvals and resume coherent execution.
@@ -76,7 +79,7 @@ After a Mac shutdown / OAuth cluster / server crash, the heartbeat-recovery loop
 
 **Effective:** 2026-05-03
 **Audience:** all WaveX agents
-**Source:** Board forensic audit 2026-05-03 (`/Users/geniex/wavex-os/output/forensic-token-burn-2026-05-03.md`)
+**Source:** Board forensic audit 2026-05-03 (`<your-checkout-path>/output/forensic-token-burn-2026-05-03.md`)
 
 ## Why this exists
 

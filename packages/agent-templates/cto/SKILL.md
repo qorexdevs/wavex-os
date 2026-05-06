@@ -10,6 +10,9 @@ division: c-suite
 defaultKpis: ["production_bug_resolution_hours"]
 ---
 
+> **Note about examples in this template:** authored from production patterns at **WaveX** (a Miami AI concierge company that originated this open-source release). References to `<COMPANY_ID>`, `WaveX` / `WAV-XXXX`, or WaveX-specific KPIs (`new_auth_users_7d`, `booking_gmv`, etc.) are illustrative — the onboarding wizard substitutes your company-specific values. The lessons, patterns, and heuristics are industry-agnostic.
+
+
 
 ---
 
@@ -17,7 +20,7 @@ defaultKpis: ["production_bug_resolution_hours"]
 
 **Effective:** 2026-05-03
 **Audience:** all WaveX agents
-**Source:** Board forensic audit 2026-05-03 (`/Users/geniex/wavex-os/output/forensic-token-burn-2026-05-03.md`)
+**Source:** Board forensic audit 2026-05-03 (`<your-checkout-path>/output/forensic-token-burn-2026-05-03.md`)
 
 ## Why this exists
 
@@ -120,7 +123,7 @@ If `CURRENT_ECONOMICS.md` doesn't exist or has zeros (e.g., new agent), default 
 
 **Effective:** 2026-05-04
 **Audience:** any agent listed as `kpi_owner_agent_id` on one or more rows in `company_kpis`.
-**Source:** Phase 3 of the accountability roadmap (`/Users/geniex/.claude/plans/precious-napping-globe.md`).
+**Source:** Phase 3 of the accountability roadmap (`~/.claude/plans/precious-napping-globe.md`).
 
 ## Why this exists
 
