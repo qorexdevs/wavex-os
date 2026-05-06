@@ -15,7 +15,7 @@
 
 ---
 
-## 🚧 Phase B — Installer + onboarding UI scaffold
+## ✅ Phase B — Installer + onboarding UI scaffold
 
 - [x] pnpm workspace setup (`packages/*`, `apps/*`)
 - [x] `apps/installer/` — `npx wavex-os init` CLI scaffold (doctor + scaffold session)
@@ -24,21 +24,24 @@
 - [x] Shared layout, navigation, zustand-persisted state
 - [x] `packages/onboarding-server-client/` — typed stub
 - [x] `docs/ARCHITECTURE.md` + `docs/ROADMAP.md`
-- [ ] Browser-tested end-to-end (Phase B exit criterion)
+- [x] Browser-tested end-to-end (smoke: vite serves all 11 routes, prod build clean)
 
 ---
 
-## Phase C — Local backend integration
+## 🚧 Phase C — Local backend integration
 
-- [ ] Installer boots Paperclip server alongside Vite UI (concurrent process supervisor)
-- [ ] Vite proxies `/api/paperclip/*` → `http://127.0.0.1:3100/api/*` (already wired)
-- [ ] Step 6 (KPI ownership) — drag-drop driven by templates' `defaultOwnedKpis`
-- [ ] Step 4 (org-design) — interactive force-directed graph via `reactflow`
-- [ ] Step 5 (template-picker) — click → modal showing skill content, KPIs, connectors
-- [ ] Step 9 (spawn) — SSE stream from Paperclip's heartbeat scheduler showing real spawn progress
-- [ ] Manifest → Drizzle migration → agent table population
+- [x] Vite proxies `/api/paperclip/*` → `http://127.0.0.1:3100/api/*` (wired)
+- [x] Registry available to UI (`src/data/templates.ts`, lazy-loadable skills under `/public/agent-templates`)
+- [x] Step 4 (org-design) — interactive `reactflow` graph (3-tier layout, drag, zoom)
+- [x] Step 5 (template-picker) — click → modal with skill markdown, KPIs, origin badge
+- [x] Step 6 (KPI ownership) — auto-populated from primary goal + template defaults
+- [ ] Mock Paperclip core for onboarding-time spawn (stub heartbeat scheduler, fake agent rows)
+- [ ] Installer boots mock core alongside Vite UI (concurrent process supervisor)
+- [ ] Step 9 (spawn) — SSE stream wired to mock core
+- [ ] Manifest → mock-core agent rows persisted to disk
+- [ ] Real Paperclip core integration (replace mock — Phase D)
 
-**Exit:** clone → `npx wavex-os init` → onboard → real agents in `~/.wavex-os/instances/<company>/agents/`.
+**Exit:** clone → `npx wavex-os init` → onboard → reach Mission Control with mock fleet running.
 
 ---
 

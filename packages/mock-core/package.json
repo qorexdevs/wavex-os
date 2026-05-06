@@ -1,0 +1,25 @@
+{
+  "name": "@wavex-os/mock-core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Tiny in-memory stand-in for Paperclip core. Used during onboarding so step 9 (spawn) can stream a real-looking SSE feed before the full Paperclip integration ships in Phase D.",
+  "license": "MIT",
+  "main": "./dist/server.js",
+  "bin": {
+    "wavex-mock-core": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

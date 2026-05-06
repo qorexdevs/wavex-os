@@ -35,7 +35,7 @@ const c = {
 
 const HOME_DIR = join(homedir(), ".wavex-os");
 const ONBOARDING_PORT = 5173;
-const PAPERCLIP_PORT = 3100;
+const MOCK_CORE_PORT = 3101;
 
 const BANNER = `
 ${c.accent}  __     __                 __  __    ___  ____
@@ -143,13 +143,14 @@ async function init(rawCompanyName?: string): Promise<void> {
 
   // Step 4: tell the user what's about to happen
   console.log(`
-${c.bold}Next:${c.reset} we'll start the onboarding UI on ${c.cyan}http://localhost:${ONBOARDING_PORT}${c.reset}.
+${c.bold}Next:${c.reset} starting the onboarding stack:
+  ${c.cyan}http://localhost:${ONBOARDING_PORT}${c.reset}  ${c.dim}— wizard UI (Vite + React)${c.reset}
+  ${c.cyan}http://localhost:${MOCK_CORE_PORT}${c.reset}  ${c.dim}— mock Paperclip core (Phase C; Phase D swaps in real)${c.reset}
 
-${c.dim}Phase B note:${c.reset} the Vite dev server runs in ${c.bold}/packages/onboarding-ui${c.reset}.
-${c.dim}Phase C will boot the Paperclip server on :${PAPERCLIP_PORT} alongside it.${c.reset}
+${c.dim}Phase D will boot the real Paperclip server in place of the mock-core.${c.reset}
 
 Open ${c.bold}${c.cyan}http://localhost:${ONBOARDING_PORT}${c.reset} in your browser when it's ready.
-Press ${c.bold}Ctrl-C${c.reset} to stop the dev server.
+Press ${c.bold}Ctrl-C${c.reset} to stop both servers.
 `);
 
   // Step 5: spawn pnpm dev
@@ -162,7 +163,7 @@ Press ${c.bold}Ctrl-C${c.reset} to stop the dev server.
     repoRoot = join(__dirname, "..", "..", "..");
   }
 
-  const child = spawn("pnpm", ["dev:ui"], {
+  const child = spawn("pnpm", ["dev:full"], {
     cwd: repoRoot,
     stdio: "inherit",
     shell: true,
@@ -170,6 +171,7 @@ Press ${c.bold}Ctrl-C${c.reset} to stop the dev server.
       ...process.env,
       WAVEX_OS_SESSION_ID: sessionId,
       WAVEX_OS_COMPANY_NAME: companyName,
+      WAVEX_MOCK_CORE_PORT: String(MOCK_CORE_PORT),
     },
   });
 
