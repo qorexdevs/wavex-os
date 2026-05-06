@@ -1,65 +1,67 @@
+import { useState } from "react";
 import { NavButtons } from "../../components/NavButtons";
-
-// Phase C: read packages/agent-templates/_registry.json at runtime via Vite raw import,
-// render template tiles with role + tier + KPIs + credits, allow swap per slot.
-const TEMPLATE_GROUPS = [
-  {
-    division: "C-suite (WaveX-authored)",
-    templates: ["ceo", "chief-of-staff", "cmo", "cro", "cto", "coo", "cfo", "cdo", "cpo"],
-  },
-  {
-    division: "Engineering (agency-agents + WaveX)",
-    templates: ["backend-architect", "frontend-developer", "devops-engineer", "ai-engineer", "recovery-engineer"],
-  },
-  {
-    division: "Marketing (agency-agents)",
-    templates: ["growth-hacker", "content-creator", "seo-specialist", "ad-creative-strategist", "ppc-strategist"],
-  },
-  {
-    division: "Sales / Product / Finance / Support / QA",
-    templates: ["sales-coach", "sales-engineer", "concierge-ops", "product-manager", "ux-researcher", "trend-researcher", "financial-analyst", "bookkeeper", "support-analytics", "accessibility-auditor"],
-  },
-  {
-    division: "Specialized",
-    templates: ["composio-integration"],
-  },
-];
+import { TemplateModal } from "../../components/TemplateModal";
+import { AgentTemplate, templatesByDivision } from "../../data/templates";
 
 export default function TemplatePicker() {
+  const [active, setActive] = useState<AgentTemplate | null>(null);
+  const groups = templatesByDivision();
+
   return (
     <>
       <h1>Pick agent templates</h1>
       <p className="text-dim" style={{ fontSize: 16, marginBottom: "2rem" }}>
-        30 curated templates — 19 vendored from <a href="https://github.com/msitarzewski/agency-agents" target="_blank" rel="noreferrer">agency-agents</a> (MIT, credited per-file),
-        11 WaveX-authored from production patterns. Each agent slot in your org will use one of these.
+        30 curated templates — vendored from{" "}
+        <a href="https://github.com/msitarzewski/agency-agents" target="_blank" rel="noreferrer">agency-agents</a> (MIT, credited per-file)
+        and WaveX-authored from production patterns. Click any tile to view its skill content,
+        default KPIs, and origin.
       </p>
 
-      {TEMPLATE_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.division} className="card">
-          <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {group.division}
+          <h3 style={{ marginTop: 0, fontSize: 13, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {group.label} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {group.templates.length}</span>
           </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.5rem" }}>
-            {group.templates.map((tpl) => (
-              <div key={tpl} style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "0.5rem 0.75rem",
-                fontSize: 13,
-              }}>
-                {tpl}
-              </div>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.5rem" }}>
+            {group.templates.map((tpl) => {
+              const isWavex = tpl.origin === "wavex";
+              return (
+                <button
+                  key={tpl.templateId}
+                  onClick={() => setActive(tpl)}
+                  className="secondary"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "0.6rem 0.75rem",
+                    fontSize: 13,
+                    textAlign: "left",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.25rem",
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>{tpl.role}</span>
+                  <span className="text-dim" style={{ fontSize: 11 }}>
+                    tier {tpl.tier} · {isWavex ? "WaveX" : "agency-agents"}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}
 
-      <p className="text-dim" style={{ fontSize: 13 }}>
-        <strong>Phase C:</strong> click a template to see its skill content, default KPIs, and required connectors.
+      <p className="text-dim" style={{ fontSize: 13, marginTop: "1rem" }}>
+        Phase D will let you swap a template for any role in your org and persist the change.
       </p>
 
       <NavButtons back="org-design" next="kpi-ownership" />
+
+      <TemplateModal template={active} onClose={() => setActive(null)} />
     </>
   );
 }

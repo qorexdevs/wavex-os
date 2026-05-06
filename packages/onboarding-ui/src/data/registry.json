@@ -1,0 +1,454 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-06T17:45:44.367Z",
+  "upstream": {
+    "repo": "https://github.com/msitarzewski/agency-agents.git",
+    "ref": "main"
+  },
+  "templates": [
+    {
+      "templateId": "ceo",
+      "role": "ceo",
+      "tier": 1,
+      "division": "c-suite",
+      "defaultKpis": [
+        "cycle_completion_rate"
+      ],
+      "skillPath": "packages/agent-templates/ceo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "chief-of-staff",
+      "role": "chief_of_staff",
+      "tier": 1,
+      "division": "c-suite",
+      "defaultKpis": [
+        "agent_error_rate"
+      ],
+      "skillPath": "packages/agent-templates/chief-of-staff/SKILL.md",
+      "sizeBytes": 18030,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "specialized/specialized-chief-of-staff.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "cmo",
+      "role": "cmo",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "new_auth_users_7d",
+        "leads_scraped_qualified_7d"
+      ],
+      "skillPath": "packages/agent-templates/cmo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "cro",
+      "role": "cro",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "booking_gmv",
+        "booking_conversion_rate"
+      ],
+      "skillPath": "packages/agent-templates/cro/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "cto",
+      "role": "cto",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "production_bug_resolution_hours"
+      ],
+      "skillPath": "packages/agent-templates/cto/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "coo",
+      "role": "coo",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "mean_time_to_resolve"
+      ],
+      "skillPath": "packages/agent-templates/coo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "cfo",
+      "role": "cfo",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "weekly_burn",
+        "cost_per_new_auth_user"
+      ],
+      "skillPath": "packages/agent-templates/cfo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "cdo",
+      "role": "cdo",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "kpi_freshness_seconds",
+        "utm_attribution_coverage"
+      ],
+      "skillPath": "packages/agent-templates/cdo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "cpo",
+      "role": "cpo",
+      "tier": 2,
+      "division": "c-suite",
+      "defaultKpis": [
+        "features_shipped_7d"
+      ],
+      "skillPath": "packages/agent-templates/cpo/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "backend-architect",
+      "role": "engineer",
+      "tier": 3,
+      "division": "engineering",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/backend-architect/SKILL.md",
+      "sizeBytes": 9520,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "engineering/engineering-backend-architect.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "frontend-developer",
+      "role": "engineer",
+      "tier": 3,
+      "division": "engineering",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/frontend-developer/SKILL.md",
+      "sizeBytes": 9253,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "engineering/engineering-frontend-developer.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "devops-engineer",
+      "role": "devops",
+      "tier": 3,
+      "division": "engineering",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/devops-engineer/SKILL.md",
+      "sizeBytes": 12845,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "engineering/engineering-devops-automator.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "ai-engineer",
+      "role": "engineer",
+      "tier": 3,
+      "division": "engineering",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/ai-engineer/SKILL.md",
+      "sizeBytes": 7365,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "engineering/engineering-ai-engineer.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "recovery-engineer",
+      "role": "devops",
+      "tier": 3,
+      "division": "engineering",
+      "defaultKpis": [
+        "mean_time_to_recovery"
+      ],
+      "skillPath": "packages/agent-templates/recovery-engineer/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "growth-hacker",
+      "role": "general",
+      "tier": 3,
+      "division": "marketing",
+      "defaultKpis": [
+        "leads_scraped_qualified_7d"
+      ],
+      "skillPath": "packages/agent-templates/growth-hacker/SKILL.md",
+      "sizeBytes": 3040,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "marketing/marketing-growth-hacker.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "content-creator",
+      "role": "general",
+      "tier": 3,
+      "division": "marketing",
+      "defaultKpis": [
+        "seo_organic_sessions_7d"
+      ],
+      "skillPath": "packages/agent-templates/content-creator/SKILL.md",
+      "sizeBytes": 13227,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "marketing/marketing-linkedin-content-creator.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "seo-specialist",
+      "role": "general",
+      "tier": 3,
+      "division": "marketing",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/seo-specialist/SKILL.md",
+      "sizeBytes": 12318,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "marketing/marketing-baidu-seo-specialist.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "ad-creative-strategist",
+      "role": "general",
+      "tier": 3,
+      "division": "marketing",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/ad-creative-strategist/SKILL.md",
+      "sizeBytes": 5137,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "paid-media/paid-media-creative-strategist.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "ppc-strategist",
+      "role": "general",
+      "tier": 3,
+      "division": "marketing",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/ppc-strategist/SKILL.md",
+      "sizeBytes": 4972,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "paid-media/paid-media-ppc-strategist.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "sales-coach",
+      "role": "general",
+      "tier": 3,
+      "division": "sales",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/sales-coach/SKILL.md",
+      "sizeBytes": 20933,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "sales/sales-coach.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "sales-engineer",
+      "role": "engineer",
+      "tier": 3,
+      "division": "sales",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/sales-engineer/SKILL.md",
+      "sizeBytes": 13894,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "sales/sales-engineer.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "concierge-ops",
+      "role": "general",
+      "tier": 3,
+      "division": "sales",
+      "defaultKpis": [
+        "concierge_to_registration_rate"
+      ],
+      "skillPath": "packages/agent-templates/concierge-ops/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    },
+    {
+      "templateId": "product-manager",
+      "role": "pm",
+      "tier": 3,
+      "division": "product",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/product-manager/SKILL.md",
+      "sizeBytes": 22480,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "product/product-manager.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "ux-researcher",
+      "role": "researcher",
+      "tier": 3,
+      "division": "product",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/ux-researcher/SKILL.md",
+      "sizeBytes": 12998,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "design/design-ux-researcher.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "trend-researcher",
+      "role": "researcher",
+      "tier": 3,
+      "division": "product",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/trend-researcher/SKILL.md",
+      "sizeBytes": 10479,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "product/product-trend-researcher.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "financial-analyst",
+      "role": "general",
+      "tier": 3,
+      "division": "finance",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/financial-analyst/SKILL.md",
+      "sizeBytes": 13375,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "finance/finance-financial-analyst.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "bookkeeper",
+      "role": "general",
+      "tier": 3,
+      "division": "finance",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/bookkeeper/SKILL.md",
+      "sizeBytes": 15172,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "finance/finance-bookkeeper-controller.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "support-analytics",
+      "role": "general",
+      "tier": 3,
+      "division": "support",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/support-analytics/SKILL.md",
+      "sizeBytes": 15768,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "support/support-analytics-reporter.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "accessibility-auditor",
+      "role": "qa",
+      "tier": 4,
+      "division": "testing",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/accessibility-auditor/SKILL.md",
+      "sizeBytes": 15212,
+      "origin": "agency-agents",
+      "upstream": {
+        "repo": "msitarzewski/agency-agents",
+        "ref": "main",
+        "path": "testing/testing-accessibility-auditor.md",
+        "license": "MIT"
+      }
+    },
+    {
+      "templateId": "composio-integration",
+      "role": "engineer",
+      "tier": 3,
+      "division": "specialized",
+      "defaultKpis": [],
+      "skillPath": "packages/agent-templates/composio-integration/SKILL.md",
+      "origin": "wavex",
+      "status": "stub"
+    }
+  ]
+}
