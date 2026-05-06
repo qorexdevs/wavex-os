@@ -17,8 +17,12 @@
 import Fastify from "fastify";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
 
 const PORT = Number(process.env.WAVEX_MOCK_CORE_PORT ?? 3101);
 const HOST = process.env.WAVEX_MOCK_CORE_HOST ?? "127.0.0.1";
@@ -129,6 +133,49 @@ app.get("/api/health", async () => ({
 }));
 
 app.get("/api/agents", async () => ({ agents }));
+
+// --- Claude Max OAuth probe ----------------------------------------------
+// Invokes scripts/wrappers/claude-anthropic-direct.sh probe and returns its
+// JSON. The wrapper is bash and reads from the system keychain — the
+// credential never reaches this Node process. We only see {ok, source, plan}.
+const WRAPPER_PATH = process.env.WAVEX_CLAUDE_WRAPPER ?? resolve(
+  process.cwd(),
+  "../../scripts/wrappers/claude-anthropic-direct.sh",
+);
+
+app.get("/api/probe/claude-max", async (_req, reply) => {
+  if (!existsSync(WRAPPER_PATH)) {
+    reply.code(500);
+    return {
+      ok: false,
+      error: `wrapper script not found at ${WRAPPER_PATH}. Set WAVEX_CLAUDE_WRAPPER env var to its path.`,
+    };
+  }
+
+  try {
+    const { stdout } = await execFileP(WRAPPER_PATH, ["probe"], {
+      timeout: 5000,
+      env: { ...process.env },
+    });
+    const json = JSON.parse(stdout);
+    return json;
+  } catch (err) {
+    // The wrapper exits 2 when no creds are found; still parse its stdout
+    const e = err as { stdout?: string; code?: number; message?: string };
+    if (e.stdout) {
+      try {
+        return JSON.parse(e.stdout);
+      } catch {
+        // fall through
+      }
+    }
+    reply.code(500);
+    return {
+      ok: false,
+      error: e.message ?? "wrapper invocation failed",
+    };
+  }
+});
 
 app.get<{ Params: { runId: string } }>("/api/runs/:runId", async (req, reply) => {
   const run = runs.get(req.params.runId);
