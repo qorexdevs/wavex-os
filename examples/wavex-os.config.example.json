@@ -1,0 +1,10 @@
+{
+  "_comment": "Per-deployment configuration consumed by render-launchd-templates.mjs and the provisioning scripts. Copy to wavex-os.config.json at repo root and fill in. Do NOT commit your real config.",
+  "companyId": "00000000-0000-0000-0000-000000000000",
+  "apiBase": "http://127.0.0.1:3100",
+  "stateDir": "~/.wavex-os/state",
+  "issuePrefix": "ACME",
+  "wrapperPath": "${REPO_ROOT}/scripts/wrappers/claude-spawn.sh",
+  "model": "claude-opus-4-7",
+  "kpiRegistryPath": "./examples/kpi-registry.example.json"
+}

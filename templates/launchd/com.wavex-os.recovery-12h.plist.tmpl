@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wavex-os.recovery-12h</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/curl</string>
+    <string>-sS</string>
+    <string>-X</string>
+    <string>POST</string>
+    <string>-H</string>
+    <string>Content-Type: application/json</string>
+    <string>-d</string>
+    <string>{"companyId":"${COMPANY_ID}","triggeredBy":"scheduled"}</string>
+    <string>${API_BASE}/api/maintenance/run-recovery-protocol</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>43200</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${STATE_DIR}/recovery-12h.log</string>
+  <key>StandardErrorPath</key>
+  <string>${STATE_DIR}/recovery-12h.log</string>
+</dict>
+</plist>

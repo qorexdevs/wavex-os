@@ -1,0 +1,82 @@
+{
+  "_comment": "Generic KPI registry. The setup-hierarchy-and-kpis.sample.mjs script reads this and inserts/updates rows in company_kpis. Each entry: kpiId, label, direction, targetMicros (or null), windowDays, ownerRole, description.",
+  "_format": {
+    "direction": "higher_is_better | lower_is_better",
+    "targetMicros": "the target value × 1_000_000 (so 25.0 = 25_000_000); null = no fixed target",
+    "ownerRole": "must match an existing agent role (e.g. ceo, cmo, cro, cdo_telemetry)"
+  },
+  "kpis": [
+    {
+      "kpiId": "revenue_target_30d",
+      "label": "Revenue (30d, USD)",
+      "direction": "higher_is_better",
+      "targetMicros": 25000000000,
+      "windowDays": 30,
+      "ownerRole": "cro",
+      "description": "Rolling 30-day revenue. The headline KPI."
+    },
+    {
+      "kpiId": "qualified_leads_7d",
+      "label": "Qualified leads (7d)",
+      "direction": "higher_is_better",
+      "targetMicros": 50000000,
+      "windowDays": 7,
+      "ownerRole": "cmo",
+      "description": "Rolling 7-day count of leads matching the qualification criteria."
+    },
+    {
+      "kpiId": "conversion_rate_7d",
+      "label": "Conversion rate % (7d)",
+      "direction": "higher_is_better",
+      "targetMicros": 5000000,
+      "windowDays": 7,
+      "ownerRole": "cro",
+      "description": "Confirmed conversions ÷ qualified leads, rolling 7d."
+    },
+    {
+      "kpiId": "organic_sessions_7d",
+      "label": "Organic sessions (7d)",
+      "direction": "higher_is_better",
+      "targetMicros": null,
+      "windowDays": 7,
+      "ownerRole": "cmo",
+      "description": "Rolling 7-day organic-channel sessions."
+    },
+    {
+      "kpiId": "avg_order_value",
+      "label": "Average order value (30d)",
+      "direction": "higher_is_better",
+      "targetMicros": null,
+      "windowDays": 30,
+      "ownerRole": "cro",
+      "description": "Mean USD per confirmed order, rolling 30d."
+    },
+    {
+      "kpiId": "utm_attribution_coverage",
+      "label": "UTM attribution coverage %",
+      "direction": "higher_is_better",
+      "targetMicros": 80000000,
+      "windowDays": 7,
+      "ownerRole": "cdo_attribute",
+      "description": "Pct of marketing events with non-null utm_source. Bottleneck KPI: blocks reliable measurement of all marketing KPIs."
+    },
+    {
+      "kpiId": "kpi_freshness_seconds",
+      "label": "KPI freshness (seconds)",
+      "direction": "lower_is_better",
+      "targetMicros": 600000000,
+      "windowDays": 1,
+      "ownerRole": "cdo_telemetry",
+      "description": "Max staleness across all snapshots. Lower is better. Wildcard bottleneck — blocks every KPI when stale."
+    },
+    {
+      "kpiId": "agent_error_rate",
+      "label": "Agent error rate %",
+      "direction": "lower_is_better",
+      "targetMicros": 10000000,
+      "windowDays": 1,
+      "ownerRole": "chief_of_staff",
+      "description": "Failed runs ÷ total runs in last 24h. Owned by Chief of Staff (system tier)."
+    }
+  ]
+}

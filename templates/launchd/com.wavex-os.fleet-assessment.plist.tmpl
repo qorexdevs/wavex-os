@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wavex-os.fleet-assessment</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/curl</string>
+    <string>-sS</string>
+    <string>-X</string>
+    <string>POST</string>
+    <string>-H</string>
+    <string>Content-Type: application/json</string>
+    <string>-d</string>
+    <string>{"companyId":"${COMPANY_ID}","windowHours":4}</string>
+    <string>${API_BASE}/api/maintenance/snapshot-fleet-assessment</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${STATE_DIR}/fleet-assessment.log</string>
+  <key>StandardErrorPath</key>
+  <string>${STATE_DIR}/fleet-assessment.log</string>
+</dict>
+</plist>
