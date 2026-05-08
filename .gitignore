@@ -29,6 +29,11 @@ Thumbs.db
 secrets.json
 credentials.json
 
+# Per-deployment WaveX OS config (CONTAINS YOUR COMPANY ID — never commit)
+wavex-os.config.json
+!examples/wavex-os.config.example.json
+!examples/kpi-registry.example.json
+
 # Backup files (from migration scripts)
 *.bak
 *.backup

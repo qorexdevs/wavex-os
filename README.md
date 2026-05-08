@@ -3,7 +3,7 @@
 > Open-source operating system for running an AI agent company on your localhost.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status: 0.1.0 / Phase G](https://img.shields.io/badge/status-0.1.0%20%E2%80%94%20Phase%20G-4ec9b0)](docs/ROADMAP.md)
+[![Status: 0.2.0 / Phase H](https://img.shields.io/badge/status-0.2.0%20%E2%80%94%20Phase%20H-4ec9b0)](docs/ROADMAP.md)
 [![Built on Paperclip](https://img.shields.io/badge/built%20on-Paperclip-86c5da)](https://github.com/paperclip-ai/paperclip)
 
 WaveX OS turns one founder's hard-won R&D into a 45-minute setup wizard. Clone the repo, run one command, and a localhost browser walks you through 11 steps to define your company — KPIs, org structure, agent templates, OAuth handoff. The wizard then spawns your fleet on a local server and drops you on a real Mission Control dashboard.
@@ -12,7 +12,9 @@ After spawn, an optional **System Optimizer** subscription on our cloud injects 
 
 ---
 
-## What works today (v0.1.0)
+## What works today (v0.2.0)
+
+> **v0.2.0 (Phase H)** is shipping the **minimal inception kernel + four-layer self-healing architecture** extracted from a 7-day production deployment. See [`docs/MINIMAL_INCEPTION.md`](docs/MINIMAL_INCEPTION.md) and [`docs/SELF_HEALING.md`](docs/SELF_HEALING.md) for the architectural narrative. The wizard end-to-end loop from v0.1.0 stays unchanged.
 
 | Step | What you do | What we built |
 |---|---|---|
@@ -27,6 +29,18 @@ After spawn, an optional **System Optimizer** subscription on our cloud injects 
 | 10 | OAuth handoff | Real keychain probe via `wavex-claude` wrapper — credential never leaves your machine |
 | 11 | Subscribe (optional) | Tier picker (Phase F wires Stripe) |
 | → | Mission Control | Live dashboard at `/` — KPI scoreboard, fleet graph polling agents API every 8s, core health strip every 5s |
+
+### What v0.2.0 added (Phase H)
+
+| Layer | What it does |
+|---|---|
+| **Minimal inception kernel** ([docs](docs/MINIMAL_INCEPTION.md)) | Two-agent topology — CEO + Chief of Staff — that exhibits coherent self-direction with one actor and one observer. C-suite is opt-in. |
+| **Standard cross-cutting skills** ([packages/standard-skills/](packages/standard-skills/)) | Six skill files every agent loads at heartbeat start: economic self-awareness, verify-before-claim, KPI ownership, harness recognition, lessons read, delegate-or-kill. |
+| **Self-healing reference impl** ([packages/healing/](packages/healing/)) | Layer 1 (wrapper 401 self-heal + Sonnet fallback), Layer 2 (OAuth refresh with concurrency lock + invalid_grant retry), Layer 3 (worker restart with SIGTERM→SIGKILL). |
+| **Observability reference impl** ([packages/observability/](packages/observability/)) | Bottleneck scoring, outcome attribution, token budget + adaptive throttle, mission-control aggregator, fleet-observer markdown synthesis. |
+| **Operations** ([templates/launchd/](templates/launchd/), [scripts/](scripts/)) | Six launchd templates (recovery-on-boot, recovery-12h, fleet-assessment, economics-refresh, attribution-sweep, bottleneck-digest). Sample provisioning scripts for the Chief of Staff and KPI registry. |
+
+After Phase H, fleet burn dropped 96% on the production deployment that produced this release. Single-agent burn dropped 95% on the heaviest agent. Spinner patterns became visible and auto-pauseable in one click.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
@@ -58,20 +72,30 @@ Open [http://localhost:5173](http://localhost:5173) and you'll land on Mission C
 
 ```
 wavex-os/
-├── apps/installer/              # `npx wavex-os init` CLI (doctor + spawn dev:full)
+├── apps/installer/                       # `npx wavex-os init` CLI (doctor + spawn dev:full)
 ├── packages/
-│   ├── core/                    # Paperclip vendored via git subtree (Phase D will wire it up)
-│   ├── mock-core/               # In-memory stand-in for Paperclip; Fastify on :3101
-│   ├── onboarding-ui/           # Vite + React wizard + Mission Control v2
-│   ├── agent-templates/         # 30 curated templates (19 vendored + 11 WaveX-authored)
-│   └── onboarding-server-client/ # Typed stub for the future hosted backend
+│   ├── core/                             # Paperclip vendored via git subtree
+│   ├── mock-core/                        # In-memory stand-in for Paperclip; Fastify on :3101
+│   ├── onboarding-ui/                    # Vite + React wizard + Mission Control v2
+│   │   └── public/agent-templates/       # 30 role-specific skill packs
+│   ├── standard-skills/                  # NEW (v0.2.0): cross-cutting skills every agent loads
+│   ├── healing/                          # NEW (v0.2.0): OAuth refresh + worker restart reference impl
+│   ├── observability/                    # NEW (v0.2.0): bottlenecks, attribution, budget, mission-control
+│   └── onboarding-server-client/         # Typed stub for the future hosted backend
 ├── scripts/
 │   ├── wrappers/
-│   │   └── claude-anthropic-direct.sh   # Claude Max OAuth wrapper (probe / exec)
-│   └── ingest-agency-agents.mjs # Re-runnable upstream → curated template ingester
+│   │   ├── claude-anthropic-direct.sh    # Phase E probe wrapper (onboarding handoff)
+│   │   └── claude-spawn.sh               # NEW (v0.2.0): per-spawn execution wrapper with 401 self-heal
+│   ├── render-launchd-templates.mjs      # NEW (v0.2.0): materialize launchd plists
+│   ├── provision-chief-of-staff.sample.mjs   # NEW (v0.2.0): kernel completion
+│   └── setup-hierarchy-and-kpis.sample.mjs   # NEW (v0.2.0): hierarchy + KPI registration
+├── templates/launchd/                    # NEW (v0.2.0): 6 .plist.tmpl with placeholders
+├── examples/                             # NEW (v0.2.0): config + KPI registry samples
 └── docs/
     ├── ARCHITECTURE.md
     ├── CLAUDE_MAX_HANDOFF.md
+    ├── MINIMAL_INCEPTION.md              # NEW (v0.2.0)
+    ├── SELF_HEALING.md                   # NEW (v0.2.0)
     └── ROADMAP.md
 ```
 
@@ -137,7 +161,7 @@ Full attribution: [CREDITS.md](CREDITS.md).
 
 ## Status
 
-**v0.1.0 — Phase G** (Mission Control). The wizard → product loop is closed end-to-end with mock-core. Phase D will swap in real Paperclip; Phase E completes OAuth handoff (per-agent symlinks + smoke heartbeat); Phase F adds Stripe + the hosted Optimizer.
+**v0.2.0 — Phase H** (Minimal inception kernel + four-layer self-healing). Production patterns from a 7-day deployment crystallized into open-source skills, services, and operational templates. Phase D will swap in real Paperclip core; Phase E completes OAuth handoff (per-agent symlinks + smoke heartbeat); Phase F adds Stripe + the hosted Optimizer.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan and what's done.
 
