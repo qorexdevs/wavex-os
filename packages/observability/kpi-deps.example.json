@@ -1,0 +1,12 @@
+{
+  "_comment": "Example KPI dependency map. Reading: 'if X is broken, these KPIs cannot be measured reliably'. Wire into bottlenecks.ts via setKpiDownstreamBlockages(map). The '*' wildcard means the KPI blocks every other KPI — use only for foundational telemetry signals.",
+  "kpi_freshness_seconds": ["*"],
+  "utm_attribution_coverage": [
+    "marketing_events_7d",
+    "conversion_rate",
+    "attributed_signups",
+    "attributed_revenue"
+  ],
+  "agent_error_rate": [],
+  "ad_account_probe_live": ["marketing_events_7d", "warm_audience_size"]
+}
