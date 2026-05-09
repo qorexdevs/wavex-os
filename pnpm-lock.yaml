@@ -121,6 +121,9 @@ importers:
 
   packages/mock-core:
     dependencies:
+      '@wavex-os/op-omega-server':
+        specifier: workspace:*
+        version: link:../op-omega-server
       fastify:
         specifier: ^4.28.1
         version: 4.29.1
@@ -183,6 +186,49 @@ importers:
       vite:
         specifier: ^5.4.6
         version: 5.4.21(@types/node@24.12.3)
+
+  packages/op-omega-server:
+    dependencies:
+      '@op-omega/plugin-flywheel-kernel':
+        specifier: workspace:*
+        version: link:../../vendor/op-omega/flywheel-kernel
+      '@op-omega/plugin-onboarding':
+        specifier: workspace:*
+        version: link:../../vendor/op-omega/onboarding
+      '@op-omega/plugin-tier-router':
+        specifier: workspace:*
+        version: link:../../vendor/op-omega/tier-router
+      '@wavex-os/auth-shim':
+        specifier: workspace:*
+        version: link:../auth-shim
+      '@wavex-os/composio-shim':
+        specifier: workspace:*
+        version: link:../composio-shim
+      '@wavex-os/db':
+        specifier: workspace:*
+        version: link:../db
+      '@wavex-os/inference-adapter':
+        specifier: workspace:*
+        version: link:../inference-adapter
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
+      fastify:
+        specifier: ^4.28.1
+        version: 4.29.1
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
 
   packages/plugin-sdk-shim:
     dependencies:

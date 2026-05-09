@@ -1,0 +1,31 @@
+{
+  "name": "@wavex-os/op-omega-server",
+  "version": "0.1.0",
+  "description": "Wavex-os Fastify route adapter for the vendored op-omega onboarding plugin. Mounts the pillar handlers, phase generators, and finalize entry behind /op-omega/* HTTP endpoints. Uses @wavex-os/auth-shim, @wavex-os/composio-shim, @wavex-os/db, and @wavex-os/inference-adapter for boundary concerns.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@op-omega/plugin-onboarding": "workspace:*",
+    "@op-omega/plugin-tier-router": "workspace:*",
+    "@op-omega/plugin-flywheel-kernel": "workspace:*",
+    "@wavex-os/auth-shim": "workspace:*",
+    "@wavex-os/composio-shim": "workspace:*",
+    "@wavex-os/db": "workspace:*",
+    "@wavex-os/inference-adapter": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "fastify": "^4.28.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}

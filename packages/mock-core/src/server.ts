@@ -121,6 +121,12 @@ function sleep(ms: number): Promise<void> {
 
 const app = Fastify({ logger: false });
 
+// Wire op-omega onboarding routes (vendored plugin via @wavex-os/op-omega-server).
+// Importing dynamically would defer the plugin SDK build dependency; using
+// top-level await keeps the side-effect ordering deterministic at startup.
+const { registerOpOmegaRoutes } = await import("@wavex-os/op-omega-server");
+registerOpOmegaRoutes(app);
+
 // --- routes ---------------------------------------------------------------
 
 app.get("/api/health", async () => ({
