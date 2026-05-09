@@ -1,17 +1,14 @@
-/** Pillar 1 — Identity. Op-omega's enrichment with F1 fail-closed. */
+/** Pillar 1 — Identity. Op-omega upstream contract:
+ *  Input  : { companyId, org_name, raw_input, manual_context? }
+ *    raw_input is a URL or product description; the plugin enriches via T2.
+ *    manual_context bypasses T2 enrichment when provided.
+ *  Output : Pillar1Response with snake_case enrichment fields. */
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { Pillar1Response } from "@op-omega/plugin-onboarding";
 import { Card, Field, H2, NavRow, P } from "../components/primitives";
 import { HaltScreen } from "../components/HaltScreen";
-
-const INDUSTRIES = [
-  "AI / ML / SaaS", "Concierge / Hospitality", "E-commerce / Retail",
-  "Real Estate", "Healthcare / Wellness", "Finance / Crypto",
-  "Travel / Tourism", "Education / EdTech", "Media / Content", "Other",
-];
 
 interface Props {
   companyId: string;
@@ -20,104 +17,102 @@ interface Props {
 }
 
 export function Pillar1({ companyId, initial, onComplete }: Props) {
-  const [companyName, setCompanyName] = useState(initial?.companyName ?? "");
-  const [industry, setIndustry] = useState(initial?.industry ?? "");
-  const [companyContext, setContext] = useState(initial?.companyContext ?? "");
-  const [businessModel, setBusinessModel] = useState(initial?.businessModel ?? "");
-  const [icp, setIcp] = useState(initial?.icp ?? "");
-  const [positioning, setPositioning] = useState(initial?.positioning ?? "");
-  const [tone, setTone] = useState(initial?.tone ?? "");
+  const [orgName, setOrgName] = useState(initial?.org_name ?? "");
+  const [rawInput, setRawInput] = useState("");
+  const [manualContext, setManualContext] = useState(initial?.company_context ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [halt, setHalt] = useState<ApiError["halt"]>(undefined);
+  const [result, setResult] = useState<Pillar1Response | undefined>(initial);
 
-  const submit = useMutation({
-    mutationFn: (input: { enrichWithAI: boolean }) =>
-      opOmegaOnboardingApi.pillar1({
+  async function submit(): Promise<void> {
+    setSubmitting(true);
+    setError(null);
+    setHalt(undefined);
+    try {
+      const resp = await opOmegaOnboardingApi.pillar1({
         companyId,
-        companyName, industry,
-        companyContext: companyContext.trim() || undefined,
-        businessModel: businessModel.trim() || undefined,
-        icp: icp.trim() || undefined,
-        positioning: positioning.trim() || undefined,
-        tone: tone.trim() || undefined,
-        enrichWithAI: input.enrichWithAI,
-      }),
-    onSuccess: (data, vars) => {
-      // If we asked for enrichment, populate fields with what came back
-      if (vars.enrichWithAI && data.pillar1) {
-        if (data.pillar1.companyContext && !companyContext.trim()) setContext(data.pillar1.companyContext);
-        if (data.pillar1.businessModel && !businessModel.trim()) setBusinessModel(data.pillar1.businessModel);
-        if (data.pillar1.icp && !icp.trim()) setIcp(data.pillar1.icp);
-        if (data.pillar1.positioning && !positioning.trim()) setPositioning(data.pillar1.positioning);
-        if (data.pillar1.tone && !tone.trim()) setTone(data.pillar1.tone);
+        org_name: orgName.trim(),
+        raw_input: rawInput.trim() || orgName.trim(),
+        manual_context: manualContext.trim().length >= 40 ? manualContext.trim() : undefined,
+      });
+      setResult(resp.response);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.halt) setHalt(e.halt);
+        else setError(e.message);
+      } else {
+        setError((e as Error).message);
       }
-    },
-  });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-  const canProceed = companyName.trim().length > 0 && industry.length > 0;
-  const halt = submit.error instanceof ApiError ? submit.error.halt : undefined;
+  const canSubmit = orgName.trim().length > 0 && !submitting;
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
       <H2>Pillar 1 — Identity</H2>
       <P>
-        Tell us who you are. Required: company name + industry. Optional fields below sharpen
-        agent context (better KPIs, more relevant connectors, less generic workflows). Click{" "}
-        <strong>✨ Enhance with AI</strong> to draft them from your name + industry via Claude.
+        Tell us who you are. The pipeline enriches your input via T2 to draft an industry hint,
+        business model, ICP, and competitive positioning. Provide a URL OR ≥40 chars of manual context.
       </P>
 
-      {halt && <HaltScreen halt={halt} onRetry={() => submit.reset()} />}
+      {halt && <HaltScreen halt={halt} onRetry={() => { setHalt(undefined); setError(null); }} />}
+      {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
       <Card>
         <Field label="Company name" required>
-          <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="e.g. Acme Concierge" autoFocus />
+          <input
+            type="text"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+            placeholder="Acme Concierge"
+            autoFocus
+          />
         </Field>
-        <Field label="Industry" required>
-          <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-            <option value="">Pick an industry…</option>
-            {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
+        <Field label="URL or short pitch (raw input for T2 enrichment)">
+          <input
+            type="text"
+            value={rawInput}
+            onChange={(e) => setRawInput(e.target.value)}
+            placeholder="acme.com  OR  AI concierge for boutique hotels"
+          />
+        </Field>
+        <Field label="Manual context (≥40 chars — bypasses T2 enrichment if provided)">
+          <textarea
+            value={manualContext}
+            onChange={(e) => setManualContext(e.target.value)}
+            rows={3}
+            placeholder="One paragraph: what you do, who for, what's unique. Skips T2 enrichment when provided."
+          />
         </Field>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-          <span>Company context <span className="text-dim" style={{ fontSize: 12 }}>(optional)</span></span>
-          <button
-            type="button"
-            className="secondary"
-            disabled={!canProceed || submit.isPending}
-            onClick={() => submit.mutate({ enrichWithAI: true })}
-            style={{ fontSize: 12, padding: "0.3rem 0.7rem" }}
-          >
-            {submit.isPending ? "Inferring..." : "✨ Enhance with AI"}
-          </button>
-        </div>
-        <textarea
-          value={companyContext}
-          onChange={(e) => setContext(e.target.value)}
-          rows={3}
-          placeholder="One paragraph: what you do, who for, what's unique. Or click 'Enhance with AI'."
-          style={{ marginBottom: "1rem" }}
-        />
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-          <Field label="Business model"><input value={businessModel} onChange={(e) => setBusinessModel(e.target.value)} placeholder="SaaS / DTC / marketplace" /></Field>
-          <Field label="Tone"><input value={tone} onChange={(e) => setTone(e.target.value)} placeholder="warm / formal / playful" /></Field>
-        </div>
-        <Field label="ICP — ideal customer"><input value={icp} onChange={(e) => setIcp(e.target.value)} placeholder="Founders 1-10 employees, US-based" /></Field>
-        <Field label="Positioning"><input value={positioning} onChange={(e) => setPositioning(e.target.value)} placeholder="Faster than X, cheaper than Y" /></Field>
-
-        {submit.data?.inference_latency_ms && (
-          <div className="text-dim" style={{ fontSize: 11, marginBottom: "0.5rem" }}>
-            ✓ Enrichment resolved in {submit.data.inference_latency_ms}ms · enrichment_status:{" "}
-            <code>{submit.data.pillar1.enrichment_status}</code>
+        {result && (
+          <div style={{ marginTop: "1rem", padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4 }}>
+            <div className="text-dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+              ENRICHMENT RESULT (status: <code>{result.enrichment_status ?? "—"}</code>)
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              <div><strong>Context:</strong> {result.company_context}</div>
+              <div><strong>Industry:</strong> {result.industry_hint}</div>
+              <div><strong>Business model:</strong> {result.business_model_hint}</div>
+              <div><strong>Has product:</strong> {result.has_product ? "yes" : "no"}</div>
+              {result.ideal_customer_profile && <div><strong>ICP:</strong> {result.ideal_customer_profile}</div>}
+              {result.competitive_position && <div><strong>Position:</strong> {result.competitive_position}</div>}
+              {result.tone_signal && <div><strong>Tone:</strong> {result.tone_signal}</div>}
+            </div>
           </div>
         )}
       </Card>
 
       <NavRow
-        next={{
-          onClick: () => submit.mutate({ enrichWithAI: false }, { onSuccess: () => onComplete() }),
-          label: submit.isPending ? "Saving..." : "Verify Claude Max →",
-        }}
-        nextDisabled={!canProceed || submit.isPending}
+        back={result ? { onClick: () => setResult(undefined), label: "← Re-enrich" } : undefined}
+        next={result
+          ? { onClick: onComplete, label: "Continue →" }
+          : { onClick: submit, label: submitting ? "Enriching…" : "Enrich →" }}
+        nextDisabled={!canSubmit && !result}
       />
     </div>
   );

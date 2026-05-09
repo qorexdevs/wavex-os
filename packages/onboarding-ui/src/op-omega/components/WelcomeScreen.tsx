@@ -1,9 +1,11 @@
 /** Welcome screen — entry point at /onboarding (no companyId yet).
- * Either resume an existing draft OR create a new company. */
+ *  Either resume an existing draft OR start a new company. The op-omega
+ *  pipeline auto-creates the company state on first pillar-1 POST, so no
+ *  separate "create" call is needed. */
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { opOmegaOnboardingApi } from "../lib/api";
 import { slugifyCompanyId } from "../lib/CompanyContext";
 import { Card, H2, P, Field, NavRow } from "./primitives";
@@ -15,15 +17,15 @@ export function WelcomeScreen() {
     queryFn: () => opOmegaOnboardingApi.listCompanies(),
   });
   const [name, setName] = useState("");
-  const create = useMutation({
-    mutationFn: (slug: string) => opOmegaOnboardingApi.createCompany(slug),
-    onSuccess: (_data, slug) => {
-      navigate(`/onboarding?companyId=${encodeURIComponent(slug)}`);
-    },
-  });
 
   const proposedSlug = slugifyCompanyId(name);
-  const slugConflict = (data?.companies ?? []).includes(proposedSlug);
+  const companies = data?.companies ?? [];
+  const slugConflict = companies.some((c) => c.id === proposedSlug);
+
+  function start(): void {
+    if (!proposedSlug) return;
+    navigate(`/onboarding?companyId=${encodeURIComponent(proposedSlug)}`);
+  }
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
@@ -48,36 +50,28 @@ export function WelcomeScreen() {
         {name.trim() && (
           <div className="text-dim" style={{ fontSize: 13, marginBottom: "0.75rem" }}>
             slug: <code>{proposedSlug}</code>
-            {slugConflict && <span style={{ color: "var(--warning)", marginLeft: "0.5rem" }}>(already exists — pick a different name or resume below)</span>}
+            {slugConflict && <span style={{ color: "var(--warning)", marginLeft: "0.5rem" }}>(already exists — resume below)</span>}
           </div>
         )}
         <NavRow
-          next={{
-            onClick: () => create.mutate(proposedSlug),
-            label: create.isPending ? "Creating..." : "Create + start →",
-          }}
-          nextDisabled={!name.trim() || slugConflict || create.isPending}
+          next={{ onClick: start, label: "Start →" }}
+          nextDisabled={!name.trim() || slugConflict}
         />
-        {create.isError && (
-          <div style={{ color: "var(--warning)", fontSize: 13, marginTop: "0.5rem" }}>
-            {(create.error as Error).message}
-          </div>
-        )}
       </Card>
 
-      {!isLoading && (data?.companies?.length ?? 0) > 0 && (
+      {!isLoading && companies.length > 0 && (
         <Card>
           <H2>Resume an existing draft</H2>
           <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.75rem" }}>
-            {data!.companies.map((c) => (
+            {companies.map((c) => (
               <button
-                key={c}
+                key={c.id}
                 type="button"
                 className="secondary"
                 style={{ textAlign: "left", padding: "0.6rem 0.75rem" }}
-                onClick={() => navigate(`/onboarding?companyId=${encodeURIComponent(c)}`)}
+                onClick={() => navigate(`/onboarding?companyId=${encodeURIComponent(c.id)}`)}
               >
-                <code>{c}</code>
+                <code>{c.id}</code>{c.name !== c.id && <> · {c.name}</>}
               </button>
             ))}
           </div>

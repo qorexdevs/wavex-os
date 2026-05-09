@@ -8,7 +8,7 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
-import { getDb } from "@wavex-os/db";
+import { getDb, runMigrations } from "@wavex-os/db";
 import {
   preloadSqlTag,
   getMissionControl,
@@ -16,11 +16,12 @@ import {
   computeBottlenecks,
 } from "@wavex-os/observability";
 
-let preloaded = false;
-async function ensureSqlTag(): Promise<void> {
-  if (preloaded) return;
+let bootstrapped = false;
+async function ensureBootstrap(): Promise<void> {
+  if (bootstrapped) return;
   await preloadSqlTag();
-  preloaded = true;
+  await runMigrations();
+  bootstrapped = true;
 }
 
 function authReq(req: FastifyRequest) {
@@ -36,7 +37,7 @@ export function registerObservabilityRoutes(app: FastifyInstance): void {
     }
     const { companyId } = req.params as { companyId: string };
     assertCompanyAccess(ar, companyId);
-    await ensureSqlTag();
+    await ensureBootstrap();
     try {
       const db = await getDb();
       const mc = await getMissionControl(db as never, companyId);
@@ -58,7 +59,7 @@ export function registerObservabilityRoutes(app: FastifyInstance): void {
     }
     const { companyId } = req.params as { companyId: string };
     assertCompanyAccess(ar, companyId);
-    await ensureSqlTag();
+    await ensureBootstrap();
     try {
       const db = await getDb();
       const status = await getBudgetStatus(db as never, companyId);
@@ -79,7 +80,7 @@ export function registerObservabilityRoutes(app: FastifyInstance): void {
     }
     const { companyId } = req.params as { companyId: string };
     assertCompanyAccess(ar, companyId);
-    await ensureSqlTag();
+    await ensureBootstrap();
     try {
       const db = await getDb();
       const rows = await computeBottlenecks(db as never, companyId);

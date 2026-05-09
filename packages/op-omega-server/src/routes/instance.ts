@@ -63,8 +63,11 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
     const manifest = await loadCompanyManifest(companyId);
     if (!manifest) return reply.status(404).send({ error: "manifest not found", companyId });
 
-    // Build wavex KPI registry from the manifest's goal + swarm-owned KPIs.
-    const kpis: Array<{
+    // Build wavex KPI registry from upstream sources:
+    //   1. kpi_snapshot_initial — 12 baseline measurements from Pillar 3
+    //   2. mc_winner.mean_mrr_growth — MC projection (when present)
+    //   3. swarm topology — agent counts as system KPIs
+    type KpiRow = {
       kpiId: string;
       label: string;
       direction: "higher_is_better" | "lower_is_better";
@@ -72,33 +75,50 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
       currentValue?: number;
       targetMicros?: number;
       windowDays?: number;
-    }> = [];
+    };
+    const kpis: KpiRow[] = [];
 
-    if (manifest.goal?.kpiId) {
-      kpis.push({
-        kpiId: manifest.goal.kpiId,
-        label: manifest.goal.kpiId.replace(/_/g, " "),
-        direction: "higher_is_better",
-        ownerRole: "ceo",
-        currentValue: manifest.goal.current,
-        targetMicros: manifest.goal.target ? manifest.goal.target * 1_000_000 : undefined,
-        windowDays: manifest.goal.days,
-      });
-    }
-    const seen = new Set<string>(kpis.map((k) => k.kpiId));
-    const agents = manifest.swarm_manifest?.agents ?? {};
-    for (const [slot, agent] of Object.entries(agents)) {
-      for (const kpi of agent.owned_kpi_ids ?? []) {
-        if (seen.has(kpi)) continue;
-        seen.add(kpi);
+    // Headline KPI: MRR (from kpi_snapshot_initial)
+    const snap = (manifest as { pillar_responses?: { pillar_3?: { kpi_snapshot_initial?: Record<string, number> } } })
+      .pillar_responses?.pillar_3?.kpi_snapshot_initial;
+    if (snap) {
+      const KPI_DEFS: Array<{ id: keyof typeof snap; label: string; dir: "higher_is_better" | "lower_is_better"; owner: string }> = [
+        { id: "mrr", label: "Monthly Recurring Revenue", dir: "higher_is_better", owner: "ceo" },
+        { id: "nrr", label: "Net Revenue Retention", dir: "higher_is_better", owner: "cro" },
+        { id: "grr", label: "Gross Revenue Retention", dir: "higher_is_better", owner: "cro" },
+        { id: "burn_multiple", label: "Burn Multiple", dir: "lower_is_better", owner: "cfo" },
+        { id: "cac_payback_months", label: "CAC Payback (months)", dir: "lower_is_better", owner: "cfo" },
+        { id: "ltv_cac_ratio", label: "LTV / CAC Ratio", dir: "higher_is_better", owner: "cfo" },
+        { id: "activation_rate", label: "Activation Rate", dir: "higher_is_better", owner: "cpo" },
+        { id: "win_rate", label: "Win Rate", dir: "higher_is_better", owner: "cro" },
+        { id: "sales_cycle_days", label: "Sales Cycle (days)", dir: "lower_is_better", owner: "cro" },
+        { id: "narrative_strength", label: "Narrative Strength", dir: "higher_is_better", owner: "cmo" },
+      ];
+      for (const k of KPI_DEFS) {
+        const v = snap[k.id];
+        if (v == null) continue;
         kpis.push({
-          kpiId: kpi,
-          label: kpi.replace(/_/g, " "),
-          direction: kpi.includes("rate") || kpi.includes("burn") ? "lower_is_better" : "higher_is_better",
-          ownerRole: agent.role ?? slot,
+          kpiId: String(k.id),
+          label: k.label,
+          direction: k.dir,
+          ownerRole: k.owner,
+          currentValue: v,
         });
       }
     }
+
+    // System KPI: MC projected mean MRR growth (when finalize ran with MC)
+    const mc = (manifest as { mc_winner?: { mean_mrr_growth?: number; strategy_id?: string } }).mc_winner;
+    if (mc?.mean_mrr_growth != null) {
+      kpis.push({
+        kpiId: "mc_projected_mrr_growth",
+        label: `Projected MRR growth (${mc.strategy_id ?? "MC winner"})`,
+        direction: "higher_is_better",
+        ownerRole: "ceo",
+        currentValue: mc.mean_mrr_growth,
+      });
+    }
+
     return { ok: true, companyId, kpis };
   });
 
@@ -108,22 +128,15 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
       if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
       throw e;
     }
-    // Enumerate companies by reading the wavex instances directory.
+    // Enumerate companies from the plugin's session layout:
+    //   ~/.wavex-os/instances/default/companies/<companyId>/onboarding/
     try {
       const fs = await import("node:fs/promises");
-      const root = join(getInstanceDir(""), "..");
-      const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+      const companiesRoot = join(getInstanceDir(""), "default", "companies");
+      const entries = await fs.readdir(companiesRoot, { withFileTypes: true }).catch(() => []);
       const companies = entries
-        .filter((e) => e.isDirectory() && e.name !== "default")
+        .filter((e) => e.isDirectory())
         .map((e) => ({ id: e.name, name: e.name }));
-      // Plus any company under the plugin's session layout
-      const pluginRoot = join(getInstanceDir(""), "..", "default", "companies");
-      const pluginEntries = await fs.readdir(pluginRoot, { withFileTypes: true }).catch(() => []);
-      for (const e of pluginEntries) {
-        if (!e.isDirectory()) continue;
-        if (companies.find((c) => c.id === e.name)) continue;
-        companies.push({ id: e.name, name: e.name });
-      }
       return { ok: true, companies };
     } catch (e) {
       return reply.status(500).send({ error: "failed to enumerate companies" });

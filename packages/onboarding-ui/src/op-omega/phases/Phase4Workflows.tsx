@@ -1,54 +1,145 @@
-/** Phase 4 — derived workflow manifest. */
+/** Phase 4 — derived workflow manifest. Upstream WorkflowManifest shape:
+ *    agent_workflows: Record<slot, AgentWorkflow>
+ *    bundle_workflows: Record<bundleId, BundleWorkflow>
+ *    scheduled_routines_enabled: Record<name, cron>
+ *    dry_run_gates: string[] of "{agent}.{task}" identifiers
+ *    t2_patches?: T2PatchRecord[] (audit trail)
+ *  AgentWorkflow has: heartbeat, on_fire[], escalation[] */
 
-import { useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { opOmegaOnboardingApi } from "../lib/api";
+import { useEffect, useState } from "react";
+import { opOmegaOnboardingApi, ApiError } from "../lib/api";
+import type { WorkflowManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
 
 interface Props { companyId: string; onComplete: () => void; }
 
 export function Phase4Workflows({ companyId, onComplete }: Props) {
-  const generate = useMutation({
-    mutationFn: () => opOmegaOnboardingApi.generateWorkflow(companyId),
-  });
-  useEffect(() => { generate.mutate(); /* eslint-disable-next-line */ }, [companyId]);
+  const [manifest, setManifest] = useState<WorkflowManifest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<string>("");
 
-  const m = generate.data?.manifest;
+  async function generate(skipInference = false): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opOmegaOnboardingApi.generateWorkflow(companyId, { skipInference, bypassBudgetCheck: true });
+      setManifest(r.manifest);
+      setSource(r.source);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { void generate(true); }, [companyId]);
+
+  const agentWorkflows = manifest ? Object.entries(manifest.agent_workflows) : [];
+  const bundleWorkflows = manifest ? Object.entries(manifest.bundle_workflows) : [];
+  const routines = manifest ? Object.entries(manifest.scheduled_routines_enabled) : [];
+  const t2patches = manifest?.t2_patches ?? [];
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 4 — Workflows</H2>
-      <P>Per-agent on_fire sequences + scheduled routines. Op-omega F5 audit trail (T2 patches with rationale + pillar_signal) lands when wavex-server inference is wired.</P>
+      <P>
+        Per-agent on_fire task sequences + cross-agent bundle workflows + scheduled
+        routines. The 14-day dry_run gate suppresses writes for new high-risk tasks.
+        T2 patches (with rationale + pillar_signal attribution) appear when refined.
+      </P>
 
-      {generate.isPending && <div className="text-dim">Deriving workflow templates…</div>}
+      {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
-      {m && (
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
+          {busy ? "Deriving…" : "Re-derive (T0 fast)"}
+        </button>
+        <button type="button" onClick={() => void generate(false)} disabled={busy}>
+          Refine with T2 →
+        </button>
+        {source && <span className="text-dim" style={{ fontSize: 12, alignSelf: "center" }}>source: {source}</span>}
+      </div>
+
+      {manifest && (
         <>
           <Card>
-            <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Workflows ({m.workflows.length})</h3>
-            {m.workflows.map((w) => (
-              <div key={w.slot} style={{ borderBottom: "1px solid var(--border)", padding: "0.5rem 0", fontSize: 13 }}>
-                <div style={{ fontWeight: 600 }}>{w.slot}</div>
-                <div className="text-dim" style={{ fontSize: 11 }}>triggers: {w.triggers.join(", ")}</div>
-                <div className="text-dim" style={{ fontSize: 11 }}>steps: {w.on_fire.map((s) => s.action).join(" → ")}</div>
+            <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Per-agent workflows ({agentWorkflows.length})
+            </h3>
+            {agentWorkflows.map(([slot, wf]) => (
+              <div key={slot} style={{ borderBottom: "1px solid var(--border)", padding: "0.5rem 0", fontSize: 13 }}>
+                <div><strong>{slot}</strong> <span className="text-dim" style={{ fontSize: 11 }}>· heartbeat {wf.heartbeat} · {wf.on_fire.length} tasks</span></div>
+                <div className="text-dim" style={{ fontSize: 11, marginTop: 2 }}>
+                  {wf.on_fire.map((t) => t.task + (t.dry_run_gate ? "🔒" : "")).join(" → ")}
+                </div>
+                {wf.escalation.length > 0 && (
+                  <div className="text-dim" style={{ fontSize: 10, marginTop: 2 }}>
+                    escalation: {wf.escalation.map((e) => `${e.on}→${e.to}`).join(", ")}
+                  </div>
+                )}
               </div>
             ))}
           </Card>
-          {m.routines.length > 0 && (
+
+          {bundleWorkflows.length > 0 && (
             <Card>
-              <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Scheduled routines ({m.routines.length})</h3>
-              {m.routines.map((r) => (
-                <div key={r.name} style={{ borderBottom: "1px solid var(--border)", padding: "0.5rem 0", fontSize: 13 }}>
-                  <div style={{ fontWeight: 600 }}><code>{r.name}</code> <span className="text-dim" style={{ fontWeight: 400 }}>· {r.cadence} · owner {r.owner_slot}</span></div>
-                  <div className="text-dim" style={{ fontSize: 12 }}>{r.description}</div>
+              <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Bundle workflows ({bundleWorkflows.length})
+              </h3>
+              {bundleWorkflows.map(([id, b]) => (
+                <div key={id} style={{ borderBottom: "1px solid var(--border)", padding: "0.5rem 0", fontSize: 13 }}>
+                  <div><code>{id}</code> · {b.cycle_length} · owner <strong>{b.owner}</strong></div>
+                  <div className="text-dim" style={{ fontSize: 11 }}>
+                    {b.participating_agents.length} agents · KPIs: {b.kpis_moved.join(", ")}
+                  </div>
                 </div>
               ))}
+            </Card>
+          )}
+
+          {routines.length > 0 && (
+            <Card>
+              <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Scheduled routines ({routines.length})
+              </h3>
+              {routines.map(([name, cron]) => (
+                <div key={name} style={{ borderBottom: "1px solid var(--border)", padding: "0.4rem 0", fontSize: 12 }}>
+                  <code>{name}</code> <span className="text-dim">· {cron}</span>
+                </div>
+              ))}
+            </Card>
+          )}
+
+          {t2patches.length > 0 && (
+            <Card>
+              <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                T2 patches ({t2patches.length})
+              </h3>
+              {t2patches.map((p, i) => (
+                <div key={i} style={{ borderBottom: "1px solid var(--border)", padding: "0.4rem 0", fontSize: 12 }}>
+                  <strong>{p.agent_id}</strong> · {p.changed_fields.join(", ")}
+                  <div className="text-dim" style={{ marginTop: 2 }}>{p.rationale}</div>
+                  <div className="text-dim" style={{ fontSize: 10 }}>signal: {p.pillar_signal}</div>
+                </div>
+              ))}
+            </Card>
+          )}
+
+          {manifest.dry_run_gates.length > 0 && (
+            <Card>
+              <h3 style={{ marginTop: 0, fontSize: 13, color: "var(--warning)" }}>
+                🔒 Dry-run gates ({manifest.dry_run_gates.length}) — 14-day write suppression
+              </h3>
+              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                {manifest.dry_run_gates.map((g) => <code key={g} style={{ marginRight: 8 }}>{g}</code>)}
+              </div>
             </Card>
           )}
         </>
       )}
 
-      <NavRow next={{ onClick: onComplete, label: "Continue → finalize" }} nextDisabled={generate.isPending} />
+      <NavRow next={{ onClick: onComplete, label: "Continue → finalize" }} nextDisabled={busy || !manifest} />
     </div>
   );
 }

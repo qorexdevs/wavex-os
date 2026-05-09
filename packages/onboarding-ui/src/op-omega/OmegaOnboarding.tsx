@@ -1,6 +1,6 @@
 /** Op-omega onboarding host shell. Single-SPA pattern (no react-router
- * subroutes) — the Phase state machine drives subview switches. Hydrates
- * from /op-omega/onboarding/status on mount + after each pillar/phase. */
+ *  subroutes) — the Phase state machine drives subview switches. Hydrates
+ *  from /op-omega/onboarding/status on mount. */
 
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,14 +21,12 @@ type Phase =
   | "welcome"
   | "pillar-1" | "pillar-2" | "pillar-3" | "pillar-4" | "pillar-5"
   | "phase-2-connectors" | "phase-3-swarm" | "phase-4-workflows"
-  | "materialize"
-  | "done";
+  | "materialize";
 
 export function OmegaOnboarding() {
   const { companyId } = useCompany();
   const qc = useQueryClient();
 
-  // No company yet → welcome screen
   if (!companyId) return <WelcomeScreen />;
 
   return <CompanyWizard companyId={companyId} qc={qc} />;
@@ -40,20 +38,18 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
     queryFn: () => opOmegaOnboardingApi.status(companyId),
   });
 
-  const [phase, setPhase] = useState<Phase>("welcome");
+  const [phase, setPhase] = useState<Phase>("pillar-1");
+  const [autoRouted, setAutoRouted] = useState(false);
 
-  // Auto-route from server status
+  // Auto-route from server status — only on first load. After that the user's
+  // explicit "Continue →" clicks drive phase transitions.
   useEffect(() => {
-    if (!status.data) return;
-    const s = status.data;
-    if (s.complete) { setPhase("done"); return; }
-    if (s.has_workflow_manifest) { setPhase("materialize"); return; }
-    if (s.has_swarm_manifest) { setPhase("phase-4-workflows"); return; }
-    if (s.has_connector_manifest) { setPhase("phase-3-swarm"); return; }
-    if (s.phase_1_complete) { setPhase("phase-2-connectors"); return; }
-    if (s.next_pillar) { setPhase(`pillar-${s.next_pillar}` as Phase); return; }
-    setPhase("pillar-1");
-  }, [status.data]);
+    if (autoRouted || !status.data) return;
+    const np = status.data.next_pillar;
+    if (np) setPhase(`pillar-${np}` as Phase);
+    else setPhase("phase-2-connectors"); // all pillars done → start phases
+    setAutoRouted(true);
+  }, [status.data, autoRouted]);
 
   const advance = (next: Phase) => {
     setPhase(next);
@@ -67,26 +63,26 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
     return <div style={{ padding: "2rem", color: "var(--warning)" }}>Status fetch failed: {(status.error as Error).message}</div>;
   }
 
-  const pr = status.data?.pillar_responses;
+  const pr = status.data?.responses;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <Header companyId={companyId} phase={phase} />
+      <Header companyId={companyId} phase={phase} onJump={setPhase} />
 
       {phase === "pillar-1" && (
-        <Pillar1 companyId={companyId} initial={pr?.pillar1} onComplete={() => advance("pillar-2")} />
+        <Pillar1 companyId={companyId} initial={pr?.pillar_1 ?? undefined} onComplete={() => advance("pillar-2")} />
       )}
       {phase === "pillar-2" && (
         <Pillar2 companyId={companyId} onComplete={() => advance("pillar-3")} />
       )}
       {phase === "pillar-3" && (
-        <Pillar3 companyId={companyId} initial={pr?.pillar3} onComplete={() => advance("pillar-4")} />
+        <Pillar3 companyId={companyId} initial={pr?.pillar_3 ?? undefined} onComplete={() => advance("pillar-4")} />
       )}
       {phase === "pillar-4" && (
-        <Pillar4 companyId={companyId} initial={pr?.pillar4} onComplete={() => advance("pillar-5")} />
+        <Pillar4 companyId={companyId} initial={pr?.pillar_4 ?? undefined} onComplete={() => advance("pillar-5")} />
       )}
       {phase === "pillar-5" && (
-        <Pillar5 companyId={companyId} initial={pr?.pillar5} onComplete={() => advance("phase-2-connectors")} />
+        <Pillar5 companyId={companyId} initial={pr?.pillar_5 ?? undefined} onComplete={() => advance("phase-2-connectors")} />
       )}
       {phase === "phase-2-connectors" && (
         <Phase2Connectors companyId={companyId} onComplete={() => advance("phase-3-swarm")} />
@@ -100,20 +96,11 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
       {phase === "materialize" && (
         <Materialize companyId={companyId} />
       )}
-      {phase === "done" && (
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
-          <h2>Already materialized</h2>
-          <p className="text-dim">
-            <code>{companyId}</code> has a signed manifest. Visit Mission Control to see the fleet.
-          </p>
-          <a href={`/?companyId=${encodeURIComponent(companyId)}`}><button>Go to Mission Control →</button></a>
-        </div>
-      )}
     </div>
   );
 }
 
-function Header({ companyId, phase }: { companyId: string; phase: Phase }) {
+function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase; onJump: (p: Phase) => void }) {
   const STEPS: Array<{ key: Phase; label: string }> = [
     { key: "pillar-1", label: "1·Identity" },
     { key: "pillar-2", label: "2·Inference" },
@@ -140,18 +127,21 @@ function Header({ companyId, phase }: { companyId: string; phase: Phase }) {
       </div>
       <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
         {STEPS.map((s, i) => (
-          <span
+          <button
+            type="button"
             key={s.key}
+            onClick={() => onJump(s.key)}
             style={{
               fontSize: 11, padding: "0.2rem 0.5rem", borderRadius: 4,
               border: "1px solid var(--border)",
               background: i === idx ? "var(--accent)" : i < idx ? "var(--surface-2)" : "transparent",
               color: i === idx ? "var(--bg)" : i < idx ? "var(--text)" : "var(--text-dim)",
               fontWeight: i === idx ? 700 : 400,
+              cursor: "pointer",
             }}
           >
             {s.label}
-          </span>
+          </button>
         ))}
       </div>
     </header>

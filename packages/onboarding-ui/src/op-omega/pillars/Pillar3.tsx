@@ -1,26 +1,28 @@
-/** Pillar 3 — Product & Stage. Drives swarm activation rules. */
+/** Pillar 3 — Product/Stage. Op-omega upstream contract:
+ *  Input  : { companyId, product_state, product_state_other?, stage, stage_other? }
+ *    product_state ∈ live_paying_customers | built_not_selling | prototype_mvp | idea_only | other
+ *  Output : Pillar3Response (kpi_snapshot_initial captured automatically) */
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { opOmegaOnboardingApi } from "../lib/api";
-import type { Pillar3Response, ProductStage, ProductState } from "@op-omega/plugin-onboarding";
-import { Card, Field, H2, NavRow, P, RadioGroup } from "../components/primitives";
+import { opOmegaOnboardingApi, ApiError } from "../lib/api";
+import type { Pillar3Response, ProductState } from "@op-omega/plugin-onboarding";
+import { Card, Field, H2, NavRow, P } from "../components/primitives";
 
-const STAGES: Array<{ value: ProductStage; label: string }> = [
-  { value: "pre_product", label: "Pre-product" },
-  { value: "alpha", label: "Alpha (private testing)" },
-  { value: "beta", label: "Beta (public, no charging)" },
-  { value: "live_pre_revenue", label: "Live, no revenue" },
-  { value: "live_paying", label: "Live, paying customers" },
-  { value: "scaling", label: "Scaling ($10k-$1M MRR)" },
-  { value: "post_one_million_arr", label: "Post-$1M ARR" },
+const PRODUCT_STATES: Array<{ value: ProductState; label: string }> = [
+  { value: "live_paying_customers", label: "Live with paying customers" },
+  { value: "built_not_selling", label: "Built but not selling" },
+  { value: "prototype_mvp", label: "Prototype / MVP" },
+  { value: "idea_only", label: "Idea only" },
+  { value: "other", label: "Other" },
 ];
 
-const PRODUCT_STATES: Array<{ value: ProductState; label: string; description: string }> = [
-  { value: "none", label: "No product yet", description: "Pre-build / research mode" },
-  { value: "in_progress", label: "In progress", description: "Building / pre-launch" },
-  { value: "live", label: "Live", description: "Real users on it" },
-];
+const STAGE_BY_STATE: Record<ProductState, string[]> = {
+  live_paying_customers: ["pre_seed_revenue", "seed_revenue", "series_a", "growth", "scale"],
+  built_not_selling: ["pre_launch", "private_beta", "public_beta", "ga"],
+  prototype_mvp: ["weekend_hack", "scoped_mvp", "private_alpha"],
+  idea_only: ["napkin", "research", "validation"],
+  other: ["other"],
+};
 
 interface Props {
   companyId: string;
@@ -29,60 +31,81 @@ interface Props {
 }
 
 export function Pillar3({ companyId, initial, onComplete }: Props) {
-  const [productState, setProductState] = useState<ProductState>(initial?.product_state ?? "in_progress");
-  const [stage, setStage] = useState<ProductStage>(initial?.stage ?? "live_pre_revenue");
-  const [goalKpiId, setGoalKpiId] = useState(initial?.goalKpiId ?? "");
-  const [goalCurrent, setGoalCurrent] = useState(initial?.goalCurrent ?? 0);
-  const [goalTarget, setGoalTarget] = useState(initial?.goalTarget ?? 0);
-  const [goalWindowDays, setGoalWindowDays] = useState(initial?.goalWindowDays ?? 90);
+  const [productState, setProductState] = useState<ProductState>(initial?.product_state ?? "live_paying_customers");
+  const [productStateOther, setProductStateOther] = useState(initial?.product_state_other ?? "");
+  const [stage, setStage] = useState(initial?.stage ?? STAGE_BY_STATE.live_paying_customers[0]);
+  const [stageOther, setStageOther] = useState(initial?.stage_other ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const submit = useMutation({
-    mutationFn: () => opOmegaOnboardingApi.pillar3({
-      companyId,
-      product_state: productState, stage,
-      goalKpiId: goalKpiId.trim(),
-      goalCurrent, goalTarget, goalWindowDays,
-    }),
-    onSuccess: onComplete,
-  });
+  async function submit(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await opOmegaOnboardingApi.pillar3({
+        companyId,
+        product_state: productState,
+        product_state_other: productState === "other" ? productStateOther : undefined,
+        stage,
+        stage_other: stage === "other" ? stageOther : undefined,
+      });
+      onComplete();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const canProceed = goalKpiId.trim().length > 0 && goalTarget > 0;
+  const stageOptions = STAGE_BY_STATE[productState];
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
-      <H2>Pillar 3 — Product & Stage</H2>
-      <P>Where you are in the lifecycle drives which C-suite roles get spawned (Phase 3) and which workflow templates apply (Phase 4).</P>
+      <H2>Pillar 3 — Product / Stage</H2>
+      <P>
+        What's the product like, and where is it on the maturity curve? This drives
+        which agents activate (CFO + CRO only when live and selling) and which
+        workflows the kernel bundles into the L0/L1 priority allocation.
+      </P>
+
+      {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
       <Card>
-        <Field label="Product state">
-          <RadioGroup value={productState} onChange={setProductState} options={PRODUCT_STATES} />
-        </Field>
-        <Field label="Stage">
-          <select value={stage} onChange={(e) => setStage(e.target.value as ProductStage)}>
-            {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        <Field label="Product state" required>
+          <select value={productState} onChange={(e) => {
+            const v = e.target.value as ProductState;
+            setProductState(v);
+            const opts = STAGE_BY_STATE[v];
+            if (!opts.includes(stage)) setStage(opts[0]);
+          }}>
+            {PRODUCT_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </Field>
-      </Card>
+        {productState === "other" && (
+          <Field label="Describe product state">
+            <input value={productStateOther} onChange={(e) => setProductStateOther(e.target.value)} />
+          </Field>
+        )}
 
-      <Card>
-        <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Headline KPI</h3>
-        <p className="text-dim" style={{ fontSize: 13, marginTop: 0, marginBottom: "1rem" }}>The single number every CxO is judged against. Auto-assigned to CEO.</p>
-
-        <Field label="KPI name" required>
-          <input value={goalKpiId} onChange={(e) => setGoalKpiId(e.target.value)} placeholder="e.g. monthly_recurring_revenue" />
+        <Field label="Stage" required>
+          <select value={stage} onChange={(e) => setStage(e.target.value)}>
+            {stageOptions.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+            <option value="other">other</option>
+          </select>
         </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
-          <Field label="Current"><input type="number" value={goalCurrent} onChange={(e) => setGoalCurrent(Number(e.target.value))} /></Field>
-          <Field label="Target" required><input type="number" value={goalTarget} onChange={(e) => setGoalTarget(Number(e.target.value))} /></Field>
-          <Field label="Window (days)"><input type="number" value={goalWindowDays} onChange={(e) => setGoalWindowDays(Number(e.target.value))} /></Field>
-        </div>
+        {stage === "other" && (
+          <Field label="Describe stage">
+            <input value={stageOther} onChange={(e) => setStageOther(e.target.value)} />
+          </Field>
+        )}
       </Card>
 
       <NavRow
-        next={{ onClick: () => submit.mutate(), label: submit.isPending ? "Saving..." : "Continue →" }}
-        nextDisabled={!canProceed || submit.isPending}
+        next={{ onClick: submit, label: busy ? "Saving…" : "Continue →" }}
+        nextDisabled={busy
+          || (productState === "other" && productStateOther.trim().length === 0)
+          || (stage === "other" && stageOther.trim().length === 0)}
       />
-      {submit.isError && <div style={{ color: "var(--warning)", fontSize: 13, marginTop: "0.5rem" }}>{(submit.error as Error).message}</div>}
     </div>
   );
 }

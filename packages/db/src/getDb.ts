@@ -6,6 +6,8 @@
  *  All schema + queries written against this returned drizzle instance work
  *  identically against both drivers — same SQL dialect (Postgres), same
  *  Drizzle API. */
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
@@ -24,8 +26,14 @@ export function getDbDriver(): DbDriver {
   return "pglite";
 }
 
+/** PGlite data dir resolution priority:
+ *    1. WAVEX_DB_DATA_DIR (explicit override)
+ *    2. WAVEX_OS_STATE_DIR/db/pglite (when wavex root is set)
+ *    3. ~/.wavex-os/db/pglite (default home location) */
 export function getDataDir(): string {
-  return process.env.WAVEX_DB_DATA_DIR ?? `${process.env.HOME}/.wavex-os/db/pglite`;
+  if (process.env.WAVEX_DB_DATA_DIR) return process.env.WAVEX_DB_DATA_DIR;
+  if (process.env.WAVEX_OS_STATE_DIR) return join(process.env.WAVEX_OS_STATE_DIR, "db", "pglite");
+  return `${process.env.HOME}/.wavex-os/db/pglite`;
 }
 
 export async function getDb(): Promise<Db> {
@@ -39,6 +47,8 @@ export async function getDb(): Promise<Db> {
     return cached;
   }
   const dir = getDataDir();
+  // Auto-create the pglite data dir so first-call doesn't ENOENT.
+  mkdirSync(dir, { recursive: true });
   const client = new PGlite(dir);
   cached = drizzlePglite(client, { schema });
   return cached;
