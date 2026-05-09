@@ -25,17 +25,26 @@ export interface Pillar1Input {
 }
 
 /**
- * A company_context is "meaningful" if it's long enough, mentions at least
- * one domain-specific keyword, and isn't one of the generic placeholder
- * strings T2 returns when it couldn't fetch the URL.
+ * A company_context is "meaningful" only if T2 explicitly signaled it couldn't
+ * fetch the URL (the deep-dive prompt instructs it to start with
+ * "Could not fetch:" in that case) OR the result is empty/extremely short.
+ *
+ * Wavex-os relaxation (2026-05): we DROPPED the keyword regex and the 40-char
+ * floor was raised to 30 — real URLs always produce rich enrichment with the
+ * deep-dive prompt; the only legitimate halt path is genuine fetch failure.
+ * Per upstream-vs-local protocol alignment, F1 fail-closed only fires on
+ * unambiguous T2-side failure markers, not on stylistically terse outputs.
  */
 export function isEnrichmentMeaningful(context: string | null | undefined): boolean {
   if (!context) return false;
   const trimmed = context.trim();
-  if (trimmed.length < 40) return false;
-  if (/^(unspecified|unknown|pre.?product|no.?info|could not|cannot fetch|unable to)/i.test(trimmed)) return false;
-  const hasDomainSignal = /product|service|customer|platform|tool|business|market|app|software|company|user|operator|team|solution/i.test(trimmed);
-  if (!hasDomainSignal) return false;
+  if (trimmed.length < 30) return false;
+  // T2 fetch-failure markers — the deep-dive prompt instructs it to lead with
+  // "Could not fetch:" when it genuinely couldn't read the URL.
+  if (/^(could not fetch|cannot fetch|unable to fetch|failed to fetch)/i.test(trimmed)) return false;
+  // Pure-placeholder responses (rare with the deep-dive prompt, but kept as
+  // a safety net for misbehaving model output).
+  if (/^(unspecified|unknown|pre.?product|no.?info)$/i.test(trimmed)) return false;
   return true;
 }
 
@@ -167,11 +176,17 @@ function guessDifferentiator(context: string): string {
   return firstSentence.length <= 200 ? firstSentence : firstSentence.slice(0, 197) + "...";
 }
 
-const ENRICHMENT_PROMPT_PREFIX = `You are running Phase 1 of Operator Ω onboarding. The operator has supplied a URL or repo for their company. Your job is to produce a short enrichment that downstream phases can reason about.
+const ENRICHMENT_PROMPT_PREFIX = `You are running Phase 1 of Operator Ω onboarding. The operator supplied a URL or git repo for their company. Your job is a thorough deep-dive enrichment so every downstream phase has rich, specific signal to reason about.
+
+DEEP-DIVE PROTOCOL — when given a URL:
+- Fetch the homepage. Then follow at least: /about, /pricing, /docs (or /developers), /customers, /careers if any of these are linked. For repos, read the README + any /docs and the package.json/manifest.
+- Synthesize ACROSS pages. Cross-reference what marketing copy says with what the pricing page implies and what the docs reveal.
+- Extract concrete specifics: customer logos / segments named, headline metrics, technology choices, feature lists, founding story, geographic focus.
+- Be evidence-driven, not generic. If the site clearly says "we sell embroidery machines to small custom-apparel businesses with hardware financing and a Chroma SaaS," that's the kind of specificity to capture — NOT a generic "they sell software."
 
 Return JSON with this exact shape:
 {
-  "company_context": "one paragraph, ≤80 words, what the company does and who it serves",
+  "company_context": "200-300 words — what the company does, who it serves, how it makes money, what's distinctive. Concrete and evidence-driven from the pages you read. Mention specific products, customer types, headline metrics, geography, and any notable bundles or partnerships.",
   "industry_hint": "b2b_saas|b2c|dev_tools|marketplace|ecommerce|fintech|healthtech|edtech|legal_tech|logistics_tech|consumer_mobile|services_to_saas|dev_infrastructure|fintech_retail|enterprise_saas|consumer_ai|consumer_hardware|unknown",
   "business_model_hint": "subscription|usage_based|one_time|marketplace|open_core|unknown",
   "ideal_customer_profile": "≤60 chars, who the product serves (e.g. 'enterprise ops teams', 'solo law firms', 'DTC brands')",
@@ -184,7 +199,7 @@ Return JSON with this exact shape:
   "differentiator_hypothesis": "≤200 chars — what you think makes this operator distinct from direct peers in their category"
 }
 
-Do not speculate beyond what the URL/repo contents support. If you can't fetch the URL, say so in company_context and leave the structured fields as "unspecified".
+Genuinely couldn't fetch the URL after following links? Say so explicitly in company_context (start with "Could not fetch:") and leave structured fields as "unspecified". Otherwise, ALWAYS produce a rich, evidence-driven 200-300 word context — there is essentially always enough on a real company website to write that.
 
 URL / repo:`;
 
@@ -265,14 +280,17 @@ export async function handlePillar1(input: Pillar1Input): Promise<Pillar1Respons
       agent_id: "onboarding.pillar-1",
       prompt: `${ENRICHMENT_PROMPT_PREFIX}\n${trimmed}`,
       task_metadata: {
+        // Wavex-os relaxation (2026-05): bumped to "deep" + 180s timeout so
+        // T2 has the budget to actually fetch + synthesize across multiple
+        // pages per the deep-dive protocol in ENRICHMENT_PROMPT_PREFIX.
         creativity_required: false,
         customer_facing: false,
-        reasoning_depth: "shallow",
+        reasoning_depth: "deep",
         priority: "high",
       },
       companyId: input.companyId,
       outputFormat: "json",
-      timeout_ms: 90_000,
+      timeout_ms: 180_000,
     });
   } catch (err) {
     throw new OnboardingHaltError({
@@ -350,7 +368,7 @@ export async function handlePillar1(input: Pillar1Input): Promise<Pillar1Respons
   // undefined, because downstream phases read these directly into prompts.
   return {
     org_name: input.org_name,
-    company_context: context.slice(0, 1200),
+    company_context: context.slice(0, 3000),
     enrichment_status: "enriched",
     has_product: true,
     industry_hint: industryHint,

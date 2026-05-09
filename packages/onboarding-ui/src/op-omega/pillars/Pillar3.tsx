@@ -1,28 +1,18 @@
-/** Pillar 3 — Product/Stage. Op-omega upstream contract:
- *  Input  : { companyId, product_state, product_state_other?, stage, stage_other? }
- *    product_state ∈ live_paying_customers | built_not_selling | prototype_mvp | idea_only | other
- *  Output : Pillar3Response (kpi_snapshot_initial captured automatically) */
+/** Pillar 3 — Product & Stage. Mirrors upstream pillar-3.tsx:
+ *  - RadioGroup for product_state (5 options including "other")
+ *  - Stage options change shape based on product_state:
+ *      idea_only / prototype_mvp → STAGE_PRE (4 options)
+ *      everything else           → STAGE_REVENUE (5 options including "other")
+ *  - "Other" fields require ≥40 chars
+ *  - Baseline preview card (sky-blue) shows what KPI defaults will be
+ *    seeded for the chosen (product_state × stage) combo */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { Pillar3Response, ProductState } from "@op-omega/plugin-onboarding";
-import { Card, Field, H2, NavRow, P } from "../components/primitives";
-
-const PRODUCT_STATES: Array<{ value: ProductState; label: string }> = [
-  { value: "live_paying_customers", label: "Live with paying customers" },
-  { value: "built_not_selling", label: "Built but not selling" },
-  { value: "prototype_mvp", label: "Prototype / MVP" },
-  { value: "idea_only", label: "Idea only" },
-  { value: "other", label: "Other" },
-];
-
-const STAGE_BY_STATE: Record<ProductState, string[]> = {
-  live_paying_customers: ["pre_seed_revenue", "seed_revenue", "series_a", "growth", "scale"],
-  built_not_selling: ["pre_launch", "private_beta", "public_beta", "ga"],
-  prototype_mvp: ["weekend_hack", "scoped_mvp", "private_alpha"],
-  idea_only: ["napkin", "research", "validation"],
-  other: ["other"],
-};
+import { Card, Field, H2, P } from "../components/primitives";
+import { PRODUCT_STATES, STAGE_PRE, STAGE_REVENUE } from "../lib/options";
+import { previewBaseline, formatBaselinePreview } from "../lib/stage-baselines";
 
 interface Props {
   companyId: string;
@@ -31,12 +21,28 @@ interface Props {
 }
 
 export function Pillar3({ companyId, initial, onComplete }: Props) {
-  const [productState, setProductState] = useState<ProductState>(initial?.product_state ?? "live_paying_customers");
-  const [productStateOther, setProductStateOther] = useState(initial?.product_state_other ?? "");
-  const [stage, setStage] = useState(initial?.stage ?? STAGE_BY_STATE.live_paying_customers[0]);
+  const [ps, setPs] = useState<ProductState>(initial?.product_state ?? "live_paying_customers");
+  const [psOther, setPsOther] = useState(initial?.product_state_other ?? "");
+  const [stage, setStage] = useState(initial?.stage ?? "10k_100k_mrr");
   const [stageOther, setStageOther] = useState(initial?.stage_other ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const stageOptions = useMemo(
+    () => (ps === "idea_only" || ps === "prototype_mvp" ? STAGE_PRE : STAGE_REVENUE),
+    [ps],
+  );
+
+  // Reset stage to first valid option when product_state shape changes.
+  // (Use derived check rather than useEffect to avoid stale state on initial render.)
+  const validStage = stageOptions.some((o) => o.v === stage);
+  if (!validStage && stage !== "other") {
+    setStage(stageOptions[0].v);
+  }
+
+  const baseline = useMemo(() => previewBaseline(ps, stage), [ps, stage]);
+  const psOtherMissing = ps === "other" && psOther.trim().length < 40;
+  const stageOtherMissing = stage === "other" && stageOther.trim().length < 40;
 
   async function submit(): Promise<void> {
     setBusy(true);
@@ -44,8 +50,8 @@ export function Pillar3({ companyId, initial, onComplete }: Props) {
     try {
       await opOmegaOnboardingApi.pillar3({
         companyId,
-        product_state: productState,
-        product_state_other: productState === "other" ? productStateOther : undefined,
+        product_state: ps,
+        product_state_other: ps === "other" ? psOther : undefined,
         stage,
         stage_other: stage === "other" ? stageOther : undefined,
       });
@@ -57,55 +63,109 @@ export function Pillar3({ companyId, initial, onComplete }: Props) {
     }
   }
 
-  const stageOptions = STAGE_BY_STATE[productState];
-
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
-      <H2>Pillar 3 — Product / Stage</H2>
+      <H2>Pillar 3 · Product & Stage</H2>
       <P>
-        What's the product like, and where is it on the maturity curve? This drives
-        which agents activate (CFO + CRO only when live and selling) and which
-        workflows the kernel bundles into the L0/L1 priority allocation.
+        Shapes the flywheel's starting KPIs and which bundles fire hardest in
+        the first 30 cycles.
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
       <Card>
-        <Field label="Product state" required>
-          <select value={productState} onChange={(e) => {
-            const v = e.target.value as ProductState;
-            setProductState(v);
-            const opts = STAGE_BY_STATE[v];
-            if (!opts.includes(stage)) setStage(opts[0]);
-          }}>
-            {PRODUCT_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </Field>
-        {productState === "other" && (
-          <Field label="Describe product state">
-            <input value={productStateOther} onChange={(e) => setProductStateOther(e.target.value)} />
+        <RadioRow title="Product state" value={ps} onChange={(v) => setPs(v as ProductState)} options={PRODUCT_STATES.map((o) => ({ v: o.v, l: o.l }))} />
+        {ps === "other" && (
+          <Field label="Describe your product state (≥40 chars)">
+            <textarea
+              value={psOther}
+              onChange={(e) => setPsOther(e.target.value)}
+              rows={2}
+              placeholder="In 2–3 sentences, describe your product state — what's built, what's missing, what customers have access to."
+            />
+            <span className="text-dim" style={{ fontSize: 11 }}>{psOther.trim().length} / 40 minimum</span>
           </Field>
         )}
 
-        <Field label="Stage" required>
-          <select value={stage} onChange={(e) => setStage(e.target.value)}>
-            {stageOptions.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-            <option value="other">other</option>
-          </select>
-        </Field>
+        <RadioRow title="Stage" value={stage} onChange={setStage} options={[...stageOptions]} />
         {stage === "other" && (
-          <Field label="Describe stage">
-            <input value={stageOther} onChange={(e) => setStageOther(e.target.value)} />
+          <Field label="Describe your stage (≥40 chars)">
+            <textarea
+              value={stageOther}
+              onChange={(e) => setStageOther(e.target.value)}
+              rows={2}
+              placeholder="Time since launch, rough revenue, growth trajectory."
+            />
+            <span className="text-dim" style={{ fontSize: 11 }}>{stageOther.trim().length} / 40 minimum</span>
           </Field>
+        )}
+
+        {baseline && stage !== "other" && ps !== "other" && (
+          <div style={{
+            marginTop: "0.75rem",
+            padding: "0.75rem",
+            border: "1px solid var(--accent)",
+            background: "var(--bg)",
+            borderRadius: 4,
+            fontSize: 12,
+          }}>
+            <div style={{ color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>
+              ✦ Baseline preview
+            </div>
+            <div className="text-dim">{formatBaselinePreview(baseline)}</div>
+          </div>
         )}
       </Card>
 
-      <NavRow
-        next={{ onClick: submit, label: busy ? "Saving…" : "Continue →" }}
-        nextDisabled={busy
-          || (productState === "other" && productStateOther.trim().length === 0)
-          || (stage === "other" && stageOther.trim().length === 0)}
-      />
+      <div className="nav-buttons">
+        <span />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={busy || psOtherMissing || stageOtherMissing}
+        >
+          {busy ? "Saving…" : "Next →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({
+  title,
+  value,
+  onChange,
+  options,
+}: {
+  title: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: ReadonlyArray<{ v: string; l: string }>;
+}) {
+  return (
+    <div style={{ marginBottom: "1rem" }}>
+      <div style={{ marginBottom: "0.5rem", fontSize: 13, fontWeight: 500 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {options.map((o) => (
+          <label
+            key={o.v}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "0.5rem 0.75rem",
+              border: `1px solid ${value === o.v ? "var(--accent)" : "var(--border)"}`,
+              background: value === o.v ? "var(--surface-2)" : "transparent",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            <input type="radio" checked={value === o.v} onChange={() => onChange(o.v)} />
+            <span>{o.l}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

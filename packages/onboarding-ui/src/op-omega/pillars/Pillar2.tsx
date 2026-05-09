@@ -1,126 +1,127 @@
-/** Pillar 2 — Inference Bootstrap (gate). Op-omega upstream contract:
- *  Input  : { companyId, claude_plan, claude_plan_other_note? }
- *  Output : Pillar2Outcome { response, ok, fix_hint? }
- *    The plugin probes the configured claudeBin to verify install + auth. */
+/** Pillar 2 — Verify your setup. Mirrors upstream pillar-2.tsx:
+ *  - 4 radio plan options (Max 20× / Max 5× / API only / Other)
+ *  - Single "Verify & Continue" submit. Server probes the configured claudeBin
+ *    to confirm install + auth, then returns Pillar2Outcome { ok, response, fix_hint? }
+ *  - On ok: advance. On !ok: render the fix_hint inline so the operator can
+ *    address (sign in, install, etc.) and re-verify. */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
-import type { ProbeResponse } from "../lib/api";
-import type { Pillar2Outcome } from "@op-omega/plugin-onboarding";
-import { Card, Field, H2, NavRow, P } from "../components/primitives";
-
-interface Props {
-  companyId: string;
-  onComplete: () => void;
-}
+import { Card, H2, P } from "../components/primitives";
 
 type Plan = "max_20x" | "max_5x" | "api_only" | "other";
 
-export function Pillar2({ companyId, onComplete }: Props) {
-  const [plan, setPlan] = useState<Plan>("max_5x");
-  const [otherNote, setOtherNote] = useState("");
-  const [probe, setProbe] = useState<ProbeResponse["probe"] | null>(null);
-  const [outcome, setOutcome] = useState<Pillar2Outcome | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const PLAN_OPTIONS: Array<{ value: Plan; label: string }> = [
+  { value: "max_20x", label: "Claude Max 20×" },
+  { value: "max_5x", label: "Claude Max 5×" },
+  { value: "api_only", label: "API only (pay-as-you-go)" },
+  { value: "other", label: "Other — specify" },
+];
 
-  async function runProbe(): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await opOmegaOnboardingApi.claudeCodeCheck();
-      setProbe(r.probe ?? null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+interface Props {
+  companyId: string;
+  initial?: { claude_plan?: Plan; claude_plan_other_note?: string };
+  onComplete: () => void;
+}
+
+export function Pillar2({ companyId, initial, onComplete }: Props) {
+  const [plan, setPlan] = useState<Plan>(initial?.claude_plan ?? "max_5x");
+  const [note, setNote] = useState(initial?.claude_plan_other_note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [fixHint, setFixHint] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function verify(): Promise<void> {
     setBusy(true);
+    setFixHint(null);
     setError(null);
-    setOutcome(null);
     try {
       const r = await opOmegaOnboardingApi.pillar2({
         companyId,
         claude_plan: plan,
-        claude_plan_other_note: plan === "other" ? otherNote : undefined,
+        claude_plan_other_note: plan === "other" ? note : undefined,
       });
-      setOutcome(r);
+      if (r.ok) onComplete();
+      else setFixHint(r.fix_hint ?? "Claude Code verification failed.");
     } catch (e) {
-      if (e instanceof ApiError) setError(e.message);
-      else setError((e as Error).message);
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
       setBusy(false);
     }
   }
 
-  useEffect(() => { void runProbe(); }, []);
-
-  const verified = outcome?.ok === true && outcome.response.claude_code_verified === true;
-
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
-      <H2>Pillar 2 — Inference Bootstrap</H2>
+      <H2>Verifying your setup</H2>
       <P>
-        Your fleet needs Claude. Pick your plan + verify the keychain credential
-        is reachable. Token never leaves your machine — the wrapper script reads
-        it on every agent heartbeat.
+        Every downstream step uses Claude. We'll verify <code>claude</code> is
+        installed and signed in to your plan before we go further.
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
       <Card>
-        <h3 style={{ margin: "0 0 0.5rem", fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Live probe
-        </h3>
-        {!probe && busy && <p className="text-dim">Probing claude CLI…</p>}
-        {probe && (
-          <table style={{ width: "100%", fontSize: 13 }}>
-            <tbody>
-              <tr><td className="text-dim" style={{ padding: "0.3rem 0", width: 140 }}>Installed</td>
-                  <td>{probe.installed ? `✓ ${probe.version ?? ""}` : "✗ not found"}</td></tr>
-              <tr><td className="text-dim" style={{ padding: "0.3rem 0" }}>Authenticated</td>
-                  <td>{probe.authenticated ? "✓ token valid" : `✗ ${probe.error ?? "auth failed"}`}</td></tr>
-            </tbody>
-          </table>
-        )}
-        <button type="button" className="secondary" onClick={() => void runProbe()} disabled={busy} style={{ marginTop: "0.5rem", fontSize: 12 }}>
-          Re-probe
-        </button>
-      </Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {PLAN_OPTIONS.map((o) => (
+            <label
+              key={o.value}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "0.75rem",
+                border: `1px solid ${plan === o.value ? "var(--accent)" : "var(--border)"}`,
+                background: plan === o.value ? "var(--surface-2)" : "transparent",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="radio"
+                checked={plan === o.value}
+                onChange={() => setPlan(o.value)}
+              />
+              <span style={{ fontWeight: 500 }}>{o.label}</span>
+            </label>
+          ))}
+        </div>
 
-      <Card>
-        <Field label="Claude plan" required>
-          <select value={plan} onChange={(e) => setPlan(e.target.value as Plan)}>
-            <option value="max_20x">Max 20x (highest throughput)</option>
-            <option value="max_5x">Max 5x (default)</option>
-            <option value="api_only">API key only (no Max plan)</option>
-            <option value="other">Other</option>
-          </select>
-        </Field>
         {plan === "other" && (
-          <Field label="Plan note">
-            <input value={otherNote} onChange={(e) => setOtherNote(e.target.value)} placeholder="Describe your plan" />
-          </Field>
+          <div style={{ marginTop: "0.75rem" }}>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Describe your plan"
+              style={{ width: "100%" }}
+            />
+          </div>
         )}
 
-        {outcome && (
-          <div style={{ marginTop: "1rem", padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, fontSize: 13 }}>
-            <div><strong>Verified:</strong> {outcome.response.claude_code_verified ? "yes" : "no"}</div>
-            <div><strong>Plan:</strong> <code>{outcome.response.claude_plan}</code></div>
-            {outcome.fix_hint && <div style={{ color: "var(--warning)" }}><strong>Fix:</strong> {outcome.fix_hint}</div>}
+        {fixHint && (
+          <div style={{
+            marginTop: "0.75rem",
+            padding: "0.75rem",
+            border: "1px solid var(--warning)",
+            background: "var(--bg)",
+            borderRadius: 4,
+            fontSize: 13,
+          }}>
+            <div style={{ fontWeight: 600, color: "var(--warning)", marginBottom: "0.25rem" }}>
+              ◷ Setup needed
+            </div>
+            <div className="text-dim" style={{ whiteSpace: "pre-wrap" }}>{fixHint}</div>
           </div>
         )}
       </Card>
 
-      <NavRow
-        next={verified
-          ? { onClick: onComplete, label: "Continue →" }
-          : { onClick: verify, label: busy ? "Verifying…" : "Verify →" }}
-        nextDisabled={busy || (plan === "other" && otherNote.trim().length === 0)}
-      />
+      <div className="nav-buttons">
+        <span />
+        <button type="button" onClick={() => void verify()} disabled={busy}>
+          {busy ? "Verifying Claude Code…" : "Verify & Continue ⚡"}
+        </button>
+      </div>
     </div>
   );
 }

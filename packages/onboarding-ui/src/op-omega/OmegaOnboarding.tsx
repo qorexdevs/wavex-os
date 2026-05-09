@@ -73,7 +73,14 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
         <Pillar1 companyId={companyId} initial={pr?.pillar_1 ?? undefined} onComplete={() => advance("pillar-2")} />
       )}
       {phase === "pillar-2" && (
-        <Pillar2 companyId={companyId} onComplete={() => advance("pillar-3")} />
+        <Pillar2
+          companyId={companyId}
+          initial={pr?.pillar_2 ? {
+            claude_plan: pr.pillar_2.claude_plan as "max_20x" | "max_5x" | "api_only" | "other",
+            claude_plan_other_note: pr.pillar_2.claude_plan_other_note,
+          } : undefined}
+          onComplete={() => advance("pillar-3")}
+        />
       )}
       {phase === "pillar-3" && (
         <Pillar3 companyId={companyId} initial={pr?.pillar_3 ?? undefined} onComplete={() => advance("pillar-4")} />

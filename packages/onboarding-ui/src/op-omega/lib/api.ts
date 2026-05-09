@@ -137,6 +137,14 @@ export const opOmegaOnboardingApi = {
     "POST", "/op-omega/onboarding/pillar/5", input,
   ),
 
+  pillar5TestSend: (input: {
+    companyId: string;
+    channel: "telegram" | "slack" | "sms" | "email_only";
+    config: Record<string, string>;
+  }) => call<{ ok: boolean; detail: string }>(
+    "POST", "/op-omega/onboarding/pillar/5/test-send", input,
+  ),
+
   // Probes
   claudeCodeCheck: () => call<ProbeResponse>("GET", "/op-omega/onboarding/claude-code-check"),
 

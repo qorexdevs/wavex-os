@@ -1,38 +1,16 @@
-/** Pillar 4 — GTM Motion. Op-omega upstream contract:
- *  Input  : { companyId, lead_sources[1..3], sales_motion, close_channel?, *_other? }
- *  Output : Pillar4Response with derived gtm_profile_enum */
+/** Pillar 4 · GTM Motion. Mirrors upstream pillar-4.tsx:
+ *  - ChipMultiSelect for lead_sources (1-3, primary first; max=3)
+ *  - RadioGroup for sales_motion
+ *  - close_channel ONLY shown when sales_motion ∈ {assisted_demo, high_touch_enterprise}
+ *  - Live GTM profile preview card (purple) showing the derived
+ *    gtm_profile_enum and which agents will activate */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { Pillar4Response, LeadSource, SalesMotion, CloseChannel } from "@op-omega/plugin-onboarding";
-import { Card, Field, H2, NavRow, P } from "../components/primitives";
-
-const LEAD_SOURCES: Array<{ value: LeadSource; label: string }> = [
-  { value: "inbound_ads_meta_google", label: "Inbound ads (Meta / Google)" },
-  { value: "outbound_cold", label: "Outbound cold" },
-  { value: "referral_word_of_mouth", label: "Referral / word-of-mouth" },
-  { value: "content_seo", label: "Content / SEO" },
-  { value: "product_led_viral", label: "Product-led / viral" },
-  { value: "partnerships", label: "Partnerships" },
-  { value: "events", label: "Events" },
-  { value: "none_yet", label: "None yet" },
-  { value: "other", label: "Other" },
-];
-
-const SALES_MOTIONS: Array<{ value: SalesMotion; label: string }> = [
-  { value: "self_serve_plg", label: "Self-serve / PLG" },
-  { value: "assisted_demo", label: "Assisted demo" },
-  { value: "high_touch_enterprise", label: "High-touch enterprise" },
-  { value: "none_yet", label: "None yet" },
-  { value: "other", label: "Other" },
-];
-
-const CLOSE_CHANNELS: Array<{ value: CloseChannel; label: string }> = [
-  { value: "mostly_phone_video", label: "Mostly phone / video" },
-  { value: "mostly_email_text", label: "Mostly email / text" },
-  { value: "mixed", label: "Mixed" },
-  { value: "other", label: "Other" },
-];
+import { Card, Field, H2, P } from "../components/primitives";
+import { LEAD_SOURCES, SALES_MOTIONS, CLOSE_CHANNELS } from "../lib/options";
+import { deriveGtmProfile, displayGtmProfile } from "../lib/gtm-profile";
 
 interface Props {
   companyId: string;
@@ -41,21 +19,37 @@ interface Props {
 }
 
 export function Pillar4({ companyId, initial, onComplete }: Props) {
-  const [leadSources, setLeadSources] = useState<LeadSource[]>(initial?.lead_sources ?? ["referral_word_of_mouth"]);
-  const [leadSourceOther, setLeadSourceOther] = useState(initial?.lead_source_other ?? "");
-  const [salesMotion, setSalesMotion] = useState<SalesMotion>(initial?.sales_motion ?? "assisted_demo");
-  const [salesMotionOther, setSalesMotionOther] = useState(initial?.sales_motion_other ?? "");
-  const [closeChannel, setCloseChannel] = useState<CloseChannel | "">(initial?.close_channel ?? "");
-  const [closeChannelOther, setCloseChannelOther] = useState(initial?.close_channel_other ?? "");
+  const [leadSources, setLeadSources] = useState<string[]>(
+    initial?.lead_sources?.length ? initial.lead_sources : ["outbound_cold"],
+  );
+  const [lsOther, setLsOther] = useState(initial?.lead_source_other ?? "");
+  const [sm, setSm] = useState<string>(initial?.sales_motion ?? "high_touch_enterprise");
+  const [smOther, setSmOther] = useState(initial?.sales_motion_other ?? "");
+  const [cc, setCc] = useState<string>(initial?.close_channel ?? "mostly_phone_video");
+  const [ccOther, setCcOther] = useState(initial?.close_channel_other ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<Pillar4Response | undefined>(initial);
 
-  function toggleLeadSource(v: LeadSource): void {
-    setLeadSources((prev) => {
-      if (prev.includes(v)) return prev.filter((x) => x !== v);
-      if (prev.length >= 3) return prev;
-      return [...prev, v];
+  const needsClose = sm === "assisted_demo" || sm === "high_touch_enterprise";
+  const lsIncludesOther = leadSources.includes("other");
+  const lsOtherMissing = lsIncludesOther && lsOther.trim().length < 40;
+  const smOtherMissing = sm === "other" && smOther.trim().length < 40;
+  const ccOtherMissing = needsClose && cc === "other" && ccOther.trim().length < 40;
+  const lsCountInvalid = leadSources.length < 1 || leadSources.length > 3;
+
+  const profile = useMemo(
+    () => (leadSources.length > 0 && sm !== "other"
+      ? deriveGtmProfile({ lead_sources: leadSources, sales_motion: sm })
+      : null),
+    [leadSources, sm],
+  );
+  const profileDisplay = profile ? displayGtmProfile(profile) : null;
+
+  function toggleLead(v: string): void {
+    setLeadSources((cur) => {
+      if (cur.includes(v)) return cur.filter((x) => x !== v);
+      if (cur.length >= 3) return cur;
+      return [...cur, v];
     });
   }
 
@@ -63,16 +57,16 @@ export function Pillar4({ companyId, initial, onComplete }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const r = await opOmegaOnboardingApi.pillar4({
+      await opOmegaOnboardingApi.pillar4({
         companyId,
-        lead_sources: leadSources,
-        lead_source_other: leadSources.includes("other") && leadSourceOther.trim().length >= 40 ? leadSourceOther : undefined,
-        sales_motion: salesMotion,
-        sales_motion_other: salesMotion === "other" && salesMotionOther.trim().length >= 40 ? salesMotionOther : undefined,
-        close_channel: closeChannel || undefined,
-        close_channel_other: closeChannel === "other" && closeChannelOther.trim().length >= 40 ? closeChannelOther : undefined,
+        lead_sources: leadSources as LeadSource[],
+        lead_source_other: lsIncludesOther ? lsOther : undefined,
+        sales_motion: sm as SalesMotion,
+        sales_motion_other: sm === "other" ? smOther : undefined,
+        close_channel: needsClose ? (cc as CloseChannel) : undefined,
+        close_channel_other: needsClose && cc === "other" ? ccOther : undefined,
       });
-      setResult(r.response);
+      onComplete();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
@@ -80,77 +74,137 @@ export function Pillar4({ companyId, initial, onComplete }: Props) {
     }
   }
 
-  const canSubmit = leadSources.length >= 1 && !busy
-    && (!leadSources.includes("other") || leadSourceOther.trim().length >= 40)
-    && (salesMotion !== "other" || salesMotionOther.trim().length >= 40);
-
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
-      <H2>Pillar 4 — GTM Motion</H2>
-      <P>
-        Where do leads come from, how do you close them, and on what channel?
-        These choices derive your <code>gtm_profile_enum</code> which drives
-        the swarm's go-to-market activation rules.
-      </P>
+      <H2>Pillar 4 · Go-To-Market Motion</H2>
+      <P>Drives connector selection, swarm topology, and workflow sequencing.</P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
       <Card>
-        <Field label={`Lead sources (1–3) — ${leadSources.length} selected`} required>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem" }}>
-            {LEAD_SOURCES.map((s) => (
-              <label key={s.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", opacity: !leadSources.includes(s.value) && leadSources.length >= 3 ? 0.4 : 1 }}>
-                <input type="checkbox" checked={leadSources.includes(s.value)} onChange={() => toggleLeadSource(s.value)} />
-                {s.label}
-              </label>
-            ))}
+        <div style={{ marginBottom: "1rem" }}>
+          <div style={{ marginBottom: "0.5rem", fontSize: 13, fontWeight: 500 }}>
+            How customers find you (pick 1–3, primary first) — {leadSources.length}/3 selected
           </div>
-        </Field>
-        {leadSources.includes("other") && (
-          <Field label="Describe other lead source (≥40 chars)">
-            <textarea value={leadSourceOther} onChange={(e) => setLeadSourceOther(e.target.value)} rows={2} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {LEAD_SOURCES.map((o) => {
+              const active = leadSources.includes(o.v);
+              const disabled = !active && leadSources.length >= 3;
+              return (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => toggleLead(o.v)}
+                  disabled={disabled}
+                  style={{
+                    padding: "0.4rem 0.75rem",
+                    fontSize: 12,
+                    borderRadius: 999,
+                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                    background: active ? "var(--surface-2)" : "transparent",
+                    color: disabled ? "var(--text-dim)" : "var(--text)",
+                    opacity: disabled ? 0.4 : 1,
+                    cursor: disabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {active ? "✓ " : ""}{o.l}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {lsIncludesOther && (
+          <Field label="Describe your lead source (≥40 chars)">
+            <textarea value={lsOther} onChange={(e) => setLsOther(e.target.value)} rows={2}
+              placeholder="What specifically is working today?" />
+            <span className="text-dim" style={{ fontSize: 11 }}>{lsOther.trim().length} / 40 minimum</span>
           </Field>
         )}
 
-        <Field label="Sales motion" required>
-          <select value={salesMotion} onChange={(e) => setSalesMotion(e.target.value as SalesMotion)}>
-            {SALES_MOTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </Field>
-        {salesMotion === "other" && (
-          <Field label="Describe sales motion (≥40 chars)">
-            <textarea value={salesMotionOther} onChange={(e) => setSalesMotionOther(e.target.value)} rows={2} />
+        <RadioRow title="Sales motion" value={sm} onChange={setSm} options={SALES_MOTIONS.map((o) => ({ v: o.v, l: o.l }))} />
+        {sm === "other" && (
+          <Field label="Describe your sales motion (≥40 chars)">
+            <textarea value={smOther} onChange={(e) => setSmOther(e.target.value)} rows={2}
+              placeholder="Who's involved, how long to close, what's the hand-off." />
+            <span className="text-dim" style={{ fontSize: 11 }}>{smOther.trim().length} / 40 minimum</span>
           </Field>
         )}
 
-        <Field label="Close channel (optional)">
-          <select value={closeChannel} onChange={(e) => setCloseChannel(e.target.value as CloseChannel | "")}>
-            <option value="">— skip —</option>
-            {CLOSE_CHANNELS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </Field>
-        {closeChannel === "other" && (
-          <Field label="Describe close channel (≥40 chars)">
-            <textarea value={closeChannelOther} onChange={(e) => setCloseChannelOther(e.target.value)} rows={2} />
-          </Field>
+        {needsClose && (
+          <>
+            <RadioRow title="Close channel" value={cc} onChange={setCc} options={CLOSE_CHANNELS.map((o) => ({ v: o.v, l: o.l }))} />
+            {cc === "other" && (
+              <Field label="Describe how deals close (≥40 chars)">
+                <textarea value={ccOther} onChange={(e) => setCcOther(e.target.value)} rows={2}
+                  placeholder="Meeting format, decision-making dynamics." />
+                <span className="text-dim" style={{ fontSize: 11 }}>{ccOther.trim().length} / 40 minimum</span>
+              </Field>
+            )}
+          </>
         )}
 
-        {result && (
-          <div style={{ marginTop: "1rem", padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, fontSize: 13 }}>
-            <div className="text-dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
-              GTM PROFILE DERIVED
+        {profileDisplay && (
+          <div style={{
+            marginTop: "0.75rem",
+            padding: "0.75rem",
+            border: "1px solid #b88dff",
+            background: "var(--bg)",
+            borderRadius: 4,
+            fontSize: 12,
+          }}>
+            <div style={{ color: "#b88dff", fontWeight: 600, marginBottom: 4 }}>
+              ✦ Looks like you're {profileDisplay.name}
             </div>
-            <code>{result.gtm_profile_enum}</code>
+            <div className="text-dim">{profileDisplay.primary_agents}</div>
+            <div className="text-dim" style={{ fontSize: 10, marginTop: 4 }}>
+              gtm_profile_enum: <code>{profile}</code>
+            </div>
           </div>
         )}
       </Card>
 
-      <NavRow
-        next={result
-          ? { onClick: onComplete, label: "Continue →" }
-          : { onClick: submit, label: busy ? "Saving…" : "Save →" }}
-        nextDisabled={!result && !canSubmit}
-      />
+      <div className="nav-buttons">
+        <span />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={busy || lsCountInvalid || lsOtherMissing || smOtherMissing || ccOtherMissing}
+        >
+          {busy ? "Saving…" : "Next →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({
+  title, value, onChange, options,
+}: {
+  title: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: ReadonlyArray<{ v: string; l: string }>;
+}) {
+  return (
+    <div style={{ marginBottom: "1rem" }}>
+      <div style={{ marginBottom: "0.5rem", fontSize: 13, fontWeight: 500 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {options.map((o) => (
+          <label key={o.v} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "0.5rem 0.75rem",
+            border: `1px solid ${value === o.v ? "var(--accent)" : "var(--border)"}`,
+            background: value === o.v ? "var(--surface-2)" : "transparent",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontSize: 13,
+          }}>
+            <input type="radio" checked={value === o.v} onChange={() => onChange(o.v)} />
+            <span>{o.l}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

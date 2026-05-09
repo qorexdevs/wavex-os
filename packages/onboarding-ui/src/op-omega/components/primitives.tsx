@@ -20,7 +20,7 @@ export function Card({ children, accent }: { children: ReactNode; accent?: boole
 }
 
 export function Field({ label, hint, required, children }: {
-  label: string; hint?: string; required?: boolean; children: ReactNode;
+  label: ReactNode; hint?: string; required?: boolean; children: ReactNode;
 }) {
   return (
     <label style={{ display: "block", marginBottom: "1.25rem" }}>
