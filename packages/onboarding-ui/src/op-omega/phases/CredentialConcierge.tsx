@@ -150,6 +150,9 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
   const [skipMode, setSkipMode] = useState(false);
   const [skipReason, setSkipReason] = useState(SKIP_REASONS[0]);
   const [skipCustomReason, setSkipCustomReason] = useState("");
+  /** When the operator has skipped this connector but wants to un-skip
+   *  (re-show the paste form), this overrides the skipped-state hide. */
+  const [revealAfterSkip, setRevealAfterSkip] = useState(false);
 
   // Reset local input state when server state for this connector changes.
   useEffect(() => {
@@ -234,21 +237,31 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
       )}
 
       {/* Composio-managed */}
-      {row.composioManaged && (
+      {row.composioManaged && !skipMode && row.status !== "skipped" && (
         <div style={{ padding: "0.6rem", background: "var(--bg)", borderRadius: 4, fontSize: 12 }}>
           <div style={{ marginBottom: 4 }}>
             <strong>Composio OAuth required.</strong>
           </div>
-          <div className="text-dim">
+          <div className="text-dim" style={{ marginBottom: "0.5rem" }}>
             Composio is currently disabled in dev mode (set <code>WAVEX_COMPOSIO_DISABLED=0</code> +
-            provide <code>COMPOSIO_API_KEY</code> to enable). For now, skip with reason
-            "Will configure later" or via Mission Control once the credential lands.
+            provide <code>COMPOSIO_API_KEY</code> to enable). Skip for now and configure
+            from Mission Control once the credential lands.
           </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setSkipMode(true)}
+            disabled={busy !== null}
+            style={{ fontSize: 12 }}
+          >
+            Skip
+          </button>
         </div>
       )}
 
-      {/* Direct-key paste form */}
-      {row.expectedKeys.length > 0 && !skipMode && (
+      {/* Direct-key paste form — hidden when already skipped unless the
+          operator clicked "vault credentials to un-skip". */}
+      {row.expectedKeys.length > 0 && !skipMode && (row.status !== "skipped" || revealAfterSkip) && (
         <div>
           {row.expectedKeys.map((k) => {
             const isVaulted = row.vaultedKeys.includes(k);
@@ -351,13 +364,17 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
         </div>
       )}
 
-      {/* Already-skipped state */}
-      {row.status === "skipped" && !skipMode && (
+      {/* Already-skipped state — surface the reason; offer un-skip button
+          that reveals the paste form (or Composio button) so the operator
+          can change their mind without leaving the page. */}
+      {row.status === "skipped" && !skipMode && !revealAfterSkip && (
         <div style={{ fontSize: 12, marginTop: "0.5rem", color: "var(--text-dim)" }}>
           ↷ Skipped — reason: <em>"{row.skipReason}"</em>
-          <button type="button" className="secondary" onClick={() => setSkipMode(false)} style={{ fontSize: 11, marginLeft: 8 }}>
-            (vault credentials below to un-skip)
-          </button>
+          {row.expectedKeys.length > 0 && (
+            <button type="button" className="secondary" onClick={() => setRevealAfterSkip(true)} style={{ fontSize: 11, marginLeft: 8 }}>
+              vault credentials to un-skip
+            </button>
+          )}
         </div>
       )}
 
