@@ -293,4 +293,26 @@ export const opOmegaOnboardingApi = {
       inserted: { companies: number; agents: number };
       warnings: string[];
     }>("POST", `/api/instance/${encodeURIComponent(companyId)}/activate`),
+
+  // Reset — wipe ALL state for a company (filesystem onboarding artifacts +
+  // every DB row keyed by company_id). Destructive. UI must confirm.
+  resetCompany: (companyId: string) =>
+    call<{
+      ok: true;
+      companyId: string;
+      filesystemRemoved: boolean;
+      dbDeletedRows: {
+        companies: number;
+        agents: number;
+        credentials: number;
+        credentialAuditLog: number;
+        companyKpis: number;
+        kpiSnapshots: number;
+        costEvents: number;
+        issues: number;
+        issueComments: number;
+        taskOutcomeAttributions: number;
+        heartbeatRuns: number;
+      };
+    }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
 };
