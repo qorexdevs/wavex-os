@@ -103,6 +103,22 @@ importers:
         specifier: ^5.4.5
         version: 5.9.3
 
+  packages/inference-adapter:
+    dependencies:
+      '@op-omega/plugin-tier-router':
+        specifier: workspace:*
+        version: link:../../vendor/op-omega/tier-router
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
+
   packages/mock-core:
     dependencies:
       fastify:
