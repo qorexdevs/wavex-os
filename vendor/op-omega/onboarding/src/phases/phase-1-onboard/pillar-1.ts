@@ -57,11 +57,49 @@ export function looksLikeNoProduct(raw: string): boolean {
 
 function guessIndustryHint(context: string): string {
   const lower = context.toLowerCase();
-  if (lower.includes("b2b") || lower.includes("saas") || lower.includes("enterprise")) return "b2b_saas";
-  if (lower.includes("b2c") || lower.includes("consumer")) return "b2c";
-  if (lower.includes("developer") || lower.includes("api") || lower.includes("sdk")) return "dev_tools";
-  if (lower.includes("marketplace")) return "marketplace";
-  if (lower.includes("e-commerce") || lower.includes("ecommerce")) return "ecommerce";
+
+  // Wavex-os 2026-05: broadened heuristic + return values normalized to the
+  // canonical industry_hint enum the matrix's industry rules check against.
+  // Order matters — more specific matches first.
+
+  // Manual tags — operators sometimes drop the canonical industry name in their
+  // manual_context (e.g. "consumer_hardware industry"). Honor those explicitly.
+  for (const tag of [
+    "consumer_hardware", "consumer_mobile", "consumer_ai",
+    "dtc_ecommerce", "enterprise_saas", "dev_infrastructure", "dev_tools",
+    "fintech_retail", "fintech", "healthtech", "legal_tech", "edtech",
+    "marketplace", "agency_services", "services_to_saas",
+  ]) {
+    if (lower.includes(tag)) return tag;
+  }
+
+  // Vertical keywords (more specific first)
+  if (/\b(embroidery|hardware|machine|device|wearable|robot|electronic)\b/i.test(lower)
+      && /\b(sell|manufact|consumer|retail)/i.test(lower)) return "consumer_hardware";
+  if (/\b(law firm|attorney|legal|paralegal|matter|case management)\b/i.test(lower)) return "legal_tech";
+  if (/\b(clinic|healthcare|patient|provider|hipaa|medical|pharma)\b/i.test(lower)) return "healthtech";
+  if (/\b(bank|payment|lending|insurance|financial|trading|broker)\b/i.test(lower)) return "fintech";
+  if (/\b(course|tuition|student|learner|bootcamp|education|teaching|curriculum)\b/i.test(lower)) return "edtech";
+  if (/\b(2-sided|two-sided|marketplace|take.?rate|seller|buyer.and.seller)\b/i.test(lower)) return "marketplace";
+  if (/\b(agency|consult|services? business|service-led)\b/i.test(lower)) return "agency_services";
+
+  // Tech / dev
+  if (/\b(developer|api|sdk|cli|open.?source|infrastructure|devops|ci\/cd|kubernetes)\b/i.test(lower)) return "dev_tools";
+
+  // Mobile / consumer
+  if (/\b(mobile app|ios app|android app)\b/i.test(lower)) return "consumer_mobile";
+  if (/\b(generative ai|ai assistant|consumer ai|chatbot for consumers)\b/i.test(lower)) return "consumer_ai";
+
+  // Ecom
+  if (/\b(dtc|direct.?to.?consumer|shopify|ecom|e.?commerce|storefront)\b/i.test(lower)) return "dtc_ecommerce";
+
+  // Enterprise / SaaS — keep LATE so vertical keywords win first
+  if (/\b(enterprise|fortune|f500|account.?based)\b/i.test(lower)) return "enterprise_saas";
+  if (/\b(b2b|saas)\b/i.test(lower)) return "enterprise_saas";
+
+  // B2C catch
+  if (/\b(b2c|consumer-facing|d2c)\b/i.test(lower)) return "b2c";
+
   return "unknown";
 }
 
