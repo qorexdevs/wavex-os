@@ -36,6 +36,10 @@ export function CredentialConcierge({ companyId, onComplete }: Props) {
     queryKey: ["concierge", companyId],
     queryFn: () => opOmegaOnboardingApi.listCredentials(companyId),
   });
+  const [skipAllBusy, setSkipAllBusy] = useState(false);
+  const [skipAllConfirm, setSkipAllConfirm] = useState(false);
+  const [skipAllError, setSkipAllError] = useState<string | null>(null);
+  const [skipAllReport, setSkipAllReport] = useState<{ skipped: number; failed: number } | null>(null);
 
   if (list.isLoading) {
     return <div style={{ padding: "2rem", color: "var(--text-dim)" }}>Loading credential state…</div>;
@@ -51,6 +55,28 @@ export function CredentialConcierge({ companyId, onComplete }: Props) {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["concierge", companyId] });
 
+  const pendingRequired = required.filter((c) => c.status === "pending");
+
+  async function handleSkipAll(): Promise<void> {
+    setSkipAllBusy(true);
+    setSkipAllError(null);
+    const reason = "Deferred to post-onboarding (operator skip-all)";
+    let skipped = 0;
+    let failed = 0;
+    for (const c of pendingRequired) {
+      try {
+        await opOmegaOnboardingApi.skipCredential({ companyId, connectorId: c.connectorId, reason });
+        skipped++;
+      } catch {
+        failed++;
+      }
+    }
+    setSkipAllReport({ skipped, failed });
+    setSkipAllConfirm(false);
+    await refresh();
+    setSkipAllBusy(false);
+  }
+
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
       <H2>Credential Concierge</H2>
@@ -62,21 +88,52 @@ export function CredentialConcierge({ companyId, onComplete }: Props) {
       </P>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
           <div style={{ fontSize: 13 }}>
             <strong>{data.progress.requiredReady}/{data.progress.requiredCount}</strong>{" "}
             required connectors addressed
           </div>
-          <div style={{ height: 6, width: 200, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{
-              height: "100%",
-              width: `${data.progress.requiredCount === 0 ? 100 : Math.round(100 * data.progress.requiredReady / data.progress.requiredCount)}%`,
-              background: "var(--accent)",
-              transition: "width 0.3s ease-out",
-            }} />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{ height: 6, width: 200, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                height: "100%",
+                width: `${data.progress.requiredCount === 0 ? 100 : Math.round(100 * data.progress.requiredReady / data.progress.requiredCount)}%`,
+                background: "var(--accent)",
+                transition: "width 0.3s ease-out",
+              }} />
+            </div>
+            {pendingRequired.length > 0 && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => { setSkipAllConfirm(true); setSkipAllError(null); }}
+                disabled={skipAllBusy}
+                title="Defer every pending required connector — configure them post-onboarding from Mission Control"
+                style={{ fontSize: 12, padding: "0.3rem 0.7rem" }}
+              >
+                ↷ Skip all ({pendingRequired.length})
+              </button>
+            )}
           </div>
         </div>
+        {skipAllReport && (
+          <div style={{ fontSize: 12, color: "var(--accent)", marginTop: "0.5rem" }}>
+            ✓ Skipped {skipAllReport.skipped}{skipAllReport.failed > 0 ? ` · ${skipAllReport.failed} failed` : ""} — configure later from Mission Control.
+          </div>
+        )}
+        {skipAllError && (
+          <div style={{ fontSize: 12, color: "var(--warning)", marginTop: "0.5rem" }}>✗ {skipAllError}</div>
+        )}
       </Card>
+
+      {skipAllConfirm && (
+        <SkipAllModal
+          count={pendingRequired.length}
+          busy={skipAllBusy}
+          onCancel={() => setSkipAllConfirm(false)}
+          onConfirm={() => void handleSkipAll()}
+        />
+      )}
 
       {required.length > 0 && (
         <Section title="Required" rows={required} companyId={companyId} onChange={refresh} />
@@ -98,6 +155,64 @@ export function CredentialConcierge({ companyId, onComplete }: Props) {
           Address all {data.progress.requiredCount} required connectors to continue.
         </p>
       )}
+    </div>
+  );
+}
+
+function SkipAllModal({
+  count, busy, onCancel, onConfirm,
+}: {
+  count: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000,
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--warning)",
+          borderRadius: 8,
+          padding: "1.5rem",
+          maxWidth: 480,
+          width: "90%",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ marginTop: 0 }}>Skip {count} pending required connector{count === 1 ? "" : "s"}?</h3>
+        <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: "1rem" }}>
+          Each will be marked as <code>skipped</code> with reason{" "}
+          <em>"Deferred to post-onboarding (operator skip-all)"</em>. The
+          manifest still records the requirement so Mission Control can
+          surface them later for configuration.
+        </p>
+        <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: "1.25rem" }}>
+          You can re-vault any of them after onboarding by clicking{" "}
+          <em>vault credentials to un-skip</em> on the connector card.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+          <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            style={{ background: "var(--warning)", color: "#000" }}
+          >
+            {busy ? "Skipping…" : `Skip all ${count} →`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
