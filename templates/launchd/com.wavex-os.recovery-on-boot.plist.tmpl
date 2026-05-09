@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wavex-os.recovery-on-boot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>sleep 30 &amp;&amp; until curl -sS -m 3 ${API_BASE}/api/health &gt; /dev/null; do sleep 5; done &amp;&amp; sleep 30 &amp;&amp; curl -sS -X POST -H 'Content-Type: application/json' -d '{"companyId":"${COMPANY_ID}","triggeredBy":"boot"}' ${API_BASE}/api/maintenance/run-recovery-protocol</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${STATE_DIR}/recovery-on-boot.log</string>
+  <key>StandardErrorPath</key>
+  <string>${STATE_DIR}/recovery-on-boot.log</string>
+</dict>
+</plist>

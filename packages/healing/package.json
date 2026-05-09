@@ -1,0 +1,19 @@
+{
+  "name": "@wavex-os/healing",
+  "version": "0.2.0",
+  "description": "Reference implementation of the four-layer self-healing architecture: wrapper 401 self-heal, OAuth refresh with concurrency lock, worker restart, and recovery protocol triggers.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./oauth-refresh": "./src/oauth-refresh.ts",
+    "./worker-restart": "./src/worker-restart.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

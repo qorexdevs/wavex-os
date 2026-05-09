@@ -100,6 +100,32 @@
 
 ---
 
+## ✅ Phase H — Minimal inception kernel + four-layer self-healing (v0.2.0)
+
+Production patterns from a 7-day WaveX deployment crystallized into open-source skills, services, and operational templates. Responsible for a 96% drop in 24h imputed fleet burn during the rollout that produced this release.
+
+- [x] **H1**: Standard cross-cutting skills (`packages/standard-skills/`)
+  - SKILL_ECONOMIC_SELF_AWARENESS, SKILL_VERIFY_BEFORE_CLAIM, SKILL_KPI_OWNERSHIP, SKILL_HARNESS_RECOGNITION, SKILL_LESSONS_READ, SKILL_DELEGATE_OR_KILL
+  - Chief of Staff playbooks (SKILL_FLEET_ALIGNMENT, SKILL_RECOVERY_PROTOCOL)
+  - `docs/MINIMAL_INCEPTION.md` topology spec, `docs/SELF_HEALING.md` architecture
+- [x] **H2**: Self-healing reference impl (`packages/healing/`)
+  - OAuth refresh with concurrency lock (in-flight Promise singleton + 30s cooldown + invalid_grant retry)
+  - Worker restart (SIGTERM → 10s grace → SIGKILL → retry hook)
+  - Per-spawn execution wrapper (`scripts/wrappers/claude-spawn.sh`) with 401 self-heal + Sonnet fallback on rate-limit
+- [x] **H3**: Observability reference impl (`packages/observability/`)
+  - Bottleneck scoring, outcome attribution, token budget + priority-aware throttle
+  - Mission-control aggregator (60s cache), fleet-observer markdown synthesis
+  - Pluggable `DbExecutor`, role tier map, KPI dependency map
+- [x] **H4**: Launchd templates + provisioning scripts (`templates/launchd/`, `scripts/`)
+  - Six `.plist.tmpl` files with `${COMPANY_ID}/${API_BASE}/${STATE_DIR}` placeholders
+  - `render-launchd-templates.mjs`, `provision-chief-of-staff.sample.mjs`, `setup-hierarchy-and-kpis.sample.mjs`
+  - Generic KPI registry example (revenue_target_30d, qualified_leads_7d, conversion_rate_7d, etc.)
+- [x] **H5**: Doc polish (this file, README, SECURITY)
+
+**Exit:** clone → `pnpm install` → fill `wavex-os.config.json` → `node scripts/render-launchd-templates.mjs && node scripts/provision-chief-of-staff.sample.mjs && node scripts/setup-hierarchy-and-kpis.sample.mjs` → kernel + recovery routines running on a Paperclip-backed deployment.
+
+---
+
 ## Beyond Phase G
 
 - Multi-fleet support (one user, multiple companies)

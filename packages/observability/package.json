@@ -1,0 +1,22 @@
+{
+  "name": "@wavex-os/observability",
+  "version": "0.2.0",
+  "description": "Reference implementation of fleet observability: bottleneck scoring, outcome attribution, token budget + adaptive throttle, mission-control aggregator. Field-tested in production for ~7 days.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bottlenecks": "./src/bottlenecks.ts",
+    "./outcome-attribution": "./src/outcome-attribution.ts",
+    "./token-budget": "./src/token-budget.ts",
+    "./mission-control": "./src/mission-control.ts",
+    "./fleet-observer": "./src/fleet-observer.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

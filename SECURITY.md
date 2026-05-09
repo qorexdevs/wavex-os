@@ -39,10 +39,27 @@ We will acknowledge within 72 hours, and aim to ship a patched release within 7 
 
 ## What we already do
 
-- **Hardened `.gitignore`** blocks `.env*`, `*.pem`, `*.key`, `secrets.json`, `credentials.json`, `~/.paperclip/`, `.claude/projects/`, lookalike paths.
+- **Hardened `.gitignore`** blocks `.env*`, `*.pem`, `*.key`, `secrets.json`, `credentials.json`, `~/.paperclip/`, `.claude/projects/`, `wavex-os.config.json`, lookalike paths.
 - **Pre-commit secret scan** is a manual checklist today (will become a `pre-commit` hook in Phase F): every PR runs `grep -RInE` for known token patterns and personal paths over the diff.
-- **PII scrub at template-ingest time** — `scripts/ingest-agency-agents.mjs` strips company-specific identifiers before templates land in `packages/agent-templates/`.
+- **PII scrub at template-ingest time** — `scripts/ingest-agency-agents.mjs` strips company-specific identifiers before templates land in `packages/onboarding-ui/public/agent-templates/`.
 - **OAuth handoff design** — the wrapper script reads from the system keychain and never echoes the credential to disk, stdout (in non-verbose mode), or the network. Mock-core sees only the probe result.
+- **Per-spawn wrapper hardening** (`scripts/wrappers/claude-spawn.sh`) — strips inherited Anthropic env vars before exec to prevent the wrapped CLI from routing through a stale or unintended endpoint. Token never persists outside the keychain.
+
+---
+
+## What's intentionally NOT in this repo
+
+This is enforceable convention; it's also the v0.2.0 release contract. None of the following ships as code, configuration, or example data:
+
+- Real OAuth tokens, refresh tokens, keychain dumps.
+- Real Telegram bot tokens, chat IDs, or any third-party API keys.
+- Specific company UUIDs, agent UUIDs, or per-tenant identifiers (the originating WaveX deployment's UUIDs are scrubbed).
+- Real KPI definitions tied to a specific industry. The shipped `examples/kpi-registry.example.json` uses generic placeholders (revenue_target_30d, qualified_leads_7d, etc.) — your deployment substitutes its own.
+- Customer data or scraped lead lists.
+- Personal hostnames, ngrok URLs, IP addresses.
+- Internal product URLs.
+
+If you find any of the above in the repo, **treat it as a P0 vulnerability** and follow the reporting process at the top of this document.
 
 ---
 
