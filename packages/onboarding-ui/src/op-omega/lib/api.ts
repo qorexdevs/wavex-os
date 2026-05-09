@@ -218,6 +218,16 @@ export const opOmegaOnboardingApi = {
     warnings: string[];
   }>("POST", "/op-omega/onboarding/finalize", input),
 
+  // Re-generate imprint with optional operator guidance
+  regenerateImprint: (input: { companyId: string; operatorGuidance?: string }) =>
+    call<{
+      ok: true;
+      manifest: CompanyManifest;
+      sha256: string;
+      source: "t2" | "fallback";
+      warnings: string[];
+    }>("POST", "/op-omega/onboarding/regenerate-imprint", input),
+
   // Instance reads (dashboard)
   getInstanceManifest: (companyId: string) =>
     call<InstanceManifestResponse>("GET", `/api/instance/${encodeURIComponent(companyId)}/manifest`),

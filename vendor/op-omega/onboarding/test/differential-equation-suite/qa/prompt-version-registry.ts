@@ -36,7 +36,7 @@ export const CURRENT_PROMPT_VERSIONS: Record<PromptPhaseId, string> = {
   "phase-2": "0.4.0",
   "phase-3": "0.6.0",
   "phase-4": "0.4.0",
-  "finalize-imprint": "0.1.0",
+  "finalize-imprint": "0.2.0",
 };
 
 /** Source TS file for each phase (used by drift checker). */

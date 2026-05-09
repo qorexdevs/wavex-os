@@ -154,7 +154,7 @@ const FIXTURES: Fixture[] = [
 ];
 
 async function inject<T = unknown>(method: "GET" | "POST", url: string, body?: unknown): Promise<{ status: number; body: T }> {
-  const r = await app.inject({ method, url, payload: body });
+  const r = await app.inject({ method, url, payload: body as never });
   return { status: r.statusCode, body: r.json() as T };
 }
 

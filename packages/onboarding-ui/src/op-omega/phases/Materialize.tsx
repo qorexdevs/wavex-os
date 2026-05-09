@@ -26,6 +26,12 @@ export function Materialize({ companyId }: Props) {
   const [halt, setHalt] = useState<ApiError["halt"]>(undefined);
   const [skipInference, setSkipInference] = useState(false);
 
+  // Re-generate flow state — operator can refine the imprint AFTER initial
+  // finalize without re-running MC + signing the whole manifest from scratch.
+  const [regenGuidance, setRegenGuidance] = useState("");
+  const [regenBusy, setRegenBusy] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
   async function finalize(): Promise<void> {
     setBusy(true);
     setError(null);
@@ -45,6 +51,23 @@ export function Materialize({ companyId }: Props) {
       } else setError((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function regenerateImprint(): Promise<void> {
+    setRegenBusy(true);
+    setRegenError(null);
+    try {
+      const r = await opOmegaOnboardingApi.regenerateImprint({
+        companyId,
+        operatorGuidance: regenGuidance.trim() || undefined,
+      });
+      setResult({ manifest: r.manifest, sha256: r.sha256, source: r.source, warnings: r.warnings });
+      setRegenGuidance(""); // clear box after success
+    } catch (e) {
+      setRegenError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setRegenBusy(false);
     }
   }
 
@@ -120,6 +143,47 @@ export function Materialize({ companyId }: Props) {
               <ul style={{ margin: "0.25rem 0 0 1rem", padding: 0 }}>
                 {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {result && (
+        <Card>
+          <h3 style={{ marginTop: 0, fontSize: 13, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Refine the imprint
+          </h3>
+          <P>
+            Re-generate the imprint summary with operator guidance. Useful for adjusting tone,
+            removing references to specific people, emphasizing different aspects of the
+            business, or anything else you'd change about the prose. The manifest is re-signed
+            on save (sha256 changes); MC + connectors + swarm + workflows stay untouched.
+          </P>
+          <textarea
+            value={regenGuidance}
+            onChange={(e) => setRegenGuidance(e.target.value)}
+            rows={3}
+            placeholder="e.g. Remove all references to specific people. Focus more on the international distribution motion. Emphasize the hardware-financing differentiation. Use third-person throughout. Optional — leave blank to re-roll with no extra guidance."
+            style={{ width: "100%", marginBottom: "0.5rem" }}
+            disabled={regenBusy}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="text-dim" style={{ fontSize: 11 }}>
+              {regenGuidance.trim().length === 0
+                ? "(no guidance — will re-roll with same prompt)"
+                : `${regenGuidance.trim().length} chars of guidance`}
+            </span>
+            <button
+              type="button"
+              onClick={() => void regenerateImprint()}
+              disabled={regenBusy}
+            >
+              {regenBusy ? "Re-generating…" : "↻ Re-generate imprint"}
+            </button>
+          </div>
+          {regenError && (
+            <div style={{ marginTop: "0.5rem", color: "var(--warning)", fontSize: 12 }}>
+              ✗ {regenError}
             </div>
           )}
         </Card>

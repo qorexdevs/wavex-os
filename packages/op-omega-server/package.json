@@ -23,9 +23,11 @@
     "@wavex-os/observability": "workspace:*",
     "drizzle-orm": "^0.36.4",
     "fastify": "^4.28.1",
+    "js-yaml": "^4.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.16.5",
     "typescript": "^5.5.4",
     "vitest": "^2.1.8"

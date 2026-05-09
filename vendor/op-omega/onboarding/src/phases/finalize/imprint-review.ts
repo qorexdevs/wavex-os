@@ -16,12 +16,25 @@ function buildPrompt(
   swarm: SwarmManifest,
   workflows: WorkflowManifest,
   mcWinner: MonteCarloWinner,
+  operatorGuidance?: string,
 ): string {
   const activeAgentCount = Object.values(swarm.agents).filter((a) => a.status === "active").length;
   const parkedAgentCount = Object.values(swarm.agents).filter((a) => a.status === "parked").length;
   const disabledAgentCount = Object.values(swarm.agents).filter((a) => a.status === "disabled").length;
 
-  return `You are generating an Imprint Review — a plain-language summary of an organization's complete Operator Ω manifest. Write 3–4 paragraphs, max 400 words total. Use the operator's own vocabulary. Be specific and concrete: reference actual names and numbers. Do not use marketing language, do not say "I'm excited", do not use exclamation marks. Professional, plain, operational.
+  const guidanceBlock = operatorGuidance && operatorGuidance.trim().length > 0
+    ? `\n\nOPERATOR GUIDANCE (apply these adjustments to the output)\n${operatorGuidance.trim()}\n`
+    : "";
+
+  return `You are generating an Imprint Review — a plain-language summary of an organization's complete Operator Ω manifest. Write 3–4 paragraphs, max 400 words total. Use the operator's own vocabulary. Be specific and concrete about company facts (products, prices, geography, MRR tier, agent counts). Do not use marketing language, do not say "I'm excited", do not use exclamation marks. Professional, plain, operational.
+
+OPERATOR IDENTITY — IMPORTANT
+The Pillar 1 enrichment may name founders, executives, or other people associated with the organization (e.g. "founded by Jane Doe", "President Bob Smith"). Those names are **company facts**, not the identity of the person reading this imprint. The operator using this onboarding may be the founder, an employee, a contractor, an investor doing diligence, or someone evaluating the company.
+
+- DO NOT address the imprint to a specific person by name. NEVER write "Frank approves each gated task" or "Jane will need to review."
+- DO refer to the reader generically: "the operator", "you", "whoever is operating this instance".
+- DO mention founder/executive names when describing what the company is (e.g. "founded by Frank Ma" is fine in the company description), but DO NOT carry that name forward into operational instructions.
+- The dry-run gates require **operator approval** (not "Frank's approval"). Phrase accordingly.${guidanceBlock}
 
 FULL CONTEXT
 Organization: ${responses.pillar_1?.org_name}
@@ -66,6 +79,10 @@ export async function generateImprintReview(args: {
   workflows: WorkflowManifest;
   mcWinner: MonteCarloWinner;
   skipInference?: boolean;
+  /** Wavex-os 2026-05: free-form operator guidance injected into the prompt
+   *  (e.g. "remove all references to specific people", "focus more on the
+   *  international distribution motion"). Re-generation flow uses this. */
+  operatorGuidance?: string;
 }): Promise<{ summary: string; source: "t2" | "fallback"; warnings: string[] }> {
   if (args.skipInference) {
     return {
@@ -79,7 +96,7 @@ export async function generateImprintReview(args: {
   try {
     const resp = await route({
       agent_id: "onboarding.finalize.imprint",
-      prompt: buildPrompt(args.responses, args.connectors, args.swarm, args.workflows, args.mcWinner),
+      prompt: buildPrompt(args.responses, args.connectors, args.swarm, args.workflows, args.mcWinner, args.operatorGuidance),
       task_metadata: {
         creativity_required: true,
         customer_facing: true,
