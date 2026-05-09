@@ -39,6 +39,18 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.39)
 
+  packages/composio-shim:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
+
   packages/core:
     devDependencies:
       '@playwright/test':

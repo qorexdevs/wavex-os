@@ -1,0 +1,28 @@
+/** Composio surface types matching the LiveConnectorRow shape that op-omega's
+ *  Phase 2 generator consumes. When wavex-os is wired to a real Composio
+ *  account, these come from @composio/core; otherwise they're empty arrays. */
+
+export interface LiveConnectorRow {
+  toolkitSlug: string;
+  composioConnectionId: string;
+  composioAuthConfigId: string | null;
+  displayName: string | null;
+  scopes: string[] | null;
+  connectedAt: Date | null;
+}
+
+export interface FeaturedToolkit {
+  slug: string;
+  displayName: string;
+  category: "comms" | "crm" | "billing" | "analytics" | "dev" | "ops" | "other";
+}
+
+export type ApiKeyValidation =
+  | { ok: true }
+  | { ok: false; reason: string }
+  | { ok: false; reason: "disabled"; mode: "dev" };
+
+export interface OAuthInitResult {
+  url: string | null;
+  pendingConnectionId: string | null;
+}
