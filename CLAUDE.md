@@ -86,6 +86,8 @@ If a frozen path needs to change to complete a task, **STOP** and surface the co
 | Add a wizard subview | `packages/onboarding-ui/src/op-omega/{pillars,phases}/` (wavex layout) |
 | Add a dashboard read | `packages/op-omega-server/src/routes/instance.ts` (new endpoint) |
 | Add a DB table | `packages/db/src/schema/<file>.ts` + new migration in `packages/db/migrations/` |
+| Activate a finalized manifest into the DB | `POST /api/instance/<id>/activate` → `packages/op-omega-server/src/routes/activate.ts` → `bridge/finalize-bridge.ts` |
+| Add a slot↔template mapping | `packages/op-omega-server/src/bridge/catalog.ts` (`SLOT_TO_TEMPLATE`) |
 
 ## Onboarding contract (filesystem)
 
