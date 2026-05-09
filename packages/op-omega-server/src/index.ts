@@ -15,6 +15,7 @@ import { registerPillarRoutes } from "./routes/pillars.js";
 import { registerPhaseRoutes } from "./routes/phases.js";
 import { registerProbeRoutes } from "./routes/probe.js";
 import { registerInstanceRoutes } from "./routes/instance.js";
+import { registerObservabilityRoutes } from "./routes/observability.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -30,6 +31,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerPhaseRoutes(app);
   registerProbeRoutes(app);
   registerInstanceRoutes(app);
+  registerObservabilityRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

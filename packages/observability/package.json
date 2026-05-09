@@ -16,7 +16,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "drizzle-orm": "*"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": { "optional": true }
+  },
   "devDependencies": {
+    "drizzle-orm": "^0.36.4",
     "typescript": "^5.4.5"
   }
 }

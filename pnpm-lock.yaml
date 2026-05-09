@@ -140,6 +140,9 @@ importers:
 
   packages/observability:
     devDependencies:
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
       typescript:
         specifier: ^5.4.5
         version: 5.9.3
@@ -216,9 +219,15 @@ importers:
       '@wavex-os/db':
         specifier: workspace:*
         version: link:../db
+      '@wavex-os/healing':
+        specifier: workspace:*
+        version: link:../healing
       '@wavex-os/inference-adapter':
         specifier: workspace:*
         version: link:../inference-adapter
+      '@wavex-os/observability':
+        specifier: workspace:*
+        version: link:../observability
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
