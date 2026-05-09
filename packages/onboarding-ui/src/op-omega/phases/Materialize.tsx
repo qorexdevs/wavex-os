@@ -26,6 +26,24 @@ export function Materialize({ companyId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [halt, setHalt] = useState<ApiError["halt"]>(undefined);
   const [skipInference, setSkipInference] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activated, setActivated] = useState<{ companies: number; agents: number } | null>(null);
+  const [activateError, setActivateError] = useState<string | null>(null);
+
+  async function activateAndNavigate(): Promise<void> {
+    setActivating(true);
+    setActivateError(null);
+    try {
+      const r = await opOmegaOnboardingApi.activate(companyId);
+      setActivated(r.inserted);
+      // Brief pause so the operator sees the summary before navigating
+      setTimeout(() => navigate(`/?companyId=${encodeURIComponent(companyId)}`), 800);
+    } catch (e) {
+      setActivateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActivating(false);
+    }
+  }
 
   async function finalize(): Promise<void> {
     setBusy(true);
@@ -139,9 +157,23 @@ export function Materialize({ companyId }: Props) {
         />
       )}
 
+      {activated && (
+        <Card accent>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>
+            ✓ Activated · {activated.companies} company / {activated.agents} agents written to db
+          </div>
+        </Card>
+      )}
+
+      {activateError && (
+        <Card>
+          <p style={{ color: "var(--warning)", margin: 0 }}>✗ Activation failed: {activateError}</p>
+        </Card>
+      )}
+
       <NavRow
-        next={{ onClick: () => navigate(`/?companyId=${encodeURIComponent(companyId)}`), label: "Go to Mission Control →" }}
-        nextDisabled={!result}
+        next={{ onClick: () => void activateAndNavigate(), label: activating ? "Activating…" : "Activate fleet →" }}
+        nextDisabled={!result || activating}
       />
     </div>
   );

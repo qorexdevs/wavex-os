@@ -285,4 +285,12 @@ export const opOmegaOnboardingApi = {
 
   listCompanies: () =>
     call<CompaniesResponse>("GET", "/api/companies"),
+
+  // Activate — bridge the signed manifest into runtime DB state. Idempotent.
+  activate: (companyId: string) =>
+    call<{
+      ok: true;
+      inserted: { companies: number; agents: number };
+      warnings: string[];
+    }>("POST", `/api/instance/${encodeURIComponent(companyId)}/activate`),
 };
