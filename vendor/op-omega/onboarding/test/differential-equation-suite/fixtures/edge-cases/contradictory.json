@@ -1,0 +1,31 @@
+{
+  "fixture_id": "contradictory",
+  "description": "Edge case — internally inconsistent inputs: idea-only product yet inbound-ads lead source. Pipeline must resolve gracefully without crashing.",
+  "pillar_1": {
+    "org_name": "Paradox Labs",
+    "input": "no product yet",
+    "mocked_enrichment": {
+      "company_context": "Operator claims no shipped product, but also reports running inbound ads. Inference must reconcile or flag the inconsistency.",
+      "has_product": false,
+      "industry_hint": "unknown",
+      "business_model_hint": "unknown"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "idea_only",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "inbound_ads_meta_google",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

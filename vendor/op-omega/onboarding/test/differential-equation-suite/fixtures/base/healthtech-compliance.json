@@ -1,0 +1,31 @@
+{
+  "fixture_id": "healthtech-compliance",
+  "description": "B2B healthtech with HIPAA. Clinic-level sales, reference-account-driven growth.",
+  "pillar_1": {
+    "org_name": "Vitalis Notes",
+    "input": "https://vitalisnotes.example",
+    "mocked_enrichment": {
+      "company_context": "HIPAA-compliant ambient scribe for outpatient clinics. Per-provider per-month pricing. Selling clinic-by-clinic, 3-to-5 provider avg deployment. Growth is entirely reference accounts at conferences.",
+      "has_product": true,
+      "industry_hint": "healthtech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "whatsapp",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

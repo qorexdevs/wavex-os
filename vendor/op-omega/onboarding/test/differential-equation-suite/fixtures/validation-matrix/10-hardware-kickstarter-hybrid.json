@@ -1,0 +1,22 @@
+{
+  "fixture_id": "vm10-hardware-kickstarter-hybrid",
+  "description": "Validation matrix F10 · Hardware+software hybrid post-Kickstarter. Expected: activation+retention emphasis, low-MRR but post-product.",
+  "expected": {
+    "active_range": [14, 18],
+    "mc_mode": "pre_scale"
+  },
+  "pillar_1": {
+    "org_name": "Blumebench",
+    "input": "https://blumebench.example",
+    "mocked_enrichment": {
+      "company_context": "Smart-home sensor with companion iOS/Android app. $199 hardware + $5/mo optional cloud storage. Post-Kickstarter, 4,200 hardware units sold, 1,100 on monthly sub = $5.5k MRR. Hardware revenue separate.",
+      "has_product": true,
+      "industry_hint": "consumer_hardware",
+      "business_model_hint": "one_time_plus_repeat"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "less_than_10k_mrr" },
+  "pillar_4": { "lead_sources": ["content_seo", "referral_word_of_mouth"], "sales_motion": "self_serve_plg" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

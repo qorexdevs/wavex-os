@@ -1,0 +1,31 @@
+{
+  "fixture_id": "unicode-injection",
+  "description": "Edge case — Unicode in org_name (emoji + CJK + RTL). Validates YAML escaping and downstream text handling.",
+  "pillar_1": {
+    "org_name": "宇宙 Toolkit 🚀 إدارة",
+    "input": "https://example.test",
+    "mocked_enrichment": {
+      "company_context": "グローバル SaaS プラットフォーム for 企業 workflow orchestration. 🌐 Multi-region deployment.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mixed"
+  },
+  "pillar_5": {
+    "comm_channel": "telegram",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

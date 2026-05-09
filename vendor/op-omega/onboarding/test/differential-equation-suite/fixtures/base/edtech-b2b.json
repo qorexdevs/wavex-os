@@ -1,0 +1,30 @@
+{
+  "fixture_id": "edtech-b2b",
+  "description": "B2B edtech selling into L&D departments. Seat-based with annual contracts.",
+  "pillar_1": {
+    "org_name": "Slipknot Learn",
+    "input": "https://slipknotlearn.example",
+    "mocked_enrichment": {
+      "company_context": "Corporate L&D platform for manager coaching. Seat-licensed annual contracts. Selling into HR/L&D teams of 500-5000 employees. Partnerships with two executive coaching firms drive referrals.",
+      "has_product": true,
+      "industry_hint": "edtech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "fixture_id": "community-telegram",
+  "description": "Crypto-adjacent product with Telegram-native community. Paid tier via token gating.",
+  "pillar_1": {
+    "org_name": "Horizon Signal",
+    "input": "https://horizonsignal.example",
+    "mocked_enrichment": {
+      "company_context": "Trading-intelligence product with a Telegram-first distribution. Free tier is public channel, paid tier is gated via a subscription payment. Community is 42k members, 1,100 paid.",
+      "has_product": true,
+      "industry_hint": "fintech_retail",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "telegram",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

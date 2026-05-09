@@ -1,0 +1,28 @@
+{
+  "fixture_id": "vm06-marketplace-prerevenue",
+  "description": "Validation matrix F6 · Two-sided marketplace, pre-revenue soft launch. Expected: pre_scale MC, cmo.brand active early, build+activation emphasis.",
+  "expected": {
+    "active_range": [10, 14],
+    "mc_mode": "pre_scale",
+    "cmo_brand_active": true
+  },
+  "pillar_1": {
+    "org_name": "Arenafly",
+    "input": "https://arenafly.example",
+    "mocked_enrichment": {
+      "company_context": "Two-sided marketplace connecting independent fitness instructors with local venues. Soft-launched last month in one city, no transactions yet. Business idea validated but no paying customers. Free during beta.",
+      "has_product": true,
+      "industry_hint": "marketplace",
+      "business_model_hint": "marketplace"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_5x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "built_not_selling", "stage": "soft_launched" },
+  "pillar_4": {
+    "lead_sources": ["content_seo", "events", "other"],
+    "lead_source_other": "founder network plus direct outreach to gym owners; largely warm introductions from prior jobs in the fitness industry",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": { "comm_channel": "telegram", "urgency_routing": "digest_plus_urgent_phone" }
+}

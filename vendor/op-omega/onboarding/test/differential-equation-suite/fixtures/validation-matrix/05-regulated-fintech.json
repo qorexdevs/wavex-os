@@ -1,0 +1,22 @@
+{
+  "fixture_id": "vm05-regulated-fintech",
+  "description": "Validation matrix F5 · Regulated fintech, $28k MRR, compliance-heavy. Expected: compliance emphasis despite sub-scale, growth MC efficiency-weighted.",
+  "expected": {
+    "active_range": [14, 18],
+    "mc_mode": "growth"
+  },
+  "pillar_1": {
+    "org_name": "Solmark",
+    "input": "https://solmark.example",
+    "mocked_enrichment": {
+      "company_context": "Neobank for freelancers. FDIC-insured via partner bank. Free tier plus $15/mo premium. 3,500 customers, $28k MRR. Growth via referral and content. Heavy compliance burden.",
+      "has_product": true,
+      "industry_hint": "fintech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "10k_100k_mrr" },
+  "pillar_4": { "lead_sources": ["content_seo", "referral_word_of_mouth"], "sales_motion": "self_serve_plg" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

@@ -1,0 +1,129 @@
+/**
+ * Finalize step — generates the plain-language imprint summary (OPΩ-ONB-002
+ * §G). One T2 call with the full manifest context; returns 3-4 paragraphs.
+ */
+
+import { route } from "@op-omega/plugin-tier-router";
+import type { PillarResponses } from "../../schema/pillar-responses.js";
+import type { ConnectorManifest } from "../../schema/connector-manifest.js";
+import type { SwarmManifest } from "../../schema/swarm-manifest.js";
+import type { WorkflowManifest } from "../../schema/workflow-manifest.js";
+import type { MonteCarloWinner } from "../../schema/company-manifest.js";
+
+function buildPrompt(
+  responses: PillarResponses,
+  connectors: ConnectorManifest,
+  swarm: SwarmManifest,
+  workflows: WorkflowManifest,
+  mcWinner: MonteCarloWinner,
+): string {
+  const activeAgentCount = Object.values(swarm.agents).filter((a) => a.status === "active").length;
+  const parkedAgentCount = Object.values(swarm.agents).filter((a) => a.status === "parked").length;
+  const disabledAgentCount = Object.values(swarm.agents).filter((a) => a.status === "disabled").length;
+
+  return `You are generating an Imprint Review — a plain-language summary of an organization's complete Operator Ω manifest. Write 3–4 paragraphs, max 400 words total. Use the operator's own vocabulary. Be specific and concrete: reference actual names and numbers. Do not use marketing language, do not say "I'm excited", do not use exclamation marks. Professional, plain, operational.
+
+FULL CONTEXT
+Organization: ${responses.pillar_1?.org_name}
+One-liner: ${responses.pillar_1?.company_context?.slice(0, 400) /* @tunable finalize.imprint_context_slices */}
+Product state: ${responses.pillar_3?.product_state} (${responses.pillar_3?.stage})
+GTM profile: ${responses.pillar_4?.gtm_profile_enum}
+Board comms: ${responses.pillar_5?.comm_channel}${responses.pillar_5?.urgency_routing ? ` (${responses.pillar_5.urgency_routing})` : ""}
+Claude Code: ${responses.pillar_2?.claude_plan} (verified)
+
+Swarm: ${activeAgentCount} of ${swarm.topology.total_base_roster} active, ${parkedAgentCount} parked, ${disabledAgentCount} disabled.
+Parked agents: ${Object.entries(swarm.agents).filter(([, a]) => a.status === "parked").map(([id]) => id).join(", ") || "none"}
+Disabled agents: ${Object.entries(swarm.agents).filter(([, a]) => a.status === "disabled").map(([id]) => id).join(", ") || "none"}
+
+Connectors required: ${connectors.required.map((c) => c.id).join(", ")}
+Connectors suggested: ${connectors.suggested.map((c) => c.id).join(", ") || "none"}
+
+Dry-run window: 14 days from ${connectors.dry_run_expires_at}.
+Dry-run gates (tasks held dry): ${workflows.dry_run_gates.length} tasks across the swarm.
+
+MC winner: ${mcWinner.strategy_id}
+  sharpe: ${mcWinner.sharpe.toFixed(2)}
+  mean MRR growth (${mcWinner.run_params.horizon_cycles} cycles): ${(mcWinner.mean_mrr_growth * 100).toFixed(0)}%
+  p(auto-catalytic): ${(mcWinner.p_auto_catalytic * 100).toFixed(0)}%
+  p(ruin): ${(mcWinner.p_ruin * 100).toFixed(0)}%
+  cycles-to-critical: ${mcWinner.mean_cycles_to_critical ?? "—"}
+
+PARAGRAPH STRUCTURE
+¶1 (who + current state): name the org, describe what it does, where it is on product + revenue, what the GTM motion looks like.
+¶2 (deployed system): agent counts, notable parks/disables and why, connector stack, how Board gets notified.
+¶3 (MC strategy): name the winning strategy in plain terms, expected cycles to criticality, the Sharpe read.
+¶4 (dry-run expectations): 14 days, which tasks are gated, what the operator needs to approve before writes go live.
+
+OUTPUT
+Return ONLY the summary text. No JSON, no markdown headers, no salutations. Just 3–4 paragraphs.`;
+}
+
+export async function generateImprintReview(args: {
+  companyId: string;
+  responses: PillarResponses;
+  connectors: ConnectorManifest;
+  swarm: SwarmManifest;
+  workflows: WorkflowManifest;
+  mcWinner: MonteCarloWinner;
+  skipInference?: boolean;
+}): Promise<{ summary: string; source: "t2" | "fallback"; warnings: string[] }> {
+  if (args.skipInference) {
+    return {
+      summary: fallbackSummary(args.responses, args.swarm, args.connectors, args.workflows, args.mcWinner),
+      source: "fallback",
+      warnings: [],
+    };
+  }
+
+  const warnings: string[] = [];
+  try {
+    const resp = await route({
+      agent_id: "onboarding.finalize.imprint",
+      prompt: buildPrompt(args.responses, args.connectors, args.swarm, args.workflows, args.mcWinner),
+      task_metadata: {
+        creativity_required: true,
+        customer_facing: true,
+        reasoning_depth: "deep",
+        priority: "high",
+      },
+      companyId: args.companyId,
+      outputFormat: "text",
+      timeout_ms: 120_000,
+    });
+    if (resp.warnings) warnings.push(...resp.warnings);
+    const text = resp.output.trim();
+    if (text.length < 120) {
+      warnings.push("T2 imprint too short; kept fallback");
+      return {
+        summary: fallbackSummary(args.responses, args.swarm, args.connectors, args.workflows, args.mcWinner),
+        source: "fallback",
+        warnings,
+      };
+    }
+    return { summary: text, source: "t2", warnings };
+  } catch (err) {
+    warnings.push(`T2 imprint generation failed: ${err instanceof Error ? err.message : String(err)}`);
+    return {
+      summary: fallbackSummary(args.responses, args.swarm, args.connectors, args.workflows, args.mcWinner),
+      source: "fallback",
+      warnings,
+    };
+  }
+}
+
+function fallbackSummary(
+  r: PillarResponses,
+  s: SwarmManifest,
+  c: ConnectorManifest,
+  w: WorkflowManifest,
+  mc: MonteCarloWinner,
+): string {
+  const parked = Object.entries(s.agents).filter(([, a]) => a.status === "parked").map(([id]) => id);
+  const disabled = Object.entries(s.agents).filter(([, a]) => a.status === "disabled").map(([id]) => id);
+  return [
+    `${r.pillar_1?.org_name ?? "The organization"} is ${r.pillar_1?.company_context?.slice(0, 180) ?? "operating without a current company context on file"}. It is in the ${r.pillar_3?.product_state ?? "unknown"} stage (${r.pillar_3?.stage ?? "—"}) with a ${r.pillar_4?.gtm_profile_enum ?? "unclassified"} GTM motion. Board notifications route via ${r.pillar_5?.comm_channel ?? "email_only"}.`,
+    `${s.topology.active_count} of ${s.topology.total_base_roster} agents are active. Parked: ${parked.join(", ") || "none"}. Disabled: ${disabled.join(", ") || "none"}. Connectors required at launch: ${c.required.map((x) => x.id).join(", ")}. ${c.suggested.length > 0 ? `Suggested but optional: ${c.suggested.map((x) => x.id).join(", ")}.` : ""}`,
+    `Monte Carlo over ${mc.run_params.n_runs} runs × ${mc.run_params.horizon_cycles} cycles recommends the ${mc.strategy_id} strategy (Sharpe ${mc.sharpe.toFixed(2)}, mean MRR growth ${(mc.mean_mrr_growth * 100).toFixed(0)}% over horizon, p(auto-catalytic) ${(mc.p_auto_catalytic * 100).toFixed(0)}%${mc.mean_cycles_to_critical !== null ? `, expected ${mc.mean_cycles_to_critical.toFixed(1)} cycles to criticality` : ""}).`,
+    `The system runs dry until ${c.dry_run_expires_at} — ${w.dry_run_gates.length} tasks across the swarm are gated and will log intended output without writing externally. Review the first round of proposals via ${r.pillar_5?.comm_channel ?? "your configured channel"} before flipping dry_run off.`,
+  ].join("\n\n");
+}

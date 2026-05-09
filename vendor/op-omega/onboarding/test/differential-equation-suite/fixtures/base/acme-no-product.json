@@ -1,0 +1,29 @@
+{
+  "fixture_id": "acme-no-product",
+  "description": "Pre-product solo founder — shakes out the BOOTSTRAP_NO_GTM + disabled-agent path",
+  "pillar_1": {
+    "org_name": "Unnamed Venture",
+    "input": "no product yet",
+    "mocked_enrichment": {
+      "company_context": "Pre-product — operator has not shipped anything yet. Phase 3 validation branch applies.",
+      "has_product": false,
+      "industry_hint": "unknown",
+      "business_model_hint": "unknown"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "idea_only",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "none_yet",
+    "sales_motion": "none_yet"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "fixture_id": "fintech-regulated",
+  "description": "Fintech with regulatory compliance obligations. Enterprise sales only, slow procurement.",
+  "pillar_1": {
+    "org_name": "Ledgerly",
+    "input": "https://ledgerly.example",
+    "mocked_enrichment": {
+      "company_context": "Reconciliation SaaS for regional banks and credit unions. SOC2 + state-banking-reg compliance. 14-month average sales cycle with procurement. $240k ACV, 22 customers.",
+      "has_product": true,
+      "industry_hint": "fintech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "outbound_cold",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "in_person"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

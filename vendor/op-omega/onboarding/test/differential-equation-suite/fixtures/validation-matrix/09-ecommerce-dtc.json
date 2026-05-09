@@ -1,0 +1,23 @@
+{
+  "fixture_id": "vm09-ecommerce-dtc",
+  "description": "Validation matrix F9 · DTC ecommerce, $300k MRR. Expected: Meta+Google ads, no CRM, growth MC acquisition-weighted, cmo.demand spawnable.",
+  "expected": {
+    "active_range": [18, 24],
+    "mc_mode": "growth",
+    "cmo_demand_spawnable": true
+  },
+  "pillar_1": {
+    "org_name": "Copperthread",
+    "input": "https://copperthread.example",
+    "mocked_enrichment": {
+      "company_context": "Direct-to-consumer skincare brand. AOV $85, 25% repeat customer rate, $300k MRR. Primary channels: Meta ads, TikTok, email. No sales team — pure e-commerce. 8 SKUs, planning to launch 3 more.",
+      "has_product": true,
+      "industry_hint": "dtc_ecommerce",
+      "business_model_hint": "one_time_plus_repeat"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "100k_1m_mrr" },
+  "pillar_4": { "lead_sources": ["inbound_ads_meta_google", "content_seo"], "sales_motion": "self_serve_plg" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

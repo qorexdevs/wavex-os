@@ -1,0 +1,24 @@
+{
+  "fixture_id": "vm04-scale-enterprise-b2b",
+  "description": "Validation matrix F4 · Scale enterprise B2B, $1.5M ARR. Expected: large swarm (22-28), expansion+advocacy active, scale MC.",
+  "expected": {
+    "active_range": [22, 28],
+    "mc_mode": "scale",
+    "cro_expansion_active": true,
+    "cmo_advocacy_active": true
+  },
+  "pillar_1": {
+    "org_name": "Rhinegate",
+    "input": "https://rhinegate.example",
+    "mocked_enrichment": {
+      "company_context": "Enterprise data governance platform. Sells to Fortune 1000 CISOs. Average contract $80k/year, 18 customers, $1.5M ARR. Sales cycle 6-9 months via RFPs and executive relationships. Champions drive 80% of pipeline.",
+      "has_product": true,
+      "industry_hint": "enterprise_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "100k_1m_mrr" },
+  "pillar_4": { "lead_sources": ["referral_word_of_mouth", "outbound_cold"], "sales_motion": "high_touch_enterprise", "close_channel": "mixed" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

@@ -1,0 +1,23 @@
+{
+  "fixture_id": "vm02-outbound-b2b-saas",
+  "description": "Validation matrix F2 · Outbound-led B2B SaaS at $15k MRR. Expected: mid swarm (14-18), Supabase+Mixpanel+Slack, growth MC.",
+  "expected": {
+    "active_range": [14, 18],
+    "mc_mode": "growth",
+    "cro_outbound_active": true
+  },
+  "pillar_1": {
+    "org_name": "Lexworth",
+    "input": "https://lexworth.example",
+    "mocked_enrichment": {
+      "company_context": "AI-powered contract review tool for mid-market legal teams at manufacturers. Customers pay $2k-$5k/mo per seat. 8 customers, $15k MRR, growing via outbound sales on LinkedIn and cold email.",
+      "has_product": true,
+      "industry_hint": "legal_tech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "10k_100k_mrr" },
+  "pillar_4": { "lead_sources": ["outbound_cold"], "sales_motion": "assisted_demo", "close_channel": "mostly_phone_video" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

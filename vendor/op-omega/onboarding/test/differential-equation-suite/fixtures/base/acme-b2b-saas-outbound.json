@@ -1,0 +1,31 @@
+{
+  "fixture_id": "acme-b2b-saas-outbound",
+  "description": "Canonical outbound-led B2B SaaS at $45k MRR — the load-bearing fixture",
+  "pillar_1": {
+    "org_name": "Acme Tools",
+    "input": "https://acme.example",
+    "mocked_enrichment": {
+      "company_context": "B2B SaaS workflow automation for ops teams. Runs on usage-based pricing with a paid trial. ICP is mid-market operations directors.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "outbound_cold",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

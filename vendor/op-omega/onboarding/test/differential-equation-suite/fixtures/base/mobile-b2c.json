@@ -1,0 +1,29 @@
+{
+  "fixture_id": "mobile-b2c",
+  "description": "Mobile consumer app with in-app subscription. App-store-driven growth plus paid UA.",
+  "pillar_1": {
+    "org_name": "Tideglass",
+    "input": "https://tideglass.example",
+    "mocked_enrichment": {
+      "company_context": "Consumer iOS/Android app for meditation with subscription unlock. $9.99/mo, 14-day trial. 70k MAU, 8% trial-to-paid. Growth split between ASO, TikTok creators, and paid UA.",
+      "has_product": true,
+      "industry_hint": "consumer_mobile",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "inbound_ads_meta_google",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "slack"
+  }
+}

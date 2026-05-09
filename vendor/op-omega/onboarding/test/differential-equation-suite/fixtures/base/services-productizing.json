@@ -1,0 +1,30 @@
+{
+  "fixture_id": "services-productizing",
+  "description": "Former agency productizing into SaaS. Still has services revenue dominant; SaaS is emerging.",
+  "pillar_1": {
+    "org_name": "Halfpipe Studio",
+    "input": "https://halfpipestudio.example",
+    "mocked_enrichment": {
+      "company_context": "Design agency productizing into a subscription design-system platform. Services revenue still 75% of topline. SaaS tier launched 6 months ago, 23 paying customers. Strategy is to flip the mix by next year.",
+      "has_product": true,
+      "industry_hint": "services_to_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "less_than_10k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

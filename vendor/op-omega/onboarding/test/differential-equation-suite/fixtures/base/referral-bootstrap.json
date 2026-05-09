@@ -1,0 +1,29 @@
+{
+  "fixture_id": "referral-bootstrap",
+  "description": "Bootstrapped solo founder, idea-only, pre-product. Relies on founder's network for first design partners.",
+  "pillar_1": {
+    "org_name": "Lattice Forge",
+    "input": "https://latticeforge.example",
+    "mocked_enrichment": {
+      "company_context": "Idea-stage B2B tool for revenue-ops teams. Founder is a former director-of-revenue-ops. No product shipped. Plan is 3 design partners from founder's network before any public launch.",
+      "has_product": false,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "unknown"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "idea_only",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "none_yet"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

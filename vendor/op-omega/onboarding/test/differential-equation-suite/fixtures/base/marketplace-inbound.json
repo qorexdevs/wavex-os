@@ -1,0 +1,31 @@
+{
+  "fixture_id": "marketplace-inbound",
+  "description": "Two-sided marketplace for freelance CFO services. Take-rate model. Inbound-heavy with paid ads.",
+  "pillar_1": {
+    "org_name": "FractionFinder",
+    "input": "https://fractionfinder.example",
+    "mocked_enrichment": {
+      "company_context": "Two-sided marketplace matching fractional CFOs to early-stage companies. Take-rate billing. Inbound via Google Ads + LinkedIn. Both supply and demand curated.",
+      "has_product": true,
+      "industry_hint": "marketplace",
+      "business_model_hint": "marketplace"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "inbound_ads_meta_google",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

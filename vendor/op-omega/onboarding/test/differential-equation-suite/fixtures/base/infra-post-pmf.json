@@ -1,0 +1,31 @@
+{
+  "fixture_id": "infra-post-pmf",
+  "description": "Dev infra startup past PMF, scaling GTM. Strong inbound funnel plus founder-led outbound to strategic accounts.",
+  "pillar_1": {
+    "org_name": "Shardkey",
+    "input": "https://shardkey.example",
+    "mocked_enrichment": {
+      "company_context": "Distributed-cache-as-a-service. Usage-based billing. PMF confirmed via 40%+ WoW usage growth on the free tier. Founder does 3-4 outbound deals/month to strategic accounts above $5k MRR; rest is self-serve.",
+      "has_product": true,
+      "industry_hint": "dev_infrastructure",
+      "business_model_hint": "usage_based"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

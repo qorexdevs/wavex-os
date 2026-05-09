@@ -1,0 +1,23 @@
+{
+  "name": "@wavex-os/plugin-sdk-shim",
+  "version": "0.1.0",
+  "description": "Re-exports @paperclipai/plugin-sdk surface that op-omega imports. Adapter packages import from here so future SDK swaps land in one place.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./testing": "./src/testing.ts",
+    "./bundlers": "./src/bundlers.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
+  }
+}

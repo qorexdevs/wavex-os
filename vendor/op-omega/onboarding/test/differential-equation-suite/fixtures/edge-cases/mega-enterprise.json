@@ -1,0 +1,31 @@
+{
+  "fixture_id": "mega-enterprise",
+  "description": "Edge case — >$1M MRR + OUTBOUND_HIGH_TOUCH_SAAS. Should activate all 8 S+ markers, 0 parked.",
+  "pillar_1": {
+    "org_name": "Titan Platform",
+    "input": "https://titan.example",
+    "mocked_enrichment": {
+      "company_context": "Enterprise B2B SaaS platform for global supply-chain orchestration. Multi-region, multi-product, multi-seat. ARR over $30M.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "more_than_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "outbound_cold",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

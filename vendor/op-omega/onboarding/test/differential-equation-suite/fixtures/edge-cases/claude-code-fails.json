@@ -1,0 +1,31 @@
+{
+  "fixture_id": "claude-code-fails",
+  "description": "Edge case — Pillar 2 shell subprocess returns non-zero. Pipeline must halt cleanly with a fix_hint; Phases 3+ never run.",
+  "pillar_1": {
+    "org_name": "Stalled Startup",
+    "input": "https://stalled.example",
+    "mocked_enrichment": {
+      "company_context": "Would-be B2B SaaS, but the operator hasn't completed Claude Code setup on their Mac yet.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 127, "stderr": "claude: command not found" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "outbound_cold",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

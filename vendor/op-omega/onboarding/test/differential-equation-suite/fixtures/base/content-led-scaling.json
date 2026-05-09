@@ -1,0 +1,31 @@
+{
+  "fixture_id": "content-led-scaling",
+  "description": "Content-SEO-led B2B SaaS at $400k MRR. High inbound, low ad spend, PLG plus sales-assist close.",
+  "pillar_1": {
+    "org_name": "Northwind Analytics",
+    "input": "https://northwind.example",
+    "mocked_enrichment": {
+      "company_context": "B2B analytics for ecommerce ops. Long-form SEO drives 70% of inbound. Self-serve trial with a sales-assist close above 10 seats. ICP is director-of-ecom at mid-market DTC brands.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "assisted_demo",
+    "close_channel": "mixed"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

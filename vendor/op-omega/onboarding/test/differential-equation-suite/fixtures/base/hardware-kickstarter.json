@@ -1,0 +1,29 @@
+{
+  "fixture_id": "hardware-kickstarter",
+  "description": "Hardware startup post-Kickstarter pre-mass-manufacture. Working prototype but no MRR yet.",
+  "pillar_1": {
+    "org_name": "Foldbench",
+    "input": "https://foldbench.example",
+    "mocked_enrichment": {
+      "company_context": "Modular home-workshop bench. Funded on Kickstarter with 1,800 backers. Working prototype in hand; molds + first manufacturing run planned for next quarter. No ongoing revenue; all funding is escrowed.",
+      "has_product": true,
+      "industry_hint": "consumer_hardware",
+      "business_model_hint": "one_time_plus_repeat"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "prototype",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}
