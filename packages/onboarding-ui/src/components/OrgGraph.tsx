@@ -61,66 +61,114 @@ function statusColor(status: OrgAgentStatus): string {
   return "var(--text-dim)";
 }
 
-function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
-  const TIER_Y: Record<number, number> = { 1: 30, 2: 180, 3: 330, 4: 480 };
-  const NODE_W = 200;
-  const GAP = 40;
+function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
+  const tpl = TEMPLATES_BY_ID[a.templateId];
+  const dotColor = statusColor(a.status);
+  const origin = originLabel(tpl?.origin);
+  const displayName = templateIdToDisplayName(a.templateId);
+  const NODE_W = 180;
+  return {
+    id: a.id,
+    position: { x, y },
+    data: {
+      label: (
+        <div style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35 }}>
+          <div style={{
+            position: "absolute", top: 6, right: 6,
+            width: 6, height: 6, borderRadius: "50%",
+            background: dotColor,
+          }} />
+          <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text)" }}>
+            {displayName}
+          </div>
+          <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 2 }}>
+            {a.templateId}
+          </div>
+          <div style={{ fontSize: 9, color: origin.color, marginTop: 2, fontWeight: 600 }}>
+            {origin.label}
+          </div>
+        </div>
+      ),
+    },
+    style: {
+      background: "var(--surface)",
+      border: `1px solid ${tier === 1 ? "var(--accent)" : "var(--border)"}`,
+      borderRadius: 6,
+      width: NODE_W,
+      padding: 0,
+      position: "relative",
+    },
+  };
+}
 
-  const tiered: Record<number, OrgAgent[]> = { 1: [], 2: [], 3: [], 4: [] };
+/** Tree-by-chief layout: tier 1 (CEO) centered at top, tier 2 chiefs in a
+ *  horizontal row below, then each chief's tier-3 sub-agents stacked
+ *  vertically directly under them. Beats the old "all-of-tier-3-in-one-row"
+ *  approach which produced a 6000px-wide graph with 26 sub-agents. */
+function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
+  const NODE_W = 180;
+  const NODE_H = 64;
+  const COL_GAP = 28;
+  const T1_T2_GAP = 90;
+  const T2_T3_GAP = 60;
+  const T3_T3_GAP = 12;
+
+  const byTier = (t: number) => agents.filter((a) => {
+    const tpl = TEMPLATES_BY_ID[a.templateId];
+    return (tpl?.tier ?? tierForSlot(a.slot)) === t;
+  });
+
+  const tier1 = byTier(1);
+  const tier2 = byTier(2);
+  // Anything not at tier 1 or 2 is treated as a leaf hanging under its parent.
+  const leafChildrenBySlot = new Map<string, OrgAgent[]>();
+  for (const chief of tier2) leafChildrenBySlot.set(chief.slot, []);
+  const orphans: OrgAgent[] = [];
   for (const a of agents) {
     const tpl = TEMPLATES_BY_ID[a.templateId];
-    const tier = (tpl?.tier ?? tierForSlot(a.slot)) as 1 | 2 | 3 | 4;
-    (tiered[tier] ??= []).push(a);
+    const tier = (tpl?.tier ?? tierForSlot(a.slot));
+    if (tier === 1 || tier === 2) continue;
+    if (a.reportsToSlot && leafChildrenBySlot.has(a.reportsToSlot)) {
+      leafChildrenBySlot.get(a.reportsToSlot)!.push(a);
+    } else {
+      orphans.push(a);
+    }
   }
 
   const nodes: Node[] = [];
-  for (const tierKey of [1, 2, 3, 4] as const) {
-    const row = tiered[tierKey] ?? [];
-    const totalWidth = row.length * NODE_W + Math.max(0, row.length - 1) * GAP;
-    const startX = -totalWidth / 2 + NODE_W / 2;
-    row.forEach((a, i) => {
-      const tpl = TEMPLATES_BY_ID[a.templateId];
-      const dotColor = statusColor(a.status);
-      const origin = originLabel(tpl?.origin);
-      const displayName = templateIdToDisplayName(a.templateId);
 
-      nodes.push({
-        id: a.id,
-        position: { x: startX + i * (NODE_W + GAP), y: TIER_Y[tierKey] },
-        data: {
-          label: (
-            <div style={{ textAlign: "center", padding: "0.5rem 0.4rem", lineHeight: 1.4 }}>
-              <div style={{
-                position: "absolute", top: 6, right: 6,
-                width: 6, height: 6, borderRadius: "50%",
-                background: dotColor,
-              }} />
-              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>
-                {displayName}
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 3 }}>
-                {a.templateId}
-              </div>
-              <div style={{ fontSize: 10, color: origin.color, marginTop: 3, fontWeight: 600 }}>
-                {origin.label}
-              </div>
-            </div>
-          ),
-        },
-        style: {
-          background: "var(--surface)",
-          border: `1px solid ${tierKey === 1 ? "var(--accent)" : "var(--border)"}`,
-          borderRadius: 6,
-          width: NODE_W,
-          padding: 0,
-          position: "relative",
-        },
-      });
+  // Tier 2 columns: each chief is one column, x-positioned across the canvas.
+  const numCols = Math.max(1, tier2.length);
+  const totalWidth = numCols * NODE_W + (numCols - 1) * COL_GAP;
+  const startX = -totalWidth / 2 + NODE_W / 2;
+  const Y_T1 = 0;
+  const Y_T2 = NODE_H + T1_T2_GAP;
+  const Y_T3 = Y_T2 + NODE_H + T2_T3_GAP;
+
+  // Tier 1 (CEO) — center horizontally over the chief row.
+  for (const ceo of tier1) nodes.push(makeNode(ceo, 0, Y_T1, 1));
+
+  // Tier 2 chiefs + their tier-3 children stacked below.
+  tier2.forEach((chief, i) => {
+    const x = startX + i * (NODE_W + COL_GAP);
+    nodes.push(makeNode(chief, x, Y_T2, 2));
+    const children = leafChildrenBySlot.get(chief.slot) ?? [];
+    children.forEach((child, j) => {
+      const y = Y_T3 + j * (NODE_H + T3_T3_GAP);
+      nodes.push(makeNode(child, x, y, 3));
+    });
+  });
+
+  // Orphans (agents that don't report to any tier-2 chief — rare): drop them
+  // in a column off to the right so they're still visible.
+  if (orphans.length > 0) {
+    const orphanX = startX + numCols * (NODE_W + COL_GAP);
+    orphans.forEach((o, j) => {
+      nodes.push(makeNode(o, orphanX, Y_T3 + j * (NODE_H + T3_T3_GAP), 3));
     });
   }
 
-  // Edges use slot pairs since reportsToSlot is a slot-name reference. Map
-  // each slot to its node id (for DB-sourced data, slot ≠ id).
+  // Edges follow reports_to chains via slot → id lookup.
   const idBySlot = new Map(agents.map((a) => [a.slot, a.id]));
   const edges: Edge[] = agents
     .filter((a) => a.reportsToSlot && idBySlot.has(a.reportsToSlot))
@@ -135,7 +183,7 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-export function OrgGraph({ agents, height = 560 }: OrgGraphProps) {
+export function OrgGraph({ agents, height = 680 }: OrgGraphProps) {
   const { nodes, edges } = useMemo(() => buildLayout(agents), [agents]);
 
   return (

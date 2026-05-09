@@ -96,7 +96,7 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
                 reportsToSlot: a.reports_to ?? undefined,
                 status: a.status,
               }))}
-              height={460}
+              height={680}
             />
           </Card>
 
