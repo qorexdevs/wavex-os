@@ -138,7 +138,67 @@ app.get("/api/health", async () => ({
   companyDir: COMPANY_DIR,
 }));
 
-app.get("/api/agents", async () => ({ agents }));
+/** Status projection — manifest enum to FleetGraph enum. Manifest uses
+ *  active/standby/parked/disabled; FleetGraph renders pending/spawning/ready/failed.
+ *  Map: active→ready, standby→pending, parked→pending, disabled→failed.
+ *  Pre-existing legacy values pass through unchanged. */
+function projectAgentStatus(s: string): "pending" | "spawning" | "ready" | "failed" {
+  if (s === "active" || s === "ready") return "ready";
+  if (s === "standby" || s === "parked" || s === "pending") return "pending";
+  if (s === "disabled" || s === "failed") return "failed";
+  if (s === "spawning") return "spawning";
+  return "ready";
+}
+
+interface DbAgentRow {
+  id: string;
+  slot: string;
+  templateId: string | null;
+  reportsToSlot: string | null;
+  ownedKpiIds: string[] | null;
+  status: string;
+  spawnedAt: Date;
+}
+
+app.get<{ Querystring: { companyId?: string } }>("/api/agents", async (req) => {
+  const companyId = req.query.companyId?.trim();
+  if (companyId) {
+    try {
+      const { getDb, agents: agentsTable } = await import("@wavex-os/db");
+      const { eq, asc } = await import("drizzle-orm");
+      const db = await getDb();
+      const rows = await db.select({
+        id: agentsTable.id,
+        slot: agentsTable.slot,
+        templateId: agentsTable.templateId,
+        reportsToSlot: agentsTable.reportsToSlot,
+        ownedKpiIds: agentsTable.ownedKpiIds,
+        status: agentsTable.status,
+        spawnedAt: agentsTable.spawnedAt,
+      })
+        .from(agentsTable)
+        .where(eq(agentsTable.companyId, companyId))
+        .orderBy(asc(agentsTable.tier), asc(agentsTable.slot));
+      if (rows.length > 0) {
+        const projected = (rows as DbAgentRow[]).map((r) => ({
+          agentId: r.id,
+          slot: r.slot,
+          templateId: r.templateId ?? r.slot,
+          reportsToSlot: r.reportsToSlot ?? undefined,
+          ownedKpiIds: r.ownedKpiIds ?? [],
+          status: projectAgentStatus(r.status),
+          spawnedAt: r.spawnedAt.toISOString(),
+        }));
+        return { agents: projected };
+      }
+    } catch (err) {
+      // DB unavailable / not migrated — fall through to legacy filesystem list
+      // eslint-disable-next-line no-console
+      console.warn("[wavex-mock-core] /api/agents DB read failed, falling back to filesystem:", (err as Error).message);
+    }
+  }
+  return { agents };
+});
 
 // --- Claude Max OAuth probe ----------------------------------------------
 // Invokes scripts/wrappers/claude-anthropic-direct.sh probe and returns its
