@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactFlow, { Background, Controls, MarkerType, Node, Edge } from "reactflow";
+import { useCompany } from "../../op-omega/lib/CompanyContext";
 import { TEMPLATES_BY_ID } from "../../data/templates";
 
 interface AgentRecord {
@@ -13,14 +14,20 @@ interface AgentRecord {
 }
 
 export function FleetGraph() {
+  const { companyId } = useCompany();
   const [agents, setAgents] = useState<AgentRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!companyId) {
+      setAgents(null);
+      return;
+    }
     let alive = true;
     async function load() {
       try {
-        const resp = await fetch("/api/paperclip/agents");
+        const url = `/api/agents?companyId=${encodeURIComponent(companyId!)}`;
+        const resp = await fetch(url);
         if (!resp.ok) throw new Error(`agents fetch ${resp.status}`);
         const json = await resp.json();
         if (alive) setAgents(json.agents ?? []);
@@ -31,7 +38,7 @@ export function FleetGraph() {
     load();
     const id = setInterval(load, 8_000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [companyId]);
 
   const { nodes, edges } = useMemo(() => buildLayout(agents ?? []), [agents]);
 
