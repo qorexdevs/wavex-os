@@ -13,6 +13,7 @@ import { Pillar3 } from "./pillars/Pillar3";
 import { Pillar4 } from "./pillars/Pillar4";
 import { Pillar5 } from "./pillars/Pillar5";
 import { Phase2Connectors } from "./phases/Phase2Connectors";
+import { CredentialConcierge } from "./phases/CredentialConcierge";
 import { Phase3Swarm } from "./phases/Phase3Swarm";
 import { Phase4Workflows } from "./phases/Phase4Workflows";
 import { Materialize } from "./phases/Materialize";
@@ -20,7 +21,8 @@ import { Materialize } from "./phases/Materialize";
 type Phase =
   | "welcome"
   | "pillar-1" | "pillar-2" | "pillar-3" | "pillar-4" | "pillar-5"
-  | "phase-2-connectors" | "phase-3-swarm" | "phase-4-workflows"
+  | "phase-2-connectors" | "credential-concierge"
+  | "phase-3-swarm" | "phase-4-workflows"
   | "materialize";
 
 export function OmegaOnboarding() {
@@ -92,7 +94,10 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
         <Pillar5 companyId={companyId} initial={pr?.pillar_5 ?? undefined} onComplete={() => advance("phase-2-connectors")} />
       )}
       {phase === "phase-2-connectors" && (
-        <Phase2Connectors companyId={companyId} onComplete={() => advance("phase-3-swarm")} />
+        <Phase2Connectors companyId={companyId} onComplete={() => advance("credential-concierge")} />
+      )}
+      {phase === "credential-concierge" && (
+        <CredentialConcierge companyId={companyId} onComplete={() => advance("phase-3-swarm")} />
       )}
       {phase === "phase-3-swarm" && (
         <Phase3Swarm companyId={companyId} onComplete={() => advance("phase-4-workflows")} />
@@ -115,6 +120,7 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
     { key: "pillar-4", label: "4·GTM" },
     { key: "pillar-5", label: "5·Comms" },
     { key: "phase-2-connectors", label: "Connectors" },
+    { key: "credential-concierge", label: "Credentials" },
     { key: "phase-3-swarm", label: "Swarm" },
     { key: "phase-4-workflows", label: "Workflows" },
     { key: "materialize", label: "Finalize" },

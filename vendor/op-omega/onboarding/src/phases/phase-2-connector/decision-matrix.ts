@@ -230,6 +230,77 @@ export function runDecisionMatrix(
     });
   }
 
+  // Wavex-os expansion (2026-05) — additional industries the original matrix
+  // didn't have rules for. Each pushes the relevant connectors as P2 deferred;
+  // applyIndustryAdjustments below promotes them based on stage + GTM signal.
+
+  if (industry === "consumer_hardware") {
+    deferred.push(
+      { id: "shopify", priority: "P1", rationale: "Consumer hardware — direct-to-consumer storefront for SKUs, inventory, and order events. cfo + cdo consume order entities here.", status: "pending_decision" },
+      { id: "stripe", priority: "P1", rationale: "Consumer hardware — payment + financing rails. cfo.econ derives MRR-equivalent + payback from Stripe events.", status: "pending_decision" },
+      { id: "shipstation", priority: "P2", rationale: "Consumer hardware — fulfillment-state observability so support + ops agents see ship/delivery cohorts.", status: "pending_decision" },
+      { id: "klaviyo", priority: "P2", rationale: "Consumer hardware — owner of post-purchase lifecycle email + SMS. cmo.lifecycle activates against Klaviyo cohorts.", status: "pending_decision" },
+    );
+  }
+
+  if (industry === "marketplace") {
+    deferred.push(
+      { id: "stripe-connect", priority: "P0", rationale: "Marketplace — Stripe Connect handles seller payouts + take-rate accounting. cfo.econ keys off Connect transfer events.", status: "pending_decision" },
+      { id: "segment", priority: "P1", rationale: "Marketplace — supply + demand events benefit from a single event pipe. cdo.signal joins both sides via Segment identifiers.", status: "pending_decision" },
+      { id: "shipstation", priority: "P2", rationale: "Marketplace — fulfillment visibility (when sellers ship through marketplace pipes) feeds buyer-trust dashboards.", status: "pending_decision" },
+    );
+  }
+
+  if (industry === "legal_tech") {
+    deferred.push(
+      { id: "stripe", priority: "P1", rationale: "Legal tech — billing + retainer collection. cfo.econ tracks AR + cash conversion from Stripe.", status: "pending_decision" },
+      { id: "docusign", priority: "P1", rationale: "Legal tech — DocuSign is the engagement-letter + contract substrate. cpo.adoption keys off completed envelopes.", status: "pending_decision" },
+      { id: "clio", priority: "P2", rationale: "Legal tech — Clio (or Practice Management equiv) holds matter + time-entry truth. cdo.attribute joins Clio events to revenue.", status: "pending_decision" },
+    );
+  }
+
+  if (industry === "edtech") {
+    deferred.push(
+      { id: "stripe", priority: "P1", rationale: "Edtech — tuition / subscription billing. cfo.econ + cmo.retention key off Stripe subscription state.", status: "pending_decision" },
+      { id: "sendgrid", priority: "P2", rationale: "Edtech — transactional email (course welcome, completion certificates, drip nurture). cmo.lifecycle bundles fire here.", status: "pending_decision" },
+      { id: "mixpanel", priority: "P1", rationale: "Edtech — engagement + completion telemetry is the activation funnel. cpo.growth + cdo.signal use Mixpanel cohorts.", status: "pending_decision" },
+    );
+  }
+
+  if (industry === "services_to_saas" || industry === "agency_services") {
+    deferred.push(
+      { id: "stripe", priority: "P1", rationale: "Services-to-SaaS — recurring billing for the SaaS tier. cfo.econ tracks the services-vs-SaaS revenue mix.", status: "pending_decision" },
+      { id: "hubspot", priority: "P1", rationale: "Services-to-SaaS — services pipeline + SaaS upsell motion both flow through CRM. cro.expansion keys off HubSpot.", status: "pending_decision" },
+      { id: "calendly", priority: "P2", rationale: "Services-to-SaaS — discovery + scoping calls are pipeline events. cdo.attribute joins Calendly meetings to revenue.", status: "pending_decision" },
+    );
+  }
+
+  if (industry === "b2c") {
+    deferred.push(
+      { id: "stripe", priority: "P1", rationale: "B2C — direct-pay billing rail. cfo.econ + cmo.retention both depend on Stripe subscription / one-time event state.", status: "pending_decision" },
+      { id: "klaviyo", priority: "P2", rationale: "B2C — lifecycle email + SMS to consumers. cmo.lifecycle activates against Klaviyo cohorts.", status: "pending_decision" },
+      { id: "intercom", priority: "P2", rationale: "B2C — in-app messaging + support routing for high-volume consumer conversations.", status: "pending_decision" },
+    );
+  }
+
+  // Default fallback for any industry without a specific rule (e.g. "unknown",
+  // anything T2 enrichment classified that we don't have explicit rules for).
+  // Surfaces the most universally-applicable commercial connectors as P2 deferred
+  // so the operator at least sees them and can promote via Concierge / refinement.
+  const KNOWN_INDUSTRIES = new Set([
+    "dev_tools", "dev_infrastructure", "fintech", "fintech_retail", "healthtech",
+    "legal_tech", "dtc_ecommerce", "consumer_mobile", "consumer_ai", "enterprise_saas",
+    "marketplace", "edtech", "agency_services", "services_to_saas", "consumer_hardware",
+    "b2c",
+  ]);
+  if (industry && !KNOWN_INDUSTRIES.has(industry)) {
+    deferred.push(
+      { id: "stripe", priority: "P2", rationale: `Industry "${industry}" — Stripe is the universal billing substrate. Likely needed once revenue motion lands.`, status: "pending_decision" },
+      { id: "hubspot", priority: "P2", rationale: `Industry "${industry}" — CRM as catch-all pipeline + customer-state surface. Promote via Concierge if your motion needs one.`, status: "pending_decision" },
+      { id: "mixpanel", priority: "P2", rationale: `Industry "${industry}" — product analytics for activation + retention. Optional but high-value once you have users to measure.`, status: "pending_decision" },
+    );
+  }
+
   // === LEAD SOURCE ADJUSTMENTS ===
   // Apply after base placement: reshuffle priorities based on how the operator
   // acquires customers. Different lead sources demand different attribution fidelity.
@@ -438,5 +509,78 @@ function applyIndustryAdjustments(
       reassign(buckets, "github", foundGh.bucket, foundGh.entry.priority,
         `Open-core dev-tools — GitHub activity (stars, issues, contributors) is a community-growth signal. cdo.signal treats it as a first-class telemetry source.`);
     }
+  }
+
+  // Wavex-os expansion (2026-05): promote new-industry connectors when stage
+  // signal warrants. Pre-revenue companies stay in deferred; live-paying ones
+  // get the substrate promoted to required (or suggested for non-load-bearing).
+
+  if (industry === "consumer_hardware") {
+    if (livePaying) {
+      reassign(buckets, "shopify", "required", "P0",
+        `Consumer hardware (live + paying) — Shopify is your direct-sale substrate. Order entities + customer records + fulfillment state flow from here into cfo.econ + cdo.signal.`);
+      reassign(buckets, "stripe", "required", "P0",
+        `Consumer hardware (live + paying) — Stripe is the payment + financing rail. cfo.econ derives MRR-equivalent + payback timeline directly from charge events.`);
+      reassign(buckets, "klaviyo", "suggested", "P1",
+        `Consumer hardware — post-purchase lifecycle email/SMS is the lever for upsell + retention. cmo.lifecycle activates against Klaviyo cohorts.`);
+    }
+  }
+
+  if (industry === "marketplace") {
+    if (livePaying) {
+      reassign(buckets, "stripe-connect", "required", "P-1",
+        `Marketplace (live + paying) — Stripe Connect is the take-rate accounting substrate. cfo.econ keys off Connect transfer events for both sides.`);
+      reassign(buckets, "segment", "suggested", "P0",
+        `Marketplace — Segment unifies supply + demand events into a single identifier-keyed stream. cdo.signal joins both sides via Segment.`);
+    }
+  }
+
+  if (industry === "legal_tech") {
+    if (livePaying) {
+      reassign(buckets, "stripe", "required", "P0",
+        `Legal tech (live + paying) — Stripe handles retainer + hourly billing. cfo.econ keys off Stripe for AR + collections.`);
+      reassign(buckets, "docusign", "suggested", "P1",
+        `Legal tech — DocuSign envelopes are the engagement-letter + matter-start signal. cpo.adoption keys off completed envelope events.`);
+    }
+  }
+
+  if (industry === "edtech") {
+    if (livePaying) {
+      reassign(buckets, "stripe", "required", "P0",
+        `Edtech (live + paying) — Stripe is the tuition / subscription substrate. cfo.econ + cmo.retention both consume Stripe state.`);
+      reassign(buckets, "mixpanel", "required", "P-1",
+        `Edtech — engagement + completion telemetry is the activation funnel. cpo.growth + cdo.signal use Mixpanel cohorts as the primary lever.`);
+    }
+  }
+
+  if (industry === "services_to_saas" || industry === "agency_services") {
+    if (livePaying) {
+      reassign(buckets, "stripe", "required", "P0",
+        `Services-to-SaaS (live + paying) — recurring billing for the SaaS tier flows through Stripe. cfo.econ tracks the services-vs-SaaS revenue mix from here.`);
+      reassign(buckets, "hubspot", "suggested", "P0",
+        `Services-to-SaaS — services pipeline + SaaS upsell motion both flow through CRM. cro.expansion keys off HubSpot pipeline state.`);
+    }
+  }
+
+  if (industry === "b2c") {
+    if (livePaying) {
+      reassign(buckets, "stripe", "required", "P0",
+        `B2C (live + paying) — direct-pay billing rail. cfo.econ + cmo.retention both depend on Stripe subscription / one-time event state.`);
+      reassign(buckets, "klaviyo", "suggested", "P1",
+        `B2C — lifecycle email + SMS to consumers. cmo.lifecycle activates against Klaviyo cohorts for retention + reactivation.`);
+    }
+  }
+
+  // Promote unknown-industry default connectors (Stripe / HubSpot / Mixpanel)
+  // when stage warrants — the operator probably wants Stripe at minimum if live.
+  const KNOWN_INDUSTRIES_INNER = new Set([
+    "dev_tools", "dev_infrastructure", "fintech", "fintech_retail", "healthtech",
+    "legal_tech", "dtc_ecommerce", "consumer_mobile", "consumer_ai", "enterprise_saas",
+    "marketplace", "edtech", "agency_services", "services_to_saas", "consumer_hardware",
+    "b2c",
+  ]);
+  if (industry && !KNOWN_INDUSTRIES_INNER.has(industry) && livePaying) {
+    reassign(buckets, "stripe", "suggested", "P1",
+      `Live + paying with unmapped industry — Stripe is the safest universal billing assumption. Promote via Concierge if you confirm.`);
   }
 }

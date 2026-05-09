@@ -58,7 +58,7 @@ button.secondary {
 }
 button.secondary:hover { background: var(--surface-2); }
 
-input, textarea, select {
+input:not([type="radio"]):not([type="checkbox"]), textarea, select {
   font-family: inherit;
   font-size: 14px;
   background: var(--surface);
@@ -68,9 +68,14 @@ input, textarea, select {
   padding: 0.65rem 0.85rem;
   width: 100%;
 }
-input:focus, textarea:focus, select:focus {
+input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+input[type="radio"], input[type="checkbox"] {
+  flex-shrink: 0;
+  width: auto;
+  cursor: pointer;
 }
 
 .layout {

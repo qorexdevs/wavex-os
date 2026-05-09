@@ -39,10 +39,20 @@ const VALID_STATUSES: ConnectorEntryStatus[] = ["configured", "pending_credentia
 const REGISTRY_IDS = new Set([
   // Core 7
   "claude-code", "mixpanel", "slack", "supabase", "github", "telegram", "whatsapp",
-  // Industry-specific
+  // Industry-specific (original)
   "shopify", "segment", "hubspot", "plaid", "posthog",
   // Deferred-by-default (surfaced when GTM or industry warrants)
   "meta-ads-api", "google-ads-api", "linkedin-sales-nav", "twilio-sms",
+  // Wavex-os expansion (2026-05) — broader commercial registry so T2 can
+  // adapt the baseline using the rich Pillar 1 enrichment context. Each id
+  // here is mirrored in CONNECTOR_KEY_SCHEMA in op-omega-server's credentials
+  // route so the Concierge knows how to render the paste UI.
+  "stripe", "stripe-connect", "bigcommerce", "shipstation", "klaviyo",
+  "salesforce", "intercom", "zendesk", "calendly",
+  "notion", "airtable", "linear", "google_calendar", "google_drive", "gmail",
+  "discord", "sendgrid", "amplitude",
+  "docusign", "clio",
+  "openai", "anthropic",
 ]);
 
 /**
@@ -140,14 +150,32 @@ function validateT2Manifest(raw: unknown, baseline: ConnectorManifest): Connecto
   const suggestedFiltered = suggested.filter((e) => REGISTRY_IDS.has(e.id));
   if (requiredFiltered.length === 0) return null;
 
+  // Required-floor enforcement (Wavex-os 2026-05): every connector the
+  // matrix placed in `required` MUST appear in T2's required output. If T2
+  // dropped one, restore it from baseline. Prevents T2 hallucinations from
+  // removing load-bearing connectors.
+  const baselineRequiredIds = new Set(baseline.required.map((e) => e.id));
+  const t2RequiredIds = new Set(requiredFiltered.map((e) => e.id));
+  const missing: ConnectorEntry[] = [];
+  for (const baseEntry of baseline.required) {
+    if (!t2RequiredIds.has(baseEntry.id)) missing.push(baseEntry);
+  }
+  const enforcedRequired = [...requiredFiltered, ...missing];
+  // Also de-dupe suggested/deferred against required (T2 might have left a
+  // baseline-required connector in a lower bucket; remove the dupe).
+  const enforcedRequiredIds = new Set(enforcedRequired.map((e) => e.id));
+  const dedupedSuggested = suggestedFiltered.filter((e) => !enforcedRequiredIds.has(e.id));
+  const dedupedDeferred = deferred.filter((e) => !enforcedRequiredIds.has(e.id));
+  void baselineRequiredIds; // referenced for clarity above
+
   return {
     schema_version: CONNECTOR_MANIFEST_SCHEMA_VERSION,
     generated_at: baseline.generated_at,
     generated_by: baseline.generated_by,
     based_on: baseline.based_on,
-    required: requiredFiltered,
-    suggested: suggestedFiltered,
-    deferred,
+    required: enforcedRequired,
+    suggested: dedupedSuggested,
+    deferred: dedupedDeferred,
     blocked_on_manual_approval: blocked,
     dry_run_expires_at: baseline.dry_run_expires_at,
   };

@@ -145,6 +145,44 @@ export const opOmegaOnboardingApi = {
     "POST", "/op-omega/onboarding/pillar/5/test-send", input,
   ),
 
+  // Credential Concierge
+  listCredentials: (companyId: string) =>
+    call<{
+      ok: true;
+      companyId: string;
+      connectors: Array<{
+        connectorId: string;
+        bucket: "required" | "suggested" | "deferred";
+        priority: string;
+        rationale: string;
+        status: "vaulted_valid" | "vaulted_unvalidated" | "skipped" | "pending";
+        vaultedKeys: string[];
+        expectedKeys: string[];
+        hasProbe: boolean;
+        lastTestedAt: string | null;
+        lastTestResult: { ok: boolean; detail?: string } | null;
+        skipReason: string | null;
+        composioManaged: boolean;
+      }>;
+      progress: { requiredCount: number; requiredReady: number; allRequiredAddressed: boolean };
+    }>("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`),
+
+  pasteCredential: (input: {
+    companyId: string; connectorId: string; key: string; plaintext: string;
+  }) => call<{ ok: true; vaultedAt: string }>(
+    "POST", "/op-omega/onboarding/credentials/paste", input,
+  ),
+
+  testCredential: (input: { companyId: string; connectorId: string }) =>
+    call<{ ok: boolean; detail: string }>(
+      "POST", "/op-omega/onboarding/credentials/test", input,
+    ),
+
+  skipCredential: (input: { companyId: string; connectorId: string; reason: string }) =>
+    call<{ ok: true }>(
+      "POST", "/op-omega/onboarding/credentials/skip", input,
+    ),
+
   // Probes
   claudeCodeCheck: () => call<ProbeResponse>("GET", "/op-omega/onboarding/claude-code-check"),
 

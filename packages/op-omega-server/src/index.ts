@@ -17,6 +17,7 @@ import { registerProbeRoutes } from "./routes/probe.js";
 import { registerInstanceRoutes } from "./routes/instance.js";
 import { registerObservabilityRoutes } from "./routes/observability.js";
 import { registerPillar5TestSendRoute } from "./routes/pillar5-test-send.js";
+import { registerCredentialRoutes } from "./routes/credentials.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -34,6 +35,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerInstanceRoutes(app);
   registerObservabilityRoutes(app);
   registerPillar5TestSendRoute(app);
+  registerCredentialRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

@@ -33,7 +33,7 @@ export type PromptPhaseId = "phase-2" | "phase-3" | "phase-4" | "finalize-imprin
  * correspond to. Bump when you change the inline prompt in `src/phases/*`.
  */
 export const CURRENT_PROMPT_VERSIONS: Record<PromptPhaseId, string> = {
-  "phase-2": "0.3.0",
+  "phase-2": "0.4.0",
   "phase-3": "0.6.0",
   "phase-4": "0.4.0",
   "finalize-imprint": "0.1.0",

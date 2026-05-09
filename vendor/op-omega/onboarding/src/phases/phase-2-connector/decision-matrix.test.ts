@@ -124,10 +124,17 @@ describe("Phase 2 decision matrix", () => {
     expect(m.deferred.some((d) => d.id === "linkedin-sales-nav")).toBe(true);
   });
 
-  it("never includes stripe (financials via supabase per operator directive)", () => {
+  it("surfaces Stripe (or stripe-connect) for live-paying companies whose industry has a billing motion", () => {
+    // Wavex-os 2026-05: the original "never include stripe" rule is gone.
+    // The expanded matrix surfaces Stripe / Stripe Connect via industry-specific
+    // rules (consumer_hardware, marketplace, legal_tech, edtech, services_to_saas,
+    // b2c) AND via the unknown-industry default fallback for live-paying companies.
+    // For an unmapped industry like "b2b_saas" with live_paying_customers,
+    // we expect Stripe to appear at minimum as suggested.
     const m = runDecisionMatrix(fullResponses());
     const all = [...m.required, ...m.suggested, ...m.deferred];
-    expect(all.some((e) => e.id === "stripe")).toBe(false);
+    const stripeOrConnect = all.some((e) => e.id === "stripe" || e.id === "stripe-connect");
+    expect(stripeOrConnect).toBe(true);
   });
 
   it("pre-product branches skip product-dependent connectors", () => {
