@@ -9,6 +9,8 @@ import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { OrgGraph, type OrgAgent } from "../../components/OrgGraph";
+import { templateIdForSlot } from "../../data/slot-to-template";
 import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
@@ -80,6 +82,22 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
               <span><strong>{manifest.topology.disabled_count}</strong> disabled</span>
               <span className="text-dim">· {manifest.topology.total_base_roster} total slots</span>
             </div>
+          </Card>
+
+          <Card>
+            <h3 style={{ margin: "0 0 0.75rem 0", fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Org chart
+            </h3>
+            <OrgGraph
+              agents={agentEntries.map(([slot, a]): OrgAgent => ({
+                id: slot,
+                slot,
+                templateId: templateIdForSlot(slot),
+                reportsToSlot: a.reports_to ?? undefined,
+                status: a.status,
+              }))}
+              height={460}
+            />
           </Card>
 
           <Card>
