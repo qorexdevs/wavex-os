@@ -13,15 +13,27 @@ export function isT0FastMode(): boolean {
   return urlFlag("t0");
 }
 
+/** Whitelist of params treated as dev-only flags. preserveDevFlags / devFlagsOnly
+ *  carry these forward across navigation; everything else is dropped. */
+const DEV_FLAG_KEYS = ["t0"];
+
 /** Returns the current URL search-string with `extra` appended, preserving
  *  any dev flags currently set (so e.g. ?t0=1 survives navigation when we
  *  add `companyId=...`). Operator-facing query params should NOT be passed
- *  in `extra` — use the normal route params for those. */
+ *  in `extra` — use the normal route params for those.
+ *
+ *  IMPORTANT: this preserves ONLY the whitelisted dev flags from the current
+ *  URL — operator params (companyId, etc.) are NOT carried forward. To
+ *  navigate while keeping companyId, pass it explicitly in `extra`. */
 export function preserveDevFlags(extra: string): string {
   if (typeof window === "undefined") return extra;
   const current = new URLSearchParams(window.location.search);
+  const next = new URLSearchParams();
+  for (const key of DEV_FLAG_KEYS) {
+    const v = current.get(key);
+    if (v != null) next.set(key, v);
+  }
   const incoming = new URLSearchParams(extra);
-  // Add incoming on top of current; incoming overrides on key conflict.
-  for (const [k, v] of incoming) current.set(k, v);
-  return current.toString();
+  for (const [k, v] of incoming) next.set(k, v);
+  return next.toString();
 }
