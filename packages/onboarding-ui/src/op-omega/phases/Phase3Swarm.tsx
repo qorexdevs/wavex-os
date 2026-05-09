@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
 
@@ -38,31 +40,32 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
     }
   }
 
-  useEffect(() => { void generate(true); }, [companyId]);
+  // T2 refinement runs automatically on mount. Pillar 1 enrichment (ICP,
+  // friction hypothesis, differentiator, tone) shapes per-agent skill_overlays.
+  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
+  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
 
   const agentEntries = manifest ? Object.entries(manifest.agents) : [];
-  const byStatus = agentEntries.reduce<Record<string, number>>((acc, [, a]) => {
-    acc[a.status] = (acc[a.status] ?? 0) + 1;
-    return acc;
-  }, {});
 
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 3 — Swarm</H2>
       <P>
         Predicate-driven activation: kernel (CEO + Chief of Staff) always active; C-suite
-        roles activate by pillar signals + connector availability. Standby = ready but
-        a required connector isn't wired yet. Parked = may unpark when business evolves.
+        roles activate by pillar signals + connector availability. T2 enrichment runs
+        automatically — your Pillar 1 context shapes each agent's skill_overlay text.
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
+      <T2ProgressIndicator active={busy} phase="phase-3" />
+
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
-          {busy ? "Deriving…" : "Re-derive (T0 fast)"}
-        </button>
         <button type="button" onClick={() => void generate(false)} disabled={busy}>
-          Refine with T2 →
+          {busy ? "Refining…" : "↻ Re-refine with T2"}
+        </button>
+        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
+          Skip T2 (T0 fast)
         </button>
         {source && <span className="text-dim" style={{ fontSize: 12, alignSelf: "center" }}>source: {source}</span>}
       </div>

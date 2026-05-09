@@ -159,8 +159,11 @@ test.describe("onboarding wizard — full walk", () => {
   test("walks welcome → 5 pillars → 3 phases → concierge → finalize", async ({ page }) => {
     test.slow(); // overall walk takes 1-2 minutes
 
-    // Welcome screen
-    await page.goto("/onboarding");
+    // ?t0=1 forces T0-fast mode in Phase 2/3/4 — keeps the browser walk
+    // deterministic + ~10s instead of ~3min waiting for live T2 refinement.
+    // (T2 enrichment is exercised by the API-level e2e battery + by the
+    // Pillar 1 walk in this spec.)
+    await page.goto("/onboarding?t0=1");
     await expect(page.getByRole("heading", { name: /Onboarding/i }).first()).toBeVisible();
     await page.locator("input[autofocus], input:not([type='radio']):not([type='checkbox'])").first().fill(COMPANY_NAME);
     await page.getByRole("button", { name: /^Start/i }).click();

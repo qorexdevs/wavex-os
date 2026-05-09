@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { ConnectorManifest, ConnectorEntry } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
 
@@ -54,25 +56,33 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
     }
   }
 
-  useEffect(() => { void generate(true); /* fast path on load — recompute via T2 button */ }, [companyId]);
+  // T2 refinement runs automatically on mount — no button click required.
+  // The matrix baseline is computed server-side first; T2 then refines it
+  // using your Pillar 1 enrichment (ICP, friction, differentiator, etc.) to
+  // tighten per-connector rationale and add/promote based on evidence.
+  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
+  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 2 — Connectors</H2>
       <P>
-        Derived deterministically from Pillars 3, 4, 5. <strong>Required</strong> connectors must
-        be configured before materialize; <strong>suggested</strong> can be added later.
-        T2 refinement (Claude) can adjust priorities + add per-connector rationale.
+        Derived from Pillars 1-5. <strong>Required</strong> connectors must be configured
+        before materialize; <strong>suggested</strong> can be added later. T2 enrichment
+        runs automatically — your Pillar 1 context (ICP, friction, differentiator) shapes
+        the per-connector rationale + can add/promote based on evidence.
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
+      <T2ProgressIndicator active={busy} phase="phase-2" />
+
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
-          {busy ? "Deriving…" : "Re-derive (T0 fast)"}
-        </button>
         <button type="button" onClick={() => void generate(false)} disabled={busy}>
-          Refine with T2 →
+          {busy ? "Refining…" : "↻ Re-refine with T2"}
+        </button>
+        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
+          Skip T2 (T0 fast)
         </button>
         {source && <span className="text-dim" style={{ fontSize: 12, alignSelf: "center" }}>source: {source}</span>}
       </div>

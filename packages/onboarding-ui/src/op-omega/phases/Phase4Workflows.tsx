@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { WorkflowManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
 
@@ -33,7 +35,10 @@ export function Phase4Workflows({ companyId, onComplete }: Props) {
     }
   }
 
-  useEffect(() => { void generate(true); }, [companyId]);
+  // T2 refinement runs automatically on mount. Pillar 1 enrichment + active
+  // swarm + connectors drive per-agent workflow patches with attribution.
+  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
+  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
 
   const agentWorkflows = manifest ? Object.entries(manifest.agent_workflows) : [];
   const bundleWorkflows = manifest ? Object.entries(manifest.bundle_workflows) : [];
@@ -46,17 +51,20 @@ export function Phase4Workflows({ companyId, onComplete }: Props) {
       <P>
         Per-agent on_fire task sequences + cross-agent bundle workflows + scheduled
         routines. The 14-day dry_run gate suppresses writes for new high-risk tasks.
-        T2 patches (with rationale + pillar_signal attribution) appear when refined.
+        T2 patches with pillar_signal attribution land automatically — see the
+        T2 patches block below for what changed and why.
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
 
+      <T2ProgressIndicator active={busy} phase="phase-4" />
+
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
-          {busy ? "Deriving…" : "Re-derive (T0 fast)"}
-        </button>
         <button type="button" onClick={() => void generate(false)} disabled={busy}>
-          Refine with T2 →
+          {busy ? "Refining…" : "↻ Re-refine with T2"}
+        </button>
+        <button type="button" className="secondary" onClick={() => void generate(true)} disabled={busy}>
+          Skip T2 (T0 fast)
         </button>
         {source && <span className="text-dim" style={{ fontSize: 12, alignSelf: "center" }}>source: {source}</span>}
       </div>

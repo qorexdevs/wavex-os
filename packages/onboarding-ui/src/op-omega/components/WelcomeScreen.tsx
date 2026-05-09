@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { opOmegaOnboardingApi } from "../lib/api";
 import { slugifyCompanyId } from "../lib/CompanyContext";
 import { Card, H2, P, Field, NavRow } from "./primitives";
+import { preserveDevFlags } from "../lib/dev-flags";
 
 export function WelcomeScreen() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export function WelcomeScreen() {
 
   function start(): void {
     if (!proposedSlug) return;
-    navigate(`/onboarding?companyId=${encodeURIComponent(proposedSlug)}`);
+    navigate(`/onboarding?${preserveDevFlags(`companyId=${encodeURIComponent(proposedSlug)}`)}`);
   }
 
   return (
@@ -69,7 +70,7 @@ export function WelcomeScreen() {
                 type="button"
                 className="secondary"
                 style={{ textAlign: "left", padding: "0.6rem 0.75rem" }}
-                onClick={() => navigate(`/onboarding?companyId=${encodeURIComponent(c.id)}`)}
+                onClick={() => navigate(`/onboarding?${preserveDevFlags(`companyId=${encodeURIComponent(c.id)}`)}`)}
               >
                 <code>{c.id}</code>{c.name !== c.id && <> · {c.name}</>}
               </button>
