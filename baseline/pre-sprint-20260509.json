@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-05-09T04:06:24.783Z",
+  "fixtures": [
+    "pre-product-solo",
+    "mega-enterprise",
+    "contradictory",
+    "acme-plg-startup"
+  ],
+  "kpis": {
+    "k1_manifest_divergence": 0.4822,
+    "k2_verdict": "CURVE_DETECTED",
+    "k3_pillar_completion_rate": null,
+    "k4_operator_correction_rate": null,
+    "k5_avg_t2_calls": 0,
+    "k5_max_t2_calls": 0,
+    "k6_mc_projection_mean": {
+      "mean_mrr_growth": 8156.740936645815,
+      "p_ruin": 0,
+      "sharpe": 0.18454138980295412
+    },
+    "k7_inference_value_gap": null
+  },
+  "per_fixture": [
+    {
+      "fixture_id": "pre-product-solo",
+      "t2_calls": 0,
+      "halted": false,
+      "bundle_allocation": [
+        0.32,
+        0.05,
+        0.09,
+        0.27,
+        0.27
+      ],
+      "active_agent_count": 16,
+      "connectors_required_count": 1,
+      "mc_strategy": "RETENTION_FIRST",
+      "mc_mean_mrr_growth": 0,
+      "mc_p_ruin": 0
+    },
+    {
+      "fixture_id": "mega-enterprise",
+      "t2_calls": 0,
+      "halted": false,
+      "bundle_allocation": [
+        0.09,
+        0.17,
+        0.3,
+        0.26,
+        0.17
+      ],
+      "active_agent_count": 32,
+      "connectors_required_count": 4,
+      "mc_strategy": "BALANCED",
+      "mc_mean_mrr_growth": 32626.96374658326,
+      "mc_p_ruin": 0
+    },
+    {
+      "fixture_id": "contradictory",
+      "t2_calls": 0,
+      "halted": false,
+      "bundle_allocation": [
+        0.43,
+        0.05,
+        0.1,
+        0.14,
+        0.29
+      ],
+      "active_agent_count": 20,
+      "connectors_required_count": 2,
+      "mc_strategy": "RETENTION_FIRST",
+      "mc_mean_mrr_growth": 0,
+      "mc_p_ruin": 0
+    },
+    {
+      "fixture_id": "acme-plg-startup",
+      "t2_calls": 0,
+      "halted": false,
+      "bundle_allocation": [
+        0.34,
+        0.27,
+        0.09,
+        0.09,
+        0.21
+      ],
+      "active_agent_count": 26,
+      "connectors_required_count": 5,
+      "mc_strategy": "BALANCED",
+      "mc_mean_mrr_growth": 0,
+      "mc_p_ruin": 0
+    }
+  ],
+  "notes": [
+    "K3 (pillar completion rate) requires runtime telemetry; not computable from fixture runs.",
+    "K4 (operator correction rate on KPI estimates) requires runtime telemetry; not computable from fixture runs.",
+    "K7 (inference value gap) would require a Suite 4 paired live vs mock run; marked null for mock-only capture.",
+    "K5 measured via mock pipeline; true per-run T2 cost is measured only in a live run."
+  ]
+}

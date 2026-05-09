@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Operator Ω · Surface Tuning Map</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d0f12;
+    color: #e6e6e6;
+    margin: 0;
+    padding: 32px;
+  }
+  h1 { font-weight: 600; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: #8a8f98; font-size: 13px; margin-bottom: 24px; }
+  .wrap { display: grid; grid-template-columns: 1fr 320px; gap: 24px; max-width: 1320px; margin: 0 auto; }
+  .chart { background: #13171c; border: 1px solid #232830; border-radius: 12px; padding: 12px; }
+  svg.plot { width: 100%; height: auto; display: block; }
+  .grid { stroke: #1f242c; stroke-width: 1; stroke-dasharray: 2 4; }
+  .axis { stroke: #3a4150; stroke-width: 1; }
+  .tick { fill: #8a8f98; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .axis-label { fill: #c8cdd4; font-size: 13px; font-weight: 500; }
+  .quad { fill: #4a5160; font-size: 11px; text-anchor: middle; font-style: italic; letter-spacing: 0.08em; text-transform: uppercase; }
+  .dot { cursor: pointer; stroke: rgba(255,255,255,0.08); stroke-width: 1; transition: transform 120ms, filter 120ms; transform-origin: center; transform-box: fill-box; }
+  .dot:hover { stroke: #fff; stroke-width: 2; filter: brightness(1.25) drop-shadow(0 0 6px currentColor); }
+  .dot.selected { stroke: #fff; stroke-width: 3; filter: brightness(1.3) drop-shadow(0 0 10px currentColor); }
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  .card { background: #13171c; border: 1px solid #232830; border-radius: 12px; padding: 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #8a8f98; font-weight: 600; }
+  .lg-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .lg-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .lg-svg { flex-shrink: 0; }
+  .lg-count { margin-left: auto; color: #8a8f98; font-variant-numeric: tabular-nums; }
+  #details { font-size: 13px; line-height: 1.55; }
+  #details.empty { color: #6a7080; }
+  .det-id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: #c8cdd4; background: #1a1f26; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+  .det-row { display: flex; gap: 8px; margin-top: 8px; }
+  .det-row strong { color: #8a8f98; font-weight: 500; min-width: 72px; font-size: 12px; }
+  .det-row span { color: #e6e6e6; font-size: 13px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; margin-right: 4px; }
+  .p-runtime { background: #1a3a2e; color: #6ee7a3; }
+  .p-prompt { background: #3a2e1a; color: #f0b954; }
+  .p-structural { background: #3a1a2e; color: #ff6b7a; }
+  .loc { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: #8a8f98; word-break: break-all; }
+  .foot { margin-top: 32px; color: #6a7080; font-size: 12px; text-align: center; }
+  @media print {
+    body { background: #fff; color: #111; padding: 12mm; }
+    .chart, .card { background: #fafbfc; border-color: #ddd; }
+    .grid { stroke: #e8ebef; }
+    .axis { stroke: #888; }
+    .tick, .sub, .lg-count, #details.empty, .quad, .foot { fill: #666; color: #666; }
+    .axis-label, .dot, .det-id, #details, .lg-row { fill: #111; color: #111; }
+    .dot { stroke: #333; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>Operator Ω · Surface Tuning Map</h1>
+    <div class="sub">40 tunables · diversity × accuracy plane · hover or click a dot for details</div>
+    <div class="chart">
+      <svg class="plot" viewBox="0 0 900 820" xmlns="http://www.w3.org/2000/svg">
+        <g><line x1="110" y1="70" x2="110" y2="750" class="grid" /><line x1="110" y1="750" x2="850" y2="750" class="grid" /><line x1="295" y1="70" x2="295" y2="750" class="grid" /><line x1="110" y1="580" x2="850" y2="580" class="grid" /><line x1="480" y1="70" x2="480" y2="750" class="axis" /><line x1="110" y1="410" x2="850" y2="410" class="axis" /><line x1="665" y1="70" x2="665" y2="750" class="grid" /><line x1="110" y1="240" x2="850" y2="240" class="grid" /><line x1="850" y1="70" x2="850" y2="750" class="grid" /><line x1="110" y1="70" x2="850" y2="70" class="grid" /></g>
+        <g>
+    <text class="quad" x="295" y="240">accuracy dial</text>
+    <text class="quad" x="665" y="240">free lunch</text>
+    <text class="quad" x="295" y="580">dead weight</text>
+    <text class="quad" x="665" y="580">diversity dial</text>
+  </g>
+        <g><text class="tick" x="110" y="772" text-anchor="middle">-2</text><text class="tick" x="96" y="754" text-anchor="end">-2</text><text class="tick" x="295" y="772" text-anchor="middle">-1</text><text class="tick" x="96" y="584" text-anchor="end">-1</text><text class="tick" x="480" y="772" text-anchor="middle">0</text><text class="tick" x="96" y="414" text-anchor="end">0</text><text class="tick" x="665" y="772" text-anchor="middle">+1</text><text class="tick" x="96" y="244" text-anchor="end">+1</text><text class="tick" x="850" y="772" text-anchor="middle">+2</text><text class="tick" x="96" y="74" text-anchor="end">+2</text></g>
+        <text class="axis-label" x="480" y="800" text-anchor="middle">diversity pull →</text>
+        <text class="axis-label" x="30" y="410" text-anchor="middle" transform="rotate(-90 30 410)">accuracy pull →</text>
+        <g><circle class="dot" cx="868.0" cy="240.0" r="9" fill="#52c896" data-id="phase2.registry_ids" data-axis="Connector set" data-phase="phase-2" data-coupling="prompt" data-div="2" data-acc="1" data-desc="Whitelist of connector IDs T2 may emit. Drops any out-of-set entries silently." data-current="16 ids (claude-code, mixpanel, slack, supabase, github, telegram, whatsapp, shopify, segment, hubspot, plaid, posthog, meta-ads-api, google-ads-api, linkedin-sales-nav, twilio-sms)" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:36" data-safe="Mirror the set in the phase-2 prompt body; drop in pairs (code+prompt)." data-risk="Adding an id not known to the connector registry service → downstream credential flow 404s."><title>phase2.registry_ids — Whitelist of connector IDs T2 may emit. Drops any out-of-set entries silently.</title></circle>
+<circle class="dot" cx="841.0" cy="255.6" r="7" fill="#f0b954" data-id="phase3.industry_delta" data-axis="Bundle allocation (L1)" data-phase="phase-3" data-coupling="runtime" data-div="2" data-acc="1" data-desc="Signed allocation adjustments per industry (fintech/consumer/etc)." data-current="~8 industries × 1..3 deltas each (±0.05)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/decision-matrix.ts:99" data-safe="±0.02..±0.10 per delta" data-risk="Overlap with gtm_delta can double-tilt and collide with clamp bounds."><title>phase3.industry_delta — Signed allocation adjustments per industry (fintech/consumer/etc).</title></circle>
+<circle class="dot" cx="841.0" cy="224.4" r="11" fill="#ff6b7a" data-id="finalize.mc_strategy_ids" data-axis="MC winner" data-phase="finalize" data-coupling="structural" data-div="2" data-acc="1" data-desc="Named strategies MC considers (RETENTION_FIRST, BALANCED, ACQUISITION_HEAVY, NARRATIVE_LED, CAPITAL_EFFICIENT)." data-current="5 strategies" data-loc="packages/plugins/onboarding/src/phases/finalize/mc-invocation.ts:72" data-safe="" data-risk="Adding a strategy requires kernel-side equations + prompt registry entry."><title>finalize.mc_strategy_ids — Named strategies MC considers (RETENTION_FIRST, BALANCED, ACQUISITION_HEAVY, NARRATIVE_LED, CAPITAL_EFFICIENT).</title></circle>
+<circle class="dot" cx="498.0" cy="410.0" r="7" fill="#7a8899" data-id="phase2.dry_run_window_days" data-axis="Dry-run gates" data-phase="phase-2" data-coupling="runtime" data-div="0" data-acc="0" data-desc="Days before external writes auto-require board approval." data-current="14" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/decision-matrix.ts:19" data-safe="7..30" data-risk="&lt;7 gives operators no time to catch drift; &gt;30 normalizes unsupervised writes."><title>phase2.dry_run_window_days — Days before external writes auto-require board approval.</title></circle>
+<circle class="dot" cx="489.0" cy="425.6" r="7" fill="#52c896" data-id="phase2.t2_timeout_ms" data-axis="Connector set" data-phase="phase-2" data-coupling="runtime" data-div="0" data-acc="0" data-desc="T2 inference call timeout for phase-2 connector generation." data-current="90000" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:156" data-safe="60000..180000" data-risk="Too short → fallback to deterministic scaffold; too long → operator waits."><title>phase2.t2_timeout_ms — T2 inference call timeout for phase-2 connector generation.</title></circle>
+<circle class="dot" cx="471.0" cy="425.6" r="7" fill="#c11b2a" data-id="phase3.t2_timeout_ms" data-axis="Active agent set" data-phase="phase-3" data-coupling="runtime" data-div="0" data-acc="0" data-desc="T2 inference timeout for swarm generation." data-current="120000" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/generate.ts:180" data-safe="90000..240000" data-risk=""><title>phase3.t2_timeout_ms — T2 inference timeout for swarm generation.</title></circle>
+<circle class="dot" cx="462.0" cy="410.0" r="7" fill="#4a9eff" data-id="phase4.scheduled_routines" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="runtime" data-div="0" data-acc="0" data-desc="Flywheel cron specs (couple/criticality hourly, bifurcate 4h, reallocate Mon 00:00, monte-carlo daily 03:00)." data-current="5 cron routines" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/scheduled-routines.ts:9" data-safe="" data-risk="Tight intervals blow up cost; loose intervals stale MC priors."><title>phase4.scheduled_routines — Flywheel cron specs (couple/criticality hourly, bifurcate 4h, reallocate Mon 00:00, monte-carlo daily 03:00).</title></circle>
+<circle class="dot" cx="471.0" cy="394.4" r="7" fill="#4a9eff" data-id="phase4.t2_timeout_ms" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="runtime" data-div="0" data-acc="0" data-desc="T2 inference timeout for workflow generation." data-current="180000" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:232" data-safe="120000..300000" data-risk=""><title>phase4.t2_timeout_ms — T2 inference timeout for workflow generation.</title></circle>
+<circle class="dot" cx="489.0" cy="394.4" r="7" fill="#ff9a4a" data-id="finalize.mc_seed" data-axis="MC projection (L2)" data-phase="finalize" data-coupling="runtime" data-div="0" data-acc="0" data-desc="RNG seed for MC reproducibility." data-current="42" data-loc="packages/plugins/onboarding/src/phases/finalize/assemble.ts:67" data-safe="" data-risk="Fixed seed guarantees reproducibility but masks sensitivity across variants."><title>finalize.mc_seed — RNG seed for MC reproducibility.</title></circle>
+<circle class="dot" cx="498.0" cy="240.0" r="9" fill="#52c896" data-id="phase2.valid_priorities" data-axis="Connector set" data-phase="phase-2" data-coupling="prompt" data-div="0" data-acc="1" data-desc="Allowed priority tiers for connector entries." data-current="P-1, P0, P1, P2" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:31" data-safe="" data-risk="Adding a tier without prompt + validator update causes silent drops."><title>phase2.valid_priorities — Allowed priority tiers for connector entries.</title></circle>
+<circle class="dot" cx="485.6" cy="257.1" r="11" fill="#52c896" data-id="phase2.valid_statuses" data-axis="Connector set" data-phase="phase-2" data-coupling="structural" data-div="0" data-acc="1" data-desc="Allowed status values for connector entries." data-current="configured, pending_credential, pending_decision" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:32" data-safe="" data-risk="New statuses need UI render support + authz implications."><title>phase2.valid_statuses — Allowed status values for connector entries.</title></circle>
+<circle class="dot" cx="465.4" cy="250.6" r="11" fill="#c11b2a" data-id="phase3.base_roster" data-axis="Active agent set" data-phase="phase-3" data-coupling="structural" data-div="0" data-acc="1" data-desc="33-agent base roster with heartbeats + default budgets." data-current="33 agents (CEO 15m/$300, chiefs 1h/$120, L·IV 2h-6h/$60-80)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/base-roster.ts:43" data-safe="" data-risk="Roster size mismatch with prompt → T2 emits unknown ids, silently dropped."><title>phase3.base_roster — 33-agent base roster with heartbeats + default budgets.</title></circle>
+<circle class="dot" cx="465.4" cy="229.4" r="11" fill="#c11b2a" data-id="phase3.base_roster_size" data-axis="Active agent set" data-phase="phase-3" data-coupling="structural" data-div="0" data-acc="1" data-desc="Canonical count of base roster members." data-current="33" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/base-roster.ts:94" data-safe="" data-risk="Must match base_roster entries exactly or tests fail."><title>phase3.base_roster_size — Canonical count of base roster members.</title></circle>
+<circle class="dot" cx="485.6" cy="222.9" r="11" fill="#f0b954" data-id="phase4.canonical_bundle_workflows" data-axis="Bundle allocation (L1)" data-phase="phase-4" data-coupling="structural" data-div="0" data-acc="1" data-desc="5 bundles × cycle length + canonical routine templates." data-current="IA=24h, PV=1w, EE=per-account, UE=1d, SP=1mo" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/bundle-workflows.ts:12" data-safe="" data-risk="Cycle length changes cascade into scheduled-routines cron specs."><title>phase4.canonical_bundle_workflows — 5 bundles × cycle length + canonical routine templates.</title></circle>
+<circle class="dot" cx="683.0" cy="580.0" r="7" fill="#52c896" data-id="phase2.rationale_slice" data-axis="Connector set" data-phase="phase-2" data-coupling="runtime" data-div="1" data-acc="-1" data-desc="Max chars for per-connector rationale text." data-current="240" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:82" data-safe="160..400" data-risk="Too short → rationales lose specificity; too long → token cost + skimming fatigue."><title>phase2.rationale_slice — Max chars for per-connector rationale text.</title></circle>
+<circle class="dot" cx="665.0" cy="598.0" r="7" fill="#52c896" data-id="phase2.blocked_reason_slice" data-axis="Connector set" data-phase="phase-2" data-coupling="runtime" data-div="1" data-acc="-1" data-desc="Max chars for blocked-connector reason text." data-current="300" data-loc="packages/plugins/onboarding/src/phases/phase-2-connector/generate.ts:96" data-safe="200..450" data-risk=""><title>phase2.blocked_reason_slice — Max chars for blocked-connector reason text.</title></circle>
+<circle class="dot" cx="647.0" cy="580.0" r="7" fill="#4a9eff" data-id="phase4.slice_caps" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="runtime" data-div="1" data-acc="-1" data-desc="Char caps on task/connector/input/output/target/escalation text." data-current="task=120, connector=60, input/output=120, target=60, on=200, to=60" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:83" data-safe="task 80..200, target 40..100" data-risk=""><title>phase4.slice_caps — Char caps on task/connector/input/output/target/escalation text.</title></circle>
+<circle class="dot" cx="665.0" cy="562.0" r="7" fill="#ff6b7a" data-id="finalize.imprint_context_slices" data-axis="MC winner" data-phase="finalize" data-coupling="runtime" data-div="1" data-acc="-1" data-desc="Char caps for imprint summary context (primary=400, secondary=180)." data-current="400, 180" data-loc="packages/plugins/onboarding/src/phases/finalize/imprint-review.ts:28" data-safe="primary 300..600, secondary 120..240" data-risk=""><title>finalize.imprint_context_slices — Char caps for imprint summary context (primary=400, secondary=180).</title></circle>
+<circle class="dot" cx="313.0" cy="240.0" r="11" fill="#c11b2a" data-id="phase3.core_agents" data-axis="Active agent set" data-phase="phase-3" data-coupling="structural" data-div="-1" data-acc="1" data-desc="Always-active base roster before industry/stage gating." data-current="7 ids (ceo.orchestrator, cpo, cmo, cro, cfo, cdo, coo)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/activation-rules.ts:32" data-safe="" data-risk="Removing a C-suite breaks reports_to graph + downstream bundle allocation."><title>phase3.core_agents — Always-active base roster before industry/stage gating.</title></circle>
+<circle class="dot" cx="277.0" cy="240.0" r="11" fill="#4a9eff" data-id="phase4.baseline_workflow_for" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="structural" data-div="-1" data-acc="1" data-desc="Per-archetype default task templates used when T2 patch is rejected or skipped." data-current="static templates keyed by agent archetype" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/workflow-templates.ts:192" data-safe="" data-risk=""><title>phase4.baseline_workflow_for — Per-archetype default task templates used when T2 patch is rejected or skipped.</title></circle>
+<circle class="dot" cx="480.0" cy="70.0" r="11" fill="#c11b2a" data-id="phase3.stage_order" data-axis="Active agent set" data-phase="phase-3" data-coupling="structural" data-div="0" data-acc="2" data-desc="Ordinal ranks for revenue stages (drives activation thresholds)." data-current="pre_product=0..more_than_1m_mrr=4" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/activation-rules.ts:58" data-safe="" data-risk="Reordering mis-activates sub-agents at the wrong revenue threshold."><title>phase3.stage_order — Ordinal ranks for revenue stages (drives activation thresholds).</title></circle>
+<circle class="dot" cx="868.0" cy="70.0" r="7" fill="#f0b954" data-id="phase3.stage_base_allocations" data-axis="Bundle allocation (L1)" data-phase="phase-3" data-coupling="runtime" data-div="2" data-acc="2" data-desc="Per-stage base allocation vectors across 5 bundles." data-current="5 stage vectors (each sums to 1.0 across IA/PV/EE/UE/SP)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/decision-matrix.ts:51" data-safe="Each weight 0.05..0.50, row sum == 1.0" data-risk="Non-normalized rows skew downstream MC priors."><title>phase3.stage_base_allocations — Per-stage base allocation vectors across 5 bundles.</title></circle>
+<circle class="dot" cx="841.0" cy="85.6" r="7" fill="#f0b954" data-id="phase3.gtm_delta" data-axis="Bundle allocation (L1)" data-phase="phase-3" data-coupling="runtime" data-div="2" data-acc="2" data-desc="Signed allocation adjustments per GTM profile (outbound/inbound/plg/etc)." data-current="8 gtm profiles × up to 5 deltas each (±0.05..±0.10)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/decision-matrix.ts:71" data-safe="±0.02..±0.15 per delta" data-risk="Large deltas push clamps; mis-signed deltas invert GTM intent."><title>phase3.gtm_delta — Signed allocation adjustments per GTM profile (outbound/inbound/plg/etc).</title></circle>
+<circle class="dot" cx="841.0" cy="54.4" r="7" fill="#ff6b7a" data-id="finalize.friction_keywords" data-axis="MC winner" data-phase="finalize" data-coupling="runtime" data-div="2" data-acc="2" data-desc="Keyword list driving Lever-E friction-biased winner re-selection." data-current="activation, onboarding, procurement, enterprise, long sales cycle, pricing, paywall, conversion, integration, setup, runway" data-loc="packages/plugins/onboarding/src/phases/finalize/mc-invocation.ts:56" data-safe="8..18 keywords" data-risk="Over-broad matches trigger re-selection on non-friction hypotheses."><title>finalize.friction_keywords — Keyword list driving Lever-E friction-biased winner re-selection.</title></circle>
+<circle class="dot" cx="110.0" cy="410.0" r="7" fill="#f0b954" data-id="phase3.balanced_default" data-axis="Bundle allocation (L1)" data-phase="phase-3" data-coupling="runtime" data-div="-2" data-acc="0" data-desc="Fallback vector when stage is unknown/other." data-current="[0.20, 0.20, 0.20, 0.20, 0.20]" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/decision-matrix.ts:59" data-safe="" data-risk=""><title>phase3.balanced_default — Fallback vector when stage is unknown/other.</title></circle>
+<circle class="dot" cx="868.0" cy="580.0" r="7" fill="#f0b954" data-id="phase3.clamp_bounds" data-axis="Bundle allocation (L1)" data-phase="phase-3" data-coupling="runtime" data-div="2" data-acc="-1" data-desc="Min/max per-bundle weight after layering gtm + industry deltas." data-current="[0.05, 0.50]" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/decision-matrix.ts:138" data-safe="min 0.02..0.10, max 0.40..0.70" data-risk="Loose clamps let one bundle dominate; tight clamps collapse toward balanced."><title>phase3.clamp_bounds — Min/max per-bundle weight after layering gtm + industry deltas.</title></circle>
+<circle class="dot" cx="832.0" cy="580.0" r="9" fill="#4a9eff" data-id="phase4.task_cap" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="prompt" data-div="2" data-acc="-1" data-desc="Max on_fire tasks emitted per agent." data-current="6" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:146" data-safe="4..8" data-risk="Higher cap → diluted per-task quality; prompt mentions the number."><title>phase4.task_cap — Max on_fire tasks emitted per agent.</title></circle>
+<circle class="dot" cx="683.0" cy="240.0" r="11" fill="#c11b2a" data-id="phase3.valid_statuses" data-axis="Active agent set" data-phase="phase-3" data-coupling="structural" data-div="1" data-acc="1" data-desc="Allowed agent status values." data-current="active, parked, disabled (standby in flight)" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/generate.ts:27" data-safe="" data-risk="Adding status requires UI rendering + downstream materialize rules."><title>phase3.valid_statuses — Allowed agent status values.</title></circle>
+<circle class="dot" cx="665.0" cy="258.0" r="11" fill="#4a9eff" data-id="phase4.valid_flows" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="structural" data-div="1" data-acc="1" data-desc="Allowed workflow flow types (ASN/TLM/CON/VAL)." data-current="ASN, TLM, CON, VAL" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:33" data-safe="" data-risk=""><title>phase4.valid_flows — Allowed workflow flow types (ASN/TLM/CON/VAL).</title></circle>
+<circle class="dot" cx="647.0" cy="240.0" r="7" fill="#4a9eff" data-id="phase4.reprompt_cap" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="runtime" data-div="1" data-acc="1" data-desc="Max re-prompts allowed after a specificity-gate failure." data-current="2" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:273" data-safe="1..4" data-risk="Higher cap → operator wait grows linearly with token cost."><title>phase4.reprompt_cap — Max re-prompts allowed after a specificity-gate failure.</title></circle>
+<circle class="dot" cx="665.0" cy="222.0" r="7" fill="#ff6b7a" data-id="finalize.p_ruin_safety_cap" data-axis="MC winner" data-phase="finalize" data-coupling="runtime" data-div="1" data-acc="1" data-desc="Max p_ruin allowed for any friction-biased strategy override." data-current="0.4" data-loc="packages/plugins/onboarding/src/phases/finalize/mc-invocation.ts:85" data-safe="0.25..0.5" data-risk="Loose cap → friction override selects risky strategies."><title>finalize.p_ruin_safety_cap — Max p_ruin allowed for any friction-biased strategy override.</title></circle>
+<circle class="dot" cx="850.0" cy="410.0" r="7" fill="#b67fff" data-id="phase3.skill_overlay_slice" data-axis="Overlay tokens" data-phase="phase-3" data-coupling="runtime" data-div="2" data-acc="0" data-desc="Max chars for per-agent skill_overlay text." data-current="400" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/generate.ts:64" data-safe="240..600" data-risk="Too short → overlays lose specificity; too long → sidebar card overflow."><title>phase3.skill_overlay_slice — Max chars for per-agent skill_overlay text.</title></circle>
+<circle class="dot" cx="683.0" cy="410.0" r="7" fill="#c11b2a" data-id="phase3.spawn_rationale_slice" data-axis="Active agent set" data-phase="phase-3" data-coupling="runtime" data-div="1" data-acc="0" data-desc="Max chars for spawn-eligibility rationale strings." data-current="300" data-loc="packages/plugins/onboarding/src/phases/phase-3-swarm/generate.ts:104" data-safe="200..400" data-risk=""><title>phase3.spawn_rationale_slice — Max chars for spawn-eligibility rationale strings.</title></circle>
+<circle class="dot" cx="656.0" cy="425.6" r="7" fill="#4a9eff" data-id="phase4.attribution_slices" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="runtime" data-div="1" data-acc="0" data-desc="Char caps on T2-patch attribution (rationale, pillar_signal)." data-current="rationale=240, pillar_signal=120" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:135" data-safe="" data-risk=""><title>phase4.attribution_slices — Char caps on T2-patch attribution (rationale, pillar_signal).</title></circle>
+<circle class="dot" cx="656.0" cy="394.4" r="7" fill="#ff9a4a" data-id="finalize.mc_horizon_cycles" data-axis="MC projection (L2)" data-phase="finalize" data-coupling="runtime" data-div="1" data-acc="0" data-desc="Monte Carlo projection horizon in flywheel cycles." data-current="30" data-loc="packages/plugins/onboarding/src/phases/finalize/assemble.ts:65" data-safe="12..60" data-risk="Short horizon hides long-tail ruin; long horizon inflates variance."><title>finalize.mc_horizon_cycles — Monte Carlo projection horizon in flywheel cycles.</title></circle>
+<circle class="dot" cx="683.0" cy="70.0" r="11" fill="#4a9eff" data-id="phase4.valid_tiers" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="structural" data-div="1" data-acc="2" data-desc="Allowed task inference tiers (T0 deterministic, T1 Ollama, T2 Claude)." data-current="T0, T1, T2" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:32" data-safe="" data-risk="Adding a tier requires routing + cost accounting changes."><title>phase4.valid_tiers — Allowed task inference tiers (T0 deterministic, T1 Ollama, T2 Claude).</title></circle>
+<circle class="dot" cx="665.0" cy="88.0" r="7" fill="#ff9a4a" data-id="finalize.mc_n_runs" data-axis="MC projection (L2)" data-phase="finalize" data-coupling="runtime" data-div="1" data-acc="2" data-desc="Monte Carlo sample size per strategy." data-current="30" data-loc="packages/plugins/onboarding/src/phases/finalize/assemble.ts:66" data-safe="20..100" data-risk="&lt;20 → noisy winner selection; &gt;100 → latency."><title>finalize.mc_n_runs — Monte Carlo sample size per strategy.</title></circle>
+<circle class="dot" cx="647.0" cy="70.0" r="11" fill="#ff9a4a" data-id="finalize.mc_model_mode_map" data-axis="MC projection (L2)" data-phase="finalize" data-coupling="structural" data-div="1" data-acc="2" data-desc="Stage → MC coupling mode (pre_scale / growth / scale)." data-current="stage-indexed lookup" data-loc="packages/plugins/onboarding/src/phases/finalize/mc-invocation.ts:48" data-safe="" data-risk="Wrong mapping → MC coupling equation uses the wrong stage prior."><title>finalize.mc_model_mode_map — Stage → MC coupling mode (pre_scale / growth / scale).</title></circle>
+<circle class="dot" cx="665.0" cy="52.0" r="7" fill="#ff6b7a" data-id="finalize.p_ruin_activation_threshold" data-axis="MC winner" data-phase="finalize" data-coupling="runtime" data-div="1" data-acc="2" data-desc="Max p_ruin allowed when friction=activation rewrites winner to RETENTION_FIRST." data-current="0.25" data-loc="packages/plugins/onboarding/src/phases/finalize/mc-invocation.ts:66" data-safe="0.15..0.35" data-risk=""><title>finalize.p_ruin_activation_threshold — Max p_ruin allowed when friction=activation rewrites winner to RETENTION_FIRST.</title></circle>
+<circle class="dot" cx="295.0" cy="70.0" r="9" fill="#4a9eff" data-id="phase4.specificity_gate" data-axis="Workflow tasks" data-phase="phase-4" data-coupling="prompt" data-div="-1" data-acc="2" data-desc="Acceptance gate on T2 patch: ≥N distinct pillar signals OR ≥M differentiation signals." data-current="≥5 distinct OR ≥2 diff, noDuplicates" data-loc="packages/plugins/onboarding/src/phases/phase-4-workflow/generate.ts:245" data-safe="distinct 3..6, diff 2..3" data-risk="Too strict → fallback to deterministic template for most operators."><title>phase4.specificity_gate — Acceptance gate on T2 patch: ≥N distinct pillar signals OR ≥M differentiation signals.</title></circle></g>
+      </svg>
+    </div>
+    <div class="foot">Regenerate with <code>pnpm omega:tune:chart</code>. Source: packages/plugins/onboarding/src/tuning/registry.ts</div>
+  </div>
+  <div class="side">
+    <div class="card">
+      <h3>axis (color)</h3>
+      <div class="lg-row"><span class="lg-dot" style="background:#c11b2a"></span>Active agent set <span class="lg-count">7</span></div><div class="lg-row"><span class="lg-dot" style="background:#b67fff"></span>Overlay tokens <span class="lg-count">1</span></div><div class="lg-row"><span class="lg-dot" style="background:#4a9eff"></span>Workflow tasks <span class="lg-count">10</span></div><div class="lg-row"><span class="lg-dot" style="background:#f0b954"></span>Bundle allocation (L1) <span class="lg-count">6</span></div><div class="lg-row"><span class="lg-dot" style="background:#52c896"></span>Connector set <span class="lg-count">6</span></div><div class="lg-row"><span class="lg-dot" style="background:#7a8899"></span>Dry-run gates <span class="lg-count">1</span></div><div class="lg-row"><span class="lg-dot" style="background:#ff6b7a"></span>MC winner <span class="lg-count">5</span></div><div class="lg-row"><span class="lg-dot" style="background:#ff9a4a"></span>MC projection (L2) <span class="lg-count">4</span></div>
+    </div>
+    <div class="card">
+      <h3>coupling (size)</h3>
+      <div class="lg-row"><svg class="lg-svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="#bbb" /></svg>runtime <span class="lg-count">24</span></div><div class="lg-row"><svg class="lg-svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#bbb" /></svg>prompt <span class="lg-count">4</span></div><div class="lg-row"><svg class="lg-svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#bbb" /></svg>structural <span class="lg-count">12</span></div>
+    </div>
+    <div class="card" id="details-card">
+      <h3>details</h3>
+      <div id="details" class="empty">Hover or click a dot.</div>
+    </div>
+  </div>
+</div>
+<script>
+  const details = document.getElementById("details");
+  const dots = document.querySelectorAll(".dot");
+  function show(el) {
+    const d = el.dataset;
+    details.classList.remove("empty");
+    details.innerHTML = [
+      '<div class="det-id">' + d.id + '</div>',
+      '<div class="det-row"><strong>axis</strong><span>' + d.axis + '</span></div>',
+      '<div class="det-row"><strong>phase</strong><span>' + d.phase + '</span></div>',
+      '<div class="det-row"><strong>coupling</strong><span class="pill p-' + d.coupling + '">' + d.coupling + '</span></div>',
+      '<div class="det-row"><strong>pulls</strong><span>div ' + (d.div >= 0 ? '+' : '') + d.div + ' · acc ' + (d.acc >= 0 ? '+' : '') + d.acc + '</span></div>',
+      '<div class="det-row"><strong>desc</strong><span>' + d.desc + '</span></div>',
+      '<div class="det-row"><strong>current</strong><span>' + d.current + '</span></div>',
+      d.safe ? '<div class="det-row"><strong>safe</strong><span>' + d.safe + '</span></div>' : '',
+      d.risk ? '<div class="det-row"><strong>risk</strong><span>' + d.risk + '</span></div>' : '',
+      '<div class="det-row"><strong>where</strong><span class="loc">' + d.loc + '</span></div>',
+    ].join('');
+  }
+  dots.forEach((el) => {
+    el.addEventListener("mouseenter", () => show(el));
+    el.addEventListener("click", () => {
+      dots.forEach((d) => d.classList.remove("selected"));
+      el.classList.add("selected");
+      show(el);
+    });
+  });
+</script>
+</body>
+</html>
