@@ -21,6 +21,7 @@ import { registerCredentialRoutes } from "./routes/credentials.js";
 import { registerRegenerateImprintRoute } from "./routes/regenerate-imprint.js";
 import { registerRefinementRoutes } from "./routes/refinement.js";
 import { registerActivateRoute } from "./routes/activate.js";
+import { registerResetRoute } from "./routes/reset.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -42,6 +43,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerRegenerateImprintRoute(app);
   registerRefinementRoutes(app);
   registerActivateRoute(app);
+  registerResetRoute(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
