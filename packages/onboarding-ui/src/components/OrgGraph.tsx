@@ -4,7 +4,12 @@
  *  both surfaces render identically. */
 
 import { useMemo } from "react";
-import ReactFlow, { Background, Controls, MarkerType, type Node, type Edge } from "reactflow";
+import ReactFlow, { Background, Controls, MarkerType, type Node, type Edge, type ReactFlowInstance } from "reactflow";
+// Reactflow's stylesheet must be imported once for nodes/edges/handles to
+// receive their `position: absolute` + transform layout. Without this, every
+// node is rendered as a block element and they cascade vertically down the
+// page instead of being positioned by their canvas coordinates.
+import "reactflow/dist/style.css";
 import { TEMPLATES_BY_ID } from "../data/templates";
 import { tierForSlot } from "../data/slot-to-template";
 
@@ -61,12 +66,14 @@ function statusColor(status: OrgAgentStatus): string {
   return "var(--text-dim)";
 }
 
+const NODE_W = 180;
+const NODE_H = 64;
+
 function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
   const tpl = TEMPLATES_BY_ID[a.templateId];
   const dotColor = statusColor(a.status);
   const origin = originLabel(tpl?.origin);
   const displayName = templateIdToDisplayName(a.templateId);
-  const NODE_W = 180;
   return {
     id: a.id,
     position: { x, y },
@@ -96,7 +103,10 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
       borderRadius: 6,
       width: NODE_W,
       padding: 0,
-      position: "relative",
+      // NB: do NOT set `position: relative` here — it overrides reactflow's
+      // `position: absolute` rule and breaks node layout (every node ends up
+      // stacking vertically in normal flow instead of being positioned by
+      // its `transform: translate(x, y)`).
     },
   };
 }
@@ -106,8 +116,6 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
  *  vertically directly under them. Beats the old "all-of-tier-3-in-one-row"
  *  approach which produced a 6000px-wide graph with 26 sub-agents. */
 function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
-  const NODE_W = 180;
-  const NODE_H = 64;
   const COL_GAP = 28;
   const T1_T2_GAP = 90;
   const T2_T3_GAP = 60;
@@ -183,7 +191,7 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-export function OrgGraph({ agents, height = 680 }: OrgGraphProps) {
+export function OrgGraph({ agents, height = 540 }: OrgGraphProps) {
   const { nodes, edges } = useMemo(() => buildLayout(agents), [agents]);
 
   return (
@@ -192,14 +200,26 @@ export function OrgGraph({ agents, height = 680 }: OrgGraphProps) {
         nodes={nodes}
         edges={edges}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.05 }}
         proOptions={{ hideAttribution: true }}
-        minZoom={0.4}
+        minZoom={0.2}
         maxZoom={1.5}
         panOnScroll
         nodesDraggable
         nodesConnectable={false}
         elementsSelectable
+        defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
+        // fitView prop alone often misfires when nodes carry custom JSX
+        // labels (sizes aren't measured at first paint). Re-fire fitView
+        // after a short delay so the viewport actually frames the content.
+        onInit={(rf: ReactFlowInstance) => {
+          // Two-pass: immediate (in case nodes have explicit size), then
+          // again after a tick (in case they need DOM measurement).
+          rf.fitView({ padding: 0.05, duration: 0 });
+          setTimeout(() => rf.fitView({ padding: 0.05, duration: 0 }), 80);
+        }}
+        // Re-key on agents.length so onInit re-fires when the topology changes
+        key={agents.length}
       >
         <Background color="var(--border)" gap={16} />
         <Controls showInteractive={false} />
