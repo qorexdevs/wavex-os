@@ -21,7 +21,10 @@
     "build": "pnpm -r --filter \"!./packages/core\" build",
     "ingest:templates": "node scripts/ingest-agency-agents.mjs",
     "lint": "echo 'TODO: eslint'",
-    "test": "echo 'TODO: vitest'"
+    "test": "pnpm -r --filter \"@wavex-os/db\" test",
+    "db:up": "pnpm --filter @wavex-os/db db:up",
+    "db:migrate": "pnpm --filter @wavex-os/db db:migrate",
+    "db:reset": "pnpm --filter @wavex-os/db db:reset"
   },
   "packageManager": "pnpm@8.15.0"
 }
