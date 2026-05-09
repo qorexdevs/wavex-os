@@ -123,11 +123,11 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
   const [resetError, setResetError] = useState<string | null>(null);
 
   const STEPS: Array<{ key: Phase; label: string }> = [
-    { key: "pillar-1", label: "1·Identity" },
-    { key: "pillar-2", label: "2·Inference" },
-    { key: "pillar-3", label: "3·Stage" },
-    { key: "pillar-4", label: "4·GTM" },
-    { key: "pillar-5", label: "5·Comms" },
+    { key: "pillar-1", label: "Identity" },
+    { key: "pillar-2", label: "Inference" },
+    { key: "pillar-3", label: "Stage" },
+    { key: "pillar-4", label: "GTM" },
+    { key: "pillar-5", label: "Comms" },
     { key: "phase-2-connectors", label: "Connectors" },
     { key: "credential-concierge", label: "Credentials" },
     { key: "phase-3-swarm", label: "Swarm" },
