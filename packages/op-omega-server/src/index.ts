@@ -19,6 +19,7 @@ import { registerObservabilityRoutes } from "./routes/observability.js";
 import { registerPillar5TestSendRoute } from "./routes/pillar5-test-send.js";
 import { registerCredentialRoutes } from "./routes/credentials.js";
 import { registerRegenerateImprintRoute } from "./routes/regenerate-imprint.js";
+import { registerRefinementRoutes } from "./routes/refinement.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -38,6 +39,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerPillar5TestSendRoute(app);
   registerCredentialRoutes(app);
   registerRegenerateImprintRoute(app);
+  registerRefinementRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

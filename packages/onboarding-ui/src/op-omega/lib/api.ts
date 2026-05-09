@@ -218,7 +218,7 @@ export const opOmegaOnboardingApi = {
     warnings: string[];
   }>("POST", "/op-omega/onboarding/finalize", input),
 
-  // Re-generate imprint with optional operator guidance
+  // Re-generate imprint with optional operator guidance (prose only)
   regenerateImprint: (input: { companyId: string; operatorGuidance?: string }) =>
     call<{
       ok: true;
@@ -227,6 +227,54 @@ export const opOmegaOnboardingApi = {
       source: "t2" | "fallback";
       warnings: string[];
     }>("POST", "/op-omega/onboarding/regenerate-imprint", input),
+
+  // Refinement (Option C): analyze guidance, propose structural changes,
+  // operator approves a subset, apply surgically + re-sign.
+  analyzeRefinement: (input: { companyId: string; operatorGuidance: string }) =>
+    call<{
+      ok: true;
+      imprint_only: boolean;
+      changes: Array<{
+        id: string;
+        action: "connector_add" | "connector_promote" | "swarm_overlay" | "workflow_task_add" | "workflow_escalation_add";
+        rationale: string;
+        pillar_signal?: string;
+        // action-specific fields (kept loose — UI renders generically)
+        connector_id?: string;
+        bucket?: "required" | "suggested" | "deferred";
+        priority?: "P-1" | "P0" | "P1" | "P2";
+        from_bucket?: "deferred" | "suggested";
+        to_bucket?: "suggested" | "required";
+        slot?: string;
+        new_overlay?: string;
+        task?: { task: string; tier?: string; flow_type?: string; connector?: string | null; dry_run_gate?: boolean };
+        on?: string;
+        to?: string;
+      }>;
+      rationale_summary: string;
+      warnings: string[];
+    }>("POST", "/op-omega/onboarding/analyze-refinement", input),
+
+  applyRefinement: (input: {
+    companyId: string;
+    operatorGuidance: string;
+    changes: unknown[];
+    regenerateImprint?: boolean;
+  }) => call<{
+    ok: true;
+    sha256: string;
+    manifest: CompanyManifest;
+    applied_change_ids: string[];
+    warnings: string[];
+  }>("POST", "/op-omega/onboarding/apply-refinement", input),
+
+  revertRefinement: (input: { companyId: string }) =>
+    call<{
+      ok: true;
+      sha256: string;
+      reverted_guidance: string;
+      reverted_change_ids: string[];
+    }>("POST", "/op-omega/onboarding/revert-refinement", input),
 
   // Instance reads (dashboard)
   getInstanceManifest: (companyId: string) =>
