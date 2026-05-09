@@ -3,10 +3,13 @@
  *  from /op-omega/onboarding/status on mount. */
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { opOmegaOnboardingApi } from "./lib/api";
+import { opOmegaOnboardingApi, ApiError } from "./lib/api";
 import { useCompany } from "./lib/CompanyContext";
 import { WelcomeScreen } from "./components/WelcomeScreen";
+import { ConfirmResetModal } from "./components/ConfirmResetModal";
+import { preserveDevFlags } from "./lib/dev-flags";
 import { Pillar1 } from "./pillars/Pillar1";
 import { Pillar2 } from "./pillars/Pillar2";
 import { Pillar3 } from "./pillars/Pillar3";
@@ -113,6 +116,12 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
 }
 
 function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase; onJump: (p: Phase) => void }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   const STEPS: Array<{ key: Phase; label: string }> = [
     { key: "pillar-1", label: "1·Identity" },
     { key: "pillar-2", label: "2·Inference" },
@@ -127,36 +136,95 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
   ];
   const idx = STEPS.findIndex((s) => s.key === phase);
 
+  async function doReset(restart: boolean): Promise<void> {
+    setResetting(true);
+    setResetError(null);
+    try {
+      await opOmegaOnboardingApi.resetCompany(companyId);
+      await qc.invalidateQueries({ queryKey: ["companies"] });
+      await qc.invalidateQueries({ queryKey: ["status", companyId] });
+      setConfirmReset(false);
+      if (restart) {
+        // Reload at same companyId — wizard will hydrate empty Pillar 1.
+        navigate(`/onboarding?${preserveDevFlags(`companyId=${encodeURIComponent(companyId)}`)}`);
+        // Status query was invalidated; force a refetch by reloading.
+        // (CompanyWizard's autoRouted gate would otherwise stick on the old phase.)
+        setTimeout(() => window.location.reload(), 100);
+      } else {
+        navigate(`/onboarding?${preserveDevFlags("")}`);
+      }
+    } catch (e) {
+      setResetError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   return (
-    <header style={{
-      position: "sticky", top: 0, zIndex: 10,
-      background: "var(--surface)", borderBottom: "1px solid var(--border)",
-      padding: "0.75rem 2rem",
-      display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem",
-    }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem" }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>WaveX OS</span>
-        <span className="text-dim" style={{ fontSize: 12 }}>· Onboarding · <code>{companyId}</code></span>
-      </div>
-      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-        {STEPS.map((s, i) => (
+    <>
+      <header style={{
+        position: "sticky", top: 0, zIndex: 10,
+        background: "var(--surface)", borderBottom: "1px solid var(--border)",
+        padding: "0.75rem 2rem",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem",
+      }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem" }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>WaveX OS</span>
+          <span className="text-dim" style={{ fontSize: 12 }}>· Onboarding · <code>{companyId}</code></span>
           <button
             type="button"
-            key={s.key}
-            onClick={() => onJump(s.key)}
+            onClick={() => { setConfirmReset(true); setResetError(null); }}
+            title="Wipe all state for this company and start over"
             style={{
-              fontSize: 11, padding: "0.2rem 0.5rem", borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: i === idx ? "var(--accent)" : i < idx ? "var(--surface-2)" : "transparent",
-              color: i === idx ? "var(--bg)" : i < idx ? "var(--text)" : "var(--text-dim)",
-              fontWeight: i === idx ? 700 : 400,
+              fontSize: 11, padding: "0.15rem 0.5rem", borderRadius: 4,
+              background: "transparent",
+              color: "var(--warning)",
+              border: "1px solid var(--warning)",
               cursor: "pointer",
+              marginLeft: "0.25rem",
             }}
           >
-            {s.label}
+            ↺ Reset
           </button>
-        ))}
-      </div>
-    </header>
+        </div>
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+          {STEPS.map((s, i) => (
+            <button
+              type="button"
+              key={s.key}
+              onClick={() => onJump(s.key)}
+              style={{
+                fontSize: 11, padding: "0.2rem 0.5rem", borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: i === idx ? "var(--accent)" : i < idx ? "var(--surface-2)" : "transparent",
+                color: i === idx ? "var(--bg)" : i < idx ? "var(--text)" : "var(--text-dim)",
+                fontWeight: i === idx ? 700 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {resetError && (
+        <div style={{
+          background: "var(--surface)", borderBottom: "1px solid var(--warning)",
+          color: "var(--warning)", padding: "0.5rem 2rem", fontSize: 13,
+        }}>
+          ✗ Reset failed: {resetError}
+        </div>
+      )}
+
+      {confirmReset && (
+        <ConfirmResetModal
+          companyId={companyId}
+          busy={resetting}
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={(restart) => void doReset(restart)}
+        />
+      )}
+    </>
   );
 }
