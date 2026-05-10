@@ -23,6 +23,7 @@ import { registerRefinementRoutes } from "./routes/refinement.js";
 import { registerActivateRoute } from "./routes/activate.js";
 import { registerResetRoute } from "./routes/reset.js";
 import { registerSwapTemplateRoute } from "./routes/swap-template.js";
+import { registerInferenceStatusRoute } from "./routes/inference-status.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -46,6 +47,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerActivateRoute(app);
   registerResetRoute(app);
   registerSwapTemplateRoute(app);
+  registerInferenceStatusRoute(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

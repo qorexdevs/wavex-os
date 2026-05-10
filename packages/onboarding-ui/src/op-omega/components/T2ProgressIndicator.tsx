@@ -1,96 +1,121 @@
-/** Shared progressive-enrichment indicator for Phase 2/3/4 T2 calls.
- *  Mirrors the Pillar 1 pattern — 5 stages, animated bar, advances on
- *  fixed timers while the request is in flight. Advisory only (server
- *  doesn't actually stream progress; gives the operator something useful
- *  to look at instead of a blank spinner for 30-60s). */
+/** T2 progress indicator — polls the wavex-claude-spawn.sh wrapper status
+ *  to show REAL elapsed seconds + alive heartbeat instead of timer-based
+ *  fake stages. Falls back to the static "Generating…" label if no wrapper
+ *  status is available (e.g. apikey mode).
+ *
+ *  The wrapper writes start / 2s-heartbeat / complete events to
+ *  ~/.wavex-os/state/inference-current.json when WAVEX_INFERENCE_TRACK=1
+ *  (default in oauth/dev mode). The /api/inference/current endpoint surfaces
+ *  it; we poll every 1500ms while `active`. */
 
 import { useEffect, useState } from "react";
 
-interface PhaseConfig { delayMs: number; label: string; }
+interface InferenceStatus {
+  ok?: boolean;
+  idle?: boolean;
+  started_at_ms?: number;
+  pid?: number;
+  alive?: boolean;
+  elapsed_ms?: number;
+  live_elapsed_ms?: number;
+  completed?: boolean;
+  exit_code?: number;
+  stale?: boolean;
+  updated_at_ms?: number;
+}
 
-const PHASE_2_STAGES: PhaseConfig[] = [
-  { delayMs: 0,     label: "Loading pillar context…" },
-  { delayMs: 2000,  label: "Reviewing decision-matrix baseline…" },
-  { delayMs: 6000,  label: "Cross-referencing your industry + GTM…" },
-  { delayMs: 12_000, label: "Sharpening per-connector rationale…" },
-  { delayMs: 20_000, label: "Finalizing manifest…" },
-];
-
-const PHASE_3_STAGES: PhaseConfig[] = [
-  { delayMs: 0,     label: "Loading swarm baseline…" },
-  { delayMs: 2000,  label: "Reading agent activation rules…" },
-  { delayMs: 6000,  label: "Tailoring skill overlays per role…" },
-  { delayMs: 12_000, label: "Validating topology…" },
-  { delayMs: 20_000, label: "Finalizing manifest…" },
-];
-
-const PHASE_4_STAGES: PhaseConfig[] = [
-  { delayMs: 0,     label: "Loading workflow templates…" },
-  { delayMs: 2000,  label: "Reading active swarm + connectors…" },
-  { delayMs: 6000,  label: "Patching on_fire sequences with operator signal…" },
-  { delayMs: 14_000, label: "Adding escalation routes…" },
-  { delayMs: 25_000, label: "Validating attribution + finalizing…" },
-];
-
-const STAGES_BY_PHASE: Record<"phase-2" | "phase-3" | "phase-4", PhaseConfig[]> = {
-  "phase-2": PHASE_2_STAGES,
-  "phase-3": PHASE_3_STAGES,
-  "phase-4": PHASE_4_STAGES,
+/** Soft per-phase ETAs in seconds — only used to size the progress bar.
+ *  Real elapsed time is what we display; ETA is a visual reference. */
+const ETA_SECONDS: Record<string, number> = {
+  "phase-2": 60,
+  "phase-3": 60,
+  "phase-4": 75,
+  "pillar-1": 120,
+  finalize: 90,
 };
 
 export function T2ProgressIndicator({
   active, phase,
 }: {
   active: boolean;
-  phase: "phase-2" | "phase-3" | "phase-4";
+  phase: "phase-2" | "phase-3" | "phase-4" | "pillar-1" | "finalize";
 }) {
-  const stages = STAGES_BY_PHASE[phase];
-  const [step, setStep] = useState(0);
+  const [status, setStatus] = useState<InferenceStatus | null>(null);
 
   useEffect(() => {
     if (!active) {
-      setStep(0);
+      setStatus(null);
       return;
     }
-    const timers = stages.map((p, i) =>
-      window.setTimeout(() => setStep(i), p.delayMs),
-    );
-    return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [active, stages]);
+    let alive = true;
+    async function poll(): Promise<void> {
+      try {
+        const r = await fetch("/api/inference/current");
+        const j = (await r.json()) as InferenceStatus;
+        if (alive) setStatus(j);
+      } catch { /* polling error — silent retry */ }
+    }
+    void poll();
+    const id = setInterval(() => void poll(), 1500);
+    return () => { alive = false; clearInterval(id); };
+  }, [active]);
 
   if (!active) return null;
+
+  const elapsedMs = status?.live_elapsed_ms ?? status?.elapsed_ms ?? 0;
+  const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
+  const etaSec = ETA_SECONDS[phase] ?? 60;
+  const pct = Math.min(95, Math.round((elapsedSec / etaSec) * 100));
+  const overEta = elapsedSec > etaSec;
+
+  // States we render distinctly:
+  const isIdle = !status || status.idle;
+  const isAlive = status?.alive && !status.stale;
+  const isCompleted = status?.completed;
+  const isStale = status?.stale;
+
+  let label: string;
+  let barColor = "var(--accent)";
+  if (isCompleted) {
+    label = `✓ T2 completed in ${elapsedSec}s`;
+    barColor = "var(--accent)";
+  } else if (isStale) {
+    label = `⚠ T2 process stale (no heartbeat in ${Math.floor((Date.now() - (status?.updated_at_ms ?? 0)) / 1000)}s)`;
+    barColor = "var(--warning)";
+  } else if (isAlive) {
+    label = overEta
+      ? `⟲ T2 generating · ${elapsedSec}s elapsed (longer than typical ${etaSec}s)`
+      : `⟲ T2 generating · ${elapsedSec}s elapsed (≈${etaSec}s expected)`;
+  } else if (isIdle) {
+    label = `⟲ T2 starting…`;
+  } else {
+    label = `⟲ T2 generating…`;
+  }
 
   return (
     <div style={{
       padding: "0.75rem",
       background: "var(--bg)",
-      border: "1px solid var(--border)",
+      border: `1px solid ${isStale ? "var(--warning)" : "var(--border)"}`,
       borderRadius: 4,
       marginBottom: "1rem",
     }}>
-      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: "0.5rem", color: "var(--text-dim)" }}>
-        ⟲ T2 enrichment running — {step + 1}/{stages.length}
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: "0.5rem", color: isStale ? "var(--warning)" : "var(--text-dim)" }}>
+        {label}
       </div>
-      <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", marginBottom: "0.5rem" }}>
+      <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", marginBottom: "0.25rem" }}>
         <div style={{
           height: "100%",
-          width: `${((step + 1) / stages.length) * 100}%`,
-          background: "var(--accent)",
+          width: `${pct}%`,
+          background: barColor,
           transition: "width 0.5s ease-out",
         }} />
       </div>
-      <ol style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12 }}>
-        {stages.map((p, i) => (
-          <li key={i} style={{
-            padding: "2px 0",
-            color: i < step ? "var(--text)" : i === step ? "var(--accent)" : "var(--text-dim)",
-            opacity: i > step ? 0.5 : 1,
-          }}>
-            {i < step ? "✓ " : i === step ? "⟲ " : "○ "}
-            {p.label}
-          </li>
-        ))}
-      </ol>
+      {(isAlive || isCompleted) && status?.pid !== undefined && (
+        <div className="text-dim" style={{ fontSize: 10, marginTop: "0.25rem" }}>
+          claude pid {status.pid}{isCompleted && status?.exit_code !== undefined ? ` · exit ${status.exit_code}` : ""}
+        </div>
+      )}
     </div>
   );
 }

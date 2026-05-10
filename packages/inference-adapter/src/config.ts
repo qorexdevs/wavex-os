@@ -54,9 +54,16 @@ export function getInferenceConfig(): InferenceConfig {
 
 /** Apply the inference config to process.env so any code-path that consults
  *  OP_OMEGA_CLAUDE_BIN (notably the vendored tier-router worker entry) picks
- *  up the right bin without explicit option-passing. Idempotent. */
+ *  up the right bin without explicit option-passing. Idempotent.
+ *
+ *  Also enables WAVEX_INFERENCE_TRACK by default so the wrapper writes
+ *  start/heartbeat/complete events the UI can poll for real T2 progress.
+ *  Disable explicitly with WAVEX_INFERENCE_TRACK=0. */
 export function applyInferenceEnv(): InferenceConfig {
   const cfg = getInferenceConfig();
   process.env.OP_OMEGA_CLAUDE_BIN = cfg.claudeBin;
+  if (process.env.WAVEX_INFERENCE_TRACK === undefined && cfg.mode === "oauth") {
+    process.env.WAVEX_INFERENCE_TRACK = "1";
+  }
   return cfg;
 }

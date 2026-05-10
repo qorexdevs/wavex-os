@@ -52,5 +52,49 @@ fi
 # mutate state. Override with WAVEX_CLAUDE_ALLOWED_TOOLS to expand/restrict.
 ALLOWED_TOOLS="${WAVEX_CLAUDE_ALLOWED_TOOLS:-WebFetch,WebSearch,Read,Grep,Glob,Bash}"
 
-# Inject --allowedTools BEFORE the rest of the args (which include `-p <prompt>`).
+# ── Inference progress tracking (dev/transparency) ────────────────────────
+# When WAVEX_INFERENCE_TRACK=1, write start/heartbeat/complete events to a
+# state file the UI can poll for real-time T2 progress. Replaces the fake
+# timer-based progress indicator with truth.
+TRACK="${WAVEX_INFERENCE_TRACK:-0}"
+if [ "${TRACK}" = "1" ]; then
+  STATE_DIR="${WAVEX_OS_STATE_DIR:-${HOME}/.wavex-os}/state"
+  STATUS_FILE="${STATE_DIR}/inference-current.json"
+  mkdir -p "${STATE_DIR}"
+  STARTED_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf("%d", time*1000)' 2>/dev/null || echo "0")
+
+  # Run claude in the background so we can heartbeat alongside.
+  "${CLAUDE_BIN}" --allowedTools "${ALLOWED_TOOLS}" "$@" &
+  CLAUDE_PID=$!
+
+  # Background heartbeat — updates status every 2s while claude is alive.
+  (
+    while kill -0 "${CLAUDE_PID}" 2>/dev/null; do
+      NOW_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf("%d", time*1000)' 2>/dev/null || echo "0")
+      ELAPSED=$((NOW_MS - STARTED_MS))
+      printf '{"started_at_ms":%d,"pid":%d,"alive":true,"elapsed_ms":%d,"completed":false,"updated_at_ms":%d}\n' \
+        "${STARTED_MS}" "${CLAUDE_PID}" "${ELAPSED}" "${NOW_MS}" > "${STATUS_FILE}.tmp" \
+        && mv -f "${STATUS_FILE}.tmp" "${STATUS_FILE}"
+      sleep 2
+    done
+  ) &
+  HEARTBEAT_PID=$!
+
+  # Wait for claude to exit
+  wait "${CLAUDE_PID}"
+  EXIT_CODE=$?
+
+  # Stop heartbeat
+  kill "${HEARTBEAT_PID}" 2>/dev/null || true
+
+  # Write final completion status
+  END_MS=$(/usr/bin/perl -MTime::HiRes=time -e 'printf("%d", time*1000)' 2>/dev/null || echo "0")
+  ELAPSED=$((END_MS - STARTED_MS))
+  printf '{"started_at_ms":%d,"pid":%d,"alive":false,"elapsed_ms":%d,"completed":true,"exit_code":%d,"updated_at_ms":%d}\n' \
+    "${STARTED_MS}" "${CLAUDE_PID}" "${ELAPSED}" "${EXIT_CODE}" "${END_MS}" > "${STATUS_FILE}"
+
+  exit "${EXIT_CODE}"
+fi
+
+# Default path: just exec claude. No tracking overhead.
 exec "${CLAUDE_BIN}" --allowedTools "${ALLOWED_TOOLS}" "$@"
