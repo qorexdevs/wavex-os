@@ -10,6 +10,7 @@ import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 import { OrgGraph, type OrgAgent } from "../../components/OrgGraph";
+import { AgentSwapPanel } from "../components/AgentSwapPanel";
 import { templateIdForSlot } from "../../data/slot-to-template";
 import { isT0FastMode } from "../lib/dev-flags";
 
@@ -22,11 +23,18 @@ const STATUS_COLOR: Record<string, string> = {
   disabled: "#555",
 };
 
+interface ManifestWithOverlays { template_overlays?: Record<string, string> }
+
 export function Phase3Swarm({ companyId, onComplete }: Props) {
   const [manifest, setManifest] = useState<SwarmManifest | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<string>("");
+  // Swap panel state — opened on OrgGraph node click. Tracks the slot being
+  // edited and the local overlays map (mirrors company.manifest.template_overlays
+  // so swap saves/resets are reflected in the chart immediately).
+  const [swapSlot, setSwapSlot] = useState<string | null>(null);
+  const [overlays, setOverlays] = useState<Record<string, string>>({});
 
   async function generate(skipInference = false): Promise<void> {
     setBusy(true);
@@ -46,6 +54,20 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
   // friction hypothesis, differentiator, tone) shapes per-agent skill_overlays.
   // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
   useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
+
+  // Hydrate template overlays from the on-disk manifest (saved by prior swap
+  // sessions). The swarm-manifest endpoint doesn't return them, so fetch the
+  // company manifest separately. Best-effort — if no manifest exists yet
+  // (operator hasn't finalized), there can't be overlays anyway.
+  useEffect(() => {
+    let alive = true;
+    opOmegaOnboardingApi.getInstanceManifest(companyId).then((r) => {
+      if (!alive || !r.manifest) return;
+      const o = (r.manifest as unknown as ManifestWithOverlays).template_overlays ?? {};
+      setOverlays(o);
+    }).catch(() => { /* manifest doesn't exist yet — fine */ });
+    return () => { alive = false; };
+  }, [companyId]);
 
   const agentEntries = manifest ? Object.entries(manifest.agents) : [];
 
@@ -86,18 +108,24 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
 
           <Card>
             <h3 style={{ margin: "0 0 0.75rem 0", fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Org chart
+              Org chart <span style={{ textTransform: "none", fontWeight: 400, color: "var(--text-dim)" }}>· click any agent to swap its template</span>
             </h3>
             <OrgGraph
               agents={agentEntries.map(([slot, a]): OrgAgent => ({
                 id: slot,
                 slot,
-                templateId: templateIdForSlot(slot),
+                templateId: overlays[slot] ?? templateIdForSlot(slot),
                 reportsToSlot: a.reports_to ?? undefined,
                 status: a.status,
               }))}
-              height={680}
+              height={540}
+              onAgentClick={(a) => setSwapSlot(a.slot)}
             />
+            {Object.keys(overlays).length > 0 && (
+              <div className="text-dim" style={{ fontSize: 11, marginTop: "0.5rem" }}>
+                {Object.keys(overlays).length} operator-chosen template overlay{Object.keys(overlays).length === 1 ? "" : "s"} active.
+              </div>
+            )}
           </Card>
 
           <Card>
@@ -142,6 +170,24 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
       )}
 
       <NavRow next={{ onClick: onComplete, label: "Continue → workflows" }} nextDisabled={busy || !manifest} />
+
+      {swapSlot && (
+        <AgentSwapPanel
+          companyId={companyId}
+          slot={swapSlot}
+          currentTemplateId={overlays[swapSlot] ?? templateIdForSlot(swapSlot)}
+          defaultTemplateId={templateIdForSlot(swapSlot)}
+          onClose={() => setSwapSlot(null)}
+          onSwapped={(newTemplateId) => {
+            setOverlays((prev) => {
+              const next = { ...prev };
+              if (newTemplateId === null) delete next[swapSlot];
+              else next[swapSlot] = newTemplateId;
+              return next;
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

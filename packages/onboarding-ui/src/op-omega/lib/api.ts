@@ -294,6 +294,19 @@ export const opOmegaOnboardingApi = {
       warnings: string[];
     }>("POST", `/api/instance/${encodeURIComponent(companyId)}/activate`),
 
+  // Swap — record an operator-chosen template substitution for one slot.
+  // Pass templateId=null to clear (revert to catalog default).
+  swapTemplate: (input: { companyId: string; slot: string; templateId: string | null }) =>
+    call<{
+      ok: true;
+      slot: string;
+      templateId: string | null;
+      overlays: Record<string, string>;
+      sha256: string;
+    }>("POST", `/api/instance/${encodeURIComponent(input.companyId)}/swap-template`, {
+      slot: input.slot, templateId: input.templateId,
+    }),
+
   // Reset — wipe ALL state for a company (filesystem onboarding artifacts +
   // every DB row keyed by company_id). Destructive. UI must confirm.
   resetCompany: (companyId: string) =>

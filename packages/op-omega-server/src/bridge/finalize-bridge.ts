@@ -15,6 +15,10 @@ import {
   agentIdForSlot, modelForTier, slotToHumanName, templateIdForSlot, tierForSlot,
 } from "./catalog.js";
 
+interface ManifestWithOverlays extends CompanyManifest {
+  template_overlays?: Record<string, string>;
+}
+
 export interface BridgeReport {
   companies: number;
   agents: number;
@@ -49,11 +53,18 @@ export async function bridgeAgents(
   const slotEntries = Object.entries(manifest.swarm_manifest.agents);
   let warnedOnOwnedKpis = false;
 
+  // Operator-chosen template substitutions take precedence over catalog defaults.
+  const overlays = (manifest as ManifestWithOverlays).template_overlays ?? {};
+
   for (const [slot, entry] of slotEntries) {
     const tier = tierForSlot(slot);
-    const templateId = templateIdForSlot(slot);
+    const overlayTemplate = overlays[slot];
+    const templateId = overlayTemplate ?? templateIdForSlot(slot);
     if (templateId === slot && !slot.match(/^(ceo\.orchestrator|cpo|cmo|cro|cfo|cdo|coo)$/)) {
       warnings.push(`no template mapping for slot "${slot}" — using slot as templateId fallback`);
+    }
+    if (overlayTemplate) {
+      warnings.push(`slot "${slot}" using operator-chosen overlay template "${overlayTemplate}" (default was "${templateIdForSlot(slot)}")`);
     }
 
     // owned_kpi_ids isn't on the upstream AgentManifestEntry type — defaults to []

@@ -312,4 +312,47 @@ test.describe("flow variants — 10x", () => {
     await expect(page.locator("strong", { hasText: /No company selected/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("link", { name: /Start onboarding/i })).toBeVisible();
   });
+
+  /** ---------------------------------------------------------------- */
+  /** Variant 11: template swap survives finalize → activate → DB write */
+  test("v11: swap template on Phase 3 → survives activate → bridge writes overlay templateId to DB", async ({ page }) => {
+    test.slow();
+    const api = await pwRequest.newContext({ baseURL: API });
+    const id = uniqueId("v11-swap");
+    await seedFinalized(api, id);
+
+    // Pick a non-default template that's a valid alternative for cpo.build.
+    // Default for cpo.build is "backend-architect"; "frontend-developer" is in
+    // the same engineering division — should be in the alternatives list.
+    const SLOT = "cpo.build";
+    const NEW_TEMPLATE = "frontend-developer";
+
+    // Swap via API — same call the UI's AgentSwapPanel makes
+    const swapResp = await api.post(`/api/instance/${id}/swap-template`, {
+      data: { slot: SLOT, templateId: NEW_TEMPLATE },
+    });
+    expect(swapResp.ok()).toBe(true);
+    const swap = await swapResp.json();
+    expect(swap.overlays[SLOT]).toBe(NEW_TEMPLATE);
+
+    // Activate — bridge should pick up the overlay
+    const actResp = await api.post(`/api/instance/${id}/activate`);
+    expect(actResp.ok()).toBe(true);
+    const act = await actResp.json();
+    expect(act.warnings.some((w: string) => w.includes(SLOT) && w.includes(NEW_TEMPLATE))).toBe(true);
+
+    // /api/agents should now report the swapped templateId for that slot
+    const agentsResp = await api.get(`/api/agents?companyId=${id}`);
+    const agentsJson = await agentsResp.json();
+    const swapped = agentsJson.agents.find((a: { slot: string; templateId: string }) => a.slot === SLOT);
+    expect(swapped).toBeDefined();
+    expect(swapped.templateId).toBe(NEW_TEMPLATE);
+    await api.dispose();
+
+    // UI sanity: Mission Control's FleetGraph should render Frontend Developer
+    // (the displayName for "frontend-developer") for the cpo.build node.
+    await page.goto(`/?companyId=${id}`);
+    await expect(page.getByText(/Fleet · \d+ agents/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Frontend Developer", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  });
 });

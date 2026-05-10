@@ -31,8 +31,11 @@ export interface OrgAgent {
 
 export interface OrgGraphProps {
   agents: OrgAgent[];
-  /** Container height in px. Defaults to 560. */
+  /** Container height in px. Defaults to 540. */
   height?: number;
+  /** Click handler fired when an agent node is clicked. Used by Phase 3 to open
+   *  the swap panel. Mission Control's FleetGraph leaves it undefined. */
+  onAgentClick?: (agent: OrgAgent) => void;
 }
 
 /** Convert "backend-architect" → "Backend Architect", "ceo" → "CEO",
@@ -191,8 +194,9 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-export function OrgGraph({ agents, height = 540 }: OrgGraphProps) {
+export function OrgGraph({ agents, height = 540, onAgentClick }: OrgGraphProps) {
   const { nodes, edges } = useMemo(() => buildLayout(agents), [agents]);
+  const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   return (
     <div style={{ height, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
@@ -209,12 +213,11 @@ export function OrgGraph({ agents, height = 540 }: OrgGraphProps) {
         nodesConnectable={false}
         elementsSelectable
         defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
-        // fitView prop alone often misfires when nodes carry custom JSX
-        // labels (sizes aren't measured at first paint). Re-fire fitView
-        // after a short delay so the viewport actually frames the content.
+        onNodeClick={onAgentClick ? (_e, node) => {
+          const a = agentsById.get(node.id);
+          if (a) onAgentClick(a);
+        } : undefined}
         onInit={(rf: ReactFlowInstance) => {
-          // Two-pass: immediate (in case nodes have explicit size), then
-          // again after a tick (in case they need DOM measurement).
           rf.fitView({ padding: 0.05, duration: 0 });
           setTimeout(() => rf.fitView({ padding: 0.05, duration: 0 }), 80);
         }}
