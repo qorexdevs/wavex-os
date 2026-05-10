@@ -385,6 +385,20 @@ export const opOmegaOnboardingApi = {
       };
     }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
 
+  // Help chat (per-company conversational sidebar)
+  getHelpChat: (companyId: string) =>
+    call<{
+      ok: true;
+      messages: Array<{ role: "user" | "assistant"; ts_iso: string; text: string; phase?: string; field?: string }>;
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/help-chat`),
+
+  postHelpChat: (companyId: string, body: { message: string; phase?: string; field?: string }) =>
+    call<{
+      ok: true;
+      messages: Array<{ role: "user" | "assistant"; ts_iso: string; text: string; phase?: string; field?: string }>;
+      latest_assistant: { role: "assistant"; ts_iso: string; text: string; phase?: string; field?: string };
+    }>("POST", `/api/instance/${encodeURIComponent(companyId)}/help-chat`, body),
+
   // Redundancy review (exact templateId duplicate groups)
   getRedundancy: (companyId: string) =>
     call<{

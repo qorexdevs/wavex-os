@@ -25,7 +25,7 @@ import { getOnboardingDir, getWavexDataRoot } from "../state-bridge.js";
 export type PhaseKey =
   | "pillar_1" | "pillar_2" | "pillar_3" | "pillar_4" | "pillar_5"
   | "connector_manifest" | "swarm_manifest" | "workflow_manifest"
-  | "finalize" | "recommend_agent";
+  | "finalize" | "recommend_agent" | "help_chat";
 
 interface T2Event {
   ts_iso: string;
@@ -224,6 +224,7 @@ const DEFAULT_ETAS_MS: Partial<Record<PhaseKey, number>> = {
   workflow_manifest: 75_000,
   finalize: 90_000,
   recommend_agent: 30_000,
+  help_chat: 15_000,
 };
 
 export interface PhaseEta {

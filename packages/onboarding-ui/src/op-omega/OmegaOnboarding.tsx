@@ -11,6 +11,7 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ConfirmResetModal } from "./components/ConfirmResetModal";
 import { TokenCounter } from "./components/TokenCounter";
 import { BudgetChip } from "./components/BudgetChip";
+import { HelpChat } from "./components/HelpChat";
 import { preserveDevFlags } from "./lib/dev-flags";
 import { Pillar1 } from "./pillars/Pillar1";
 import { Pillar2 } from "./pillars/Pillar2";
@@ -148,6 +149,8 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
       {phase === "materialize" && (
         <Materialize companyId={companyId} />
       )}
+
+      <HelpChat companyId={companyId} phase={phase} />
     </div>
   );
 }

@@ -940,6 +940,56 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B22a: GET help-chat returns empty array for fresh company */
+  test("B22a: help-chat empty for fresh company", async ({ request }) => {
+    const id = uniqueId("bh-chat-empty");
+    const r = await request.get(`/api/instance/${id}/help-chat`);
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(j.messages).toEqual([]);
+  });
+
+  /** B22b: POST help-chat validates message length */
+  test("B22b: help-chat rejects empty message + over-long input", async ({ request }) => {
+    const id = uniqueId("bh-chat-validate");
+    const empty = await request.post(`/api/instance/${id}/help-chat`, { data: { message: "" } });
+    expect(empty.status()).toBe(400);
+    const tooLong = await request.post(`/api/instance/${id}/help-chat`, {
+      data: { message: "x".repeat(2000) },
+    });
+    expect(tooLong.status()).toBe(400);
+  });
+
+  /** B22c: full chat round-trip with real T2 — persists thread */
+  test("B22c: chat round-trip persists messages + summarizes pillar context", async ({ request }) => {
+    test.skip(process.env.WAVEX_E2E_T2 !== "1", "Requires real T2 — set WAVEX_E2E_T2=1");
+    const id = uniqueId("bh-chat-roundtrip");
+    // Seed pillar_1 so the chat has context to ground in
+    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "ChatCo", raw_input: "no product yet",
+        manual_context: "ChatCo is an e2e fixture for verifying that the help-chat endpoint loads pillar responses as context for T2 grounding.",
+      },
+    });
+
+    const r = await request.post(`/api/instance/${id}/help-chat`, {
+      data: { message: "what's a connector?", phase: "phase-2-connectors" },
+    });
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(j.messages.length).toBe(2); // user + assistant
+    expect(j.messages[0].role).toBe("user");
+    expect(j.messages[0].text).toBe("what's a connector?");
+    expect(j.messages[1].role).toBe("assistant");
+    expect(j.messages[1].text.length).toBeGreaterThan(0);
+
+    // Subsequent GET returns the same thread
+    const get = await (await request.get(`/api/instance/${id}/help-chat`)).json();
+    expect(get.messages.length).toBe(2);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */

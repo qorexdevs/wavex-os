@@ -29,6 +29,7 @@ import { registerRecommendAgentRoute } from "./routes/recommend-agent.js";
 import { registerTokenUsageRoute } from "./routes/token-usage.js";
 import { registerTokenBudgetRoute } from "./routes/token-budget.js";
 import { registerRedundancyRoutes } from "./routes/redundancy.js";
+import { registerHelpChatRoute } from "./routes/help-chat.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -58,6 +59,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerTokenUsageRoute(app);
   registerTokenBudgetRoute(app);
   registerRedundancyRoutes(app);
+  registerHelpChatRoute(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
