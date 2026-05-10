@@ -385,6 +385,30 @@ export const opOmegaOnboardingApi = {
       };
     }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
 
+  // Redundancy review (exact templateId duplicate groups)
+  getRedundancy: (companyId: string) =>
+    call<{
+      ok: true;
+      groups: Array<{
+        template_id: string;
+        slots: Array<{ slot: string; parent_slot: string; template_id: string; origin: string; muted: boolean }>;
+        by_parent: Record<string, number>;
+        weight: number;
+      }>;
+      all_slots: Array<{ slot: string; parent_slot: string; template_id: string; origin: string; muted: boolean }>;
+      mutes: string[];
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/redundancy`),
+
+  muteSlot: (companyId: string, slot: string) =>
+    call<{ ok: true; mutes: string[]; sha256: string }>(
+      "POST", `/api/instance/${encodeURIComponent(companyId)}/mute-slot`, { slot },
+    ),
+
+  unmuteSlot: (companyId: string, slot: string) =>
+    call<{ ok: true; mutes: string[]; sha256: string }>(
+      "DELETE", `/api/instance/${encodeURIComponent(companyId)}/mute-slot`, { slot },
+    ),
+
   // Token budget (project-level cap, opt-in)
   getTokenBudget: (companyId: string) =>
     call<{

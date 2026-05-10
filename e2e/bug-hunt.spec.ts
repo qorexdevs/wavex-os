@@ -834,6 +834,112 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B21a: redundancy endpoint surfaces same-template duplicate groups */
+  test("B21a: GET /redundancy detects exact templateId collisions", async ({ request }) => {
+    const id = uniqueId("bh-redundancy");
+    await seedFinalized(request, id);
+
+    const r = await request.get(`/api/instance/${id}/redundancy`);
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(Array.isArray(j.groups)).toBe(true);
+    expect(Array.isArray(j.all_slots)).toBe(true);
+    expect(Array.isArray(j.mutes)).toBe(true);
+    // Every group must have ≥2 slots all sharing the same template_id
+    for (const g of j.groups) {
+      expect(g.slots.length).toBeGreaterThanOrEqual(2);
+      for (const s of g.slots) expect(s.template_id).toBe(g.template_id);
+      expect(g.weight).toBeGreaterThan(0);
+    }
+    // Groups should be sorted by weight desc (loudest first)
+    for (let i = 1; i < j.groups.length; i++) {
+      expect(j.groups[i - 1].weight).toBeGreaterThanOrEqual(j.groups[i].weight);
+    }
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B21b: mute/unmute round-trips and updates the manifest sha */
+  test("B21b: mute-slot persists to manifest.template_mutes + re-signs", async ({ request }) => {
+    const id = uniqueId("bh-mute");
+    await seedFinalized(request, id);
+    const r = await request.get(`/api/instance/${id}/redundancy`);
+    const before = await r.json();
+    if (before.groups.length === 0) {
+      // No duplicates in this seed — skip rather than fail
+      test.skip(true, "fixture has no redundancy groups");
+      return;
+    }
+    const targetSlot = before.groups[0].slots[0].slot;
+
+    // Mute it
+    const mute = await request.post(`/api/instance/${id}/mute-slot`, { data: { slot: targetSlot } });
+    expect(mute.ok()).toBeTruthy();
+    const muteResult = await mute.json();
+    expect(muteResult.mutes).toContain(targetSlot);
+    expect(muteResult.sha256).toBeTruthy();
+
+    // Verify it now appears as muted in the redundancy listing
+    const after = await (await request.get(`/api/instance/${id}/redundancy`)).json();
+    expect(after.mutes).toContain(targetSlot);
+    const slotInList = after.all_slots.find((s: { slot: string }) => s.slot === targetSlot);
+    expect(slotInList?.muted).toBe(true);
+
+    // Unmute clears it
+    const unmute = await request.delete(`/api/instance/${id}/mute-slot`, { data: { slot: targetSlot } });
+    expect(unmute.ok()).toBeTruthy();
+    const unmuteResult = await unmute.json();
+    expect(unmuteResult.mutes).not.toContain(targetSlot);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B21c: muting an unknown slot returns 400 */
+  test("B21c: mute-slot rejects slot not in roster or additions", async ({ request }) => {
+    const id = uniqueId("bh-mute-bogus");
+    await seedFinalized(request, id);
+    const r = await request.post(`/api/instance/${id}/mute-slot`, {
+      data: { slot: "not-a-real-slot-name-xxxyyy" },
+    });
+    expect(r.status()).toBe(400);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B21d: bridge skips muted slots — activate writes fewer agents */
+  test("B21d: muted slots are excluded from DB bridge on activate", async ({ request }) => {
+    const id = uniqueId("bh-mute-bridge");
+    await seedFinalized(request, id);
+    // Activate baseline
+    const baselineActivate = await request.post(`/api/instance/${id}/activate`);
+    const baselineJ = await baselineActivate.json();
+    const baselineCount = baselineJ.inserted.agents;
+
+    // Mute one slot from the first redundancy group (or any leaf if no groups)
+    const red = await (await request.get(`/api/instance/${id}/redundancy`)).json();
+    let target: string | null = null;
+    if (red.groups.length > 0) {
+      target = red.groups[0].slots[0].slot;
+    } else {
+      // Fallback: mute any slot that has no children (a leaf)
+      const allSlots = red.all_slots as Array<{ slot: string }>;
+      const isParent = new Set(red.all_slots.map((s: { parent_slot: string }) => s.parent_slot));
+      target = allSlots.find((s) => !isParent.has(s.slot))?.slot ?? null;
+    }
+    if (!target) {
+      test.skip(true, "no muteable slot in fixture");
+      return;
+    }
+    await request.post(`/api/instance/${id}/mute-slot`, { data: { slot: target } });
+
+    // Re-activate — should have one fewer agent
+    const reactivate = await request.post(`/api/instance/${id}/activate`);
+    const j = await reactivate.json();
+    expect(j.inserted.agents).toBe(baselineCount - 1);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */

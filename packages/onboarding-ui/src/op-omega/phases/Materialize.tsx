@@ -9,6 +9,7 @@ import type { CompanyManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
 import { HaltScreen } from "../components/HaltScreen";
 import { RefinementPanel } from "./RefinementPanel";
+import { RedundancyReview } from "../components/RedundancyReview";
 
 interface Props { companyId: string; }
 
@@ -156,6 +157,11 @@ export function Materialize({ companyId }: Props) {
             setResult({ manifest, sha256, source: "t2", warnings: [] })}
         />
       )}
+
+      {/* Redundancy review — operator can mute duplicate-template slots
+          before the bridge writes them to DB. Only renders once finalize
+          has produced the manifest. */}
+      {result && <RedundancyReview companyId={companyId} />}
 
       {activated && (
         <Card accent>
