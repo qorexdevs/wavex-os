@@ -14,6 +14,7 @@ import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import { preserveDevFlags } from "../lib/dev-flags";
 import type { Pillar1Response } from "@op-omega/plugin-onboarding";
 import { Card, Field, H2, P } from "../components/primitives";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 
 /** URL-safe slug from a free-text company name. Used for first-submit rename:
  *  if the operator lands on Pillar 1 with a stale `?companyId=…` (e.g. from
@@ -228,6 +229,11 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
             disabled={submitting}
           />
         </Field>
+
+        {/* Authoritative progress: real elapsed time + history-backed ETA. */}
+        <div style={{ marginTop: submitting ? "0.75rem" : 0 }}>
+          <T2ProgressIndicator active={submitting} phase="pillar-1" />
+        </div>
 
         {submitting && (
           <div style={{ padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, marginTop: "0.75rem" }}>

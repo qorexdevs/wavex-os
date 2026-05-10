@@ -637,6 +637,35 @@ test.describe("bug hunt — composition + edge cases", () => {
     await expect(page.locator("button", { hasText: /🪙\s+0\s+·/ })).toBeVisible();
   });
 
+  /** B17a: ETA endpoint returns defaults when no history exists */
+  test("B17a: GET /api/inference/eta?phase= returns default when no history", async ({ request }) => {
+    const r = await request.get(`/api/inference/eta?phase=pillar_2`);
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(j.ok).toBe(true);
+    expect(j.eta.phase).toBe("pillar_2");
+    // Either is_default=true OR samples > 0 (depends on whether other tests
+    // have run prior — what matters is the endpoint shape is correct).
+    expect(j.eta.median_ms).toBeGreaterThan(0);
+    expect(j.eta.p90_ms).toBeGreaterThanOrEqual(j.eta.median_ms);
+    expect(typeof j.eta.is_default).toBe("boolean");
+  });
+
+  /** B17b: aggregate endpoint returns ETAs for all phases */
+  test("B17b: GET /api/inference/eta returns rows for all known phases", async ({ request }) => {
+    const r = await request.get(`/api/inference/eta`);
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(j.ok).toBe(true);
+    // At minimum the 10 known phases must be present
+    for (const p of ["pillar_1", "pillar_2", "pillar_3", "pillar_4", "pillar_5",
+                     "connector_manifest", "swarm_manifest", "workflow_manifest",
+                     "finalize", "recommend_agent"]) {
+      expect(j.etas[p], `missing phase ${p}`).toBeTruthy();
+      expect(j.etas[p].median_ms).toBeGreaterThan(0);
+    }
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, appendFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withTokenAccounting, readTokenUsage, clearTokenUsage } from "../src/lib/token-accounting.js";
+import { withTokenAccounting, readTokenUsage, clearTokenUsage, getPhaseEta, getAllPhaseEtas } from "../src/lib/token-accounting.js";
 
 let root: string;
 let eventsPath: string;
@@ -26,6 +26,9 @@ afterAll(() => {
 beforeEach(() => {
   // Truncate events between tests so they don't bleed across windows
   if (existsSync(eventsPath)) rmSync(eventsPath);
+  // Wipe per-company aggregates so getAllPhaseEtas starts from zero history
+  const instancesDir = join(root, "instances");
+  if (existsSync(instancesDir)) rmSync(instancesDir, { recursive: true, force: true });
 });
 
 /** Append an event with started_ms = now (i.e. firing inside the active
@@ -111,6 +114,46 @@ describe("withTokenAccounting", () => {
     expect(usage!.by_phase.pillar_1?.input_tokens).toBe(300);
     expect(usage!.by_phase.swarm_manifest?.calls).toBe(1);
     expect(usage!.by_phase.swarm_manifest?.input_tokens).toBe(500);
+  });
+
+  it("getPhaseEta returns defaults with is_default=true when no history exists", async () => {
+    const eta = await getPhaseEta("pillar_1");
+    // No companies in this fresh tmp dir → defaults
+    expect(eta.is_default).toBe(true);
+    expect(eta.samples).toBe(0);
+    expect(eta.median_ms).toBeGreaterThan(0);
+    expect(eta.p90_ms).toBeGreaterThanOrEqual(eta.median_ms);
+  });
+
+  it("getPhaseEta computes median + p90 from cross-company recent_calls", async () => {
+    // Seed three companies with pillar_1 calls of 1s, 2s, 3s.
+    // Add a small sleep between iterations so each call's startMs is strictly
+    // after the previous event's started_ms — otherwise readEventsInWindow's
+    // [fromMs, toMs] filter can include the prior iteration's event AND each
+    // call's own, double-counting the event in earlier iterations.
+    for (const [id, durMs] of [["co-eta-a", 1000], ["co-eta-b", 2000], ["co-eta-c", 3000]] as const) {
+      await new Promise((r) => setTimeout(r, 10));
+      await withTokenAccounting(id, "pillar_1", async () => {
+        await new Promise((r) => setTimeout(r, 1));
+        writeEvent({ in: 100, out: 50, durationMs: durMs });
+        await new Promise((r) => setTimeout(r, 5));
+      });
+    }
+    for (const id of ["co-eta-a", "co-eta-b", "co-eta-c"]) {
+      const u = await readTokenUsage(id);
+      expect(u, `${id} usage missing`).not.toBeNull();
+      expect(u!.recent_calls.length, `${id} recent_calls`).toBe(1);
+    }
+    const eta = await getPhaseEta("pillar_1");
+    expect(eta.is_default).toBe(false);
+    expect(eta.samples).toBe(3);
+    expect(eta.median_ms).toBe(2000); // middle of [1000, 2000, 3000]
+    expect(eta.p90_ms).toBe(3000);    // upper end
+
+    // getAllPhaseEtas returns same row + defaults for other phases
+    const all = await getAllPhaseEtas();
+    expect(all.pillar_1.median_ms).toBe(2000);
+    expect(all.swarm_manifest.is_default).toBe(true); // no history for this phase
   });
 
   it("clearTokenUsage removes the aggregate file", async () => {

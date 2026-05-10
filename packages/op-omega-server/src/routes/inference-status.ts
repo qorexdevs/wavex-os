@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { getWavexDataRoot } from "../state-bridge.js";
+import { getAllPhaseEtas, getPhaseEta, type PhaseKey } from "../lib/token-accounting.js";
 
 interface InferenceStatus {
   started_at_ms: number;
@@ -47,5 +48,18 @@ export function registerInferenceStatusRoute(app: FastifyInstance): void {
       // No state file yet — wrapper hasn't run, return empty signal.
       return { ok: true, idle: true };
     }
+  });
+
+  /** GET /api/inference/eta — per-phase median + p90 durations from history.
+   *  With ?phase= returns one row; without, returns all. Powers the wizard's
+   *  time-estimate UI (replaces the previously-hardcoded ETA_SECONDS). */
+  app.get("/api/inference/eta", async (req) => {
+    const { phase } = (req.query ?? {}) as { phase?: string };
+    if (phase) {
+      const eta = await getPhaseEta(phase as PhaseKey);
+      return { ok: true, eta };
+    }
+    const etas = await getAllPhaseEtas();
+    return { ok: true, etas };
   });
 }

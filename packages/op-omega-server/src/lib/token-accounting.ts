@@ -17,10 +17,10 @@
  *  windows could get mis-attributed. Acceptable for V1; real fix is an
  *  AsyncLocalStorage tag passed through to the spawn (deferred). */
 
-import { readFile, writeFile, mkdir, appendFile, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { getOnboardingDir } from "../state-bridge.js";
+import { getOnboardingDir, getWavexDataRoot } from "../state-bridge.js";
 
 export type PhaseKey =
   | "pillar_1" | "pillar_2" | "pillar_3" | "pillar_4" | "pillar_5"
@@ -98,7 +98,13 @@ function emptyFile(companyId: string): TokenUsageFile {
   };
 }
 
-/** Read events file once. Returns events with started_ms in [from, to]. */
+/** Read events file once. Returns events whose started_ms falls in
+ *  [fromMs, toMs]. We don't constrain ended_ms because the shim only
+ *  appends after the claude process exits, so every event in the file
+ *  is by definition complete — its real-world duration is already baked
+ *  into duration_ms regardless of when readback happens. The 100ms slack
+ *  on toMs handles cross-process clock skew between the shim's perl-time
+ *  call and node's Date.now(). */
 async function readEventsInWindow(fromMs: number, toMs: number): Promise<T2Event[]> {
   const path = eventsFilePath();
   let raw: string;
@@ -112,7 +118,7 @@ async function readEventsInWindow(fromMs: number, toMs: number): Promise<T2Event
     if (!line.trim()) continue;
     try {
       const ev = JSON.parse(line) as T2Event;
-      if (ev.started_ms >= fromMs && ev.ended_ms <= toMs + 1000) {
+      if (ev.started_ms >= fromMs && ev.started_ms <= toMs + 100) {
         events.push(ev);
       }
     } catch {
@@ -197,4 +203,87 @@ export async function clearTokenUsage(companyId: string): Promise<void> {
   } catch {
     // ignore — file may not exist
   }
+}
+
+/** Soft default ETAs in ms — used as a fallback when no history exists. */
+const DEFAULT_ETAS_MS: Partial<Record<PhaseKey, number>> = {
+  pillar_1: 60_000,
+  pillar_2: 5_000,
+  pillar_3: 5_000,
+  pillar_4: 5_000,
+  pillar_5: 5_000,
+  connector_manifest: 45_000,
+  swarm_manifest: 60_000,
+  workflow_manifest: 75_000,
+  finalize: 90_000,
+  recommend_agent: 30_000,
+};
+
+export interface PhaseEta {
+  phase: PhaseKey;
+  median_ms: number;
+  p90_ms: number;
+  samples: number;
+  /** True when median_ms came from DEFAULT_ETAS_MS (no real history yet). */
+  is_default: boolean;
+}
+
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * q));
+  return sorted[idx];
+}
+
+/** Scan all per-company token-usage.json files and group durations by phase.
+ *  Returns ETAs for all phases found in history, falling back to defaults
+ *  for phases with zero samples. */
+export async function getAllPhaseEtas(): Promise<Record<string, PhaseEta>> {
+  const companiesDir = join(getWavexDataRoot(), "instances", "default", "companies");
+  const byPhase: Map<string, number[]> = new Map();
+  let companyIds: string[] = [];
+  try {
+    companyIds = await readdir(companiesDir);
+  } catch {
+    // No companies dir yet — return defaults
+  }
+  for (const id of companyIds) {
+    const usage = await readTokenUsage(id);
+    if (!usage) continue;
+    for (const call of usage.recent_calls) {
+      if (!byPhase.has(call.phase)) byPhase.set(call.phase, []);
+      byPhase.get(call.phase)!.push(call.duration_ms);
+    }
+  }
+  const result: Record<string, PhaseEta> = {};
+  // Emit a row for every phase we have a default for, plus any extras seen
+  const phases = new Set<string>([...Object.keys(DEFAULT_ETAS_MS), ...byPhase.keys()]);
+  for (const phase of phases) {
+    const samples = (byPhase.get(phase) ?? []).slice().sort((a, b) => a - b);
+    if (samples.length > 0) {
+      result[phase] = {
+        phase: phase as PhaseKey,
+        median_ms: quantile(samples, 0.5),
+        p90_ms: quantile(samples, 0.9),
+        samples: samples.length,
+        is_default: false,
+      };
+    } else {
+      const def = DEFAULT_ETAS_MS[phase as PhaseKey] ?? 60_000;
+      result[phase] = {
+        phase: phase as PhaseKey,
+        median_ms: def,
+        p90_ms: Math.round(def * 1.5),
+        samples: 0,
+        is_default: true,
+      };
+    }
+  }
+  return result;
+}
+
+export async function getPhaseEta(phase: PhaseKey): Promise<PhaseEta> {
+  const all = await getAllPhaseEtas();
+  return all[phase] ?? {
+    phase, median_ms: 60_000, p90_ms: 90_000, samples: 0, is_default: true,
+  };
 }
