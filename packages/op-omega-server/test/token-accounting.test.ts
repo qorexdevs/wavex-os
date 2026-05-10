@@ -156,6 +156,40 @@ describe("withTokenAccounting", () => {
     expect(all.swarm_manifest.is_default).toBe(true); // no history for this phase
   });
 
+  it("withTokenAccounting throws BudgetExhaustedError when cap is reached", async () => {
+    // Seed usage that puts us at 1500 tokens (1000 input + 500 output)
+    await withTokenAccounting("co-budget", "pillar_1", async () => {
+      writeEvent({ in: 1000, out: 500 });
+      await new Promise((r) => setTimeout(r, 5));
+    });
+
+    // Set a cap below current usage
+    const { writeBudget } = await import("../src/lib/token-budget.js");
+    const { BudgetExhaustedError } = await import("../src/lib/token-budget.js");
+    await writeBudget("co-budget", 1000);
+
+    let threw: Error | null = null;
+    try {
+      await withTokenAccounting("co-budget", "pillar_1", async () => "should not run");
+    } catch (e) {
+      threw = e as Error;
+    }
+    expect(threw).toBeTruthy();
+    expect(threw).toBeInstanceOf(BudgetExhaustedError);
+    expect((threw as InstanceType<typeof BudgetExhaustedError>).cap).toBe(1000);
+    expect((threw as InstanceType<typeof BudgetExhaustedError>).used).toBe(1500);
+
+    // Raising the cap above current usage should re-permit calls
+    await writeBudget("co-budget", 5000);
+    const result = await withTokenAccounting("co-budget", "pillar_1", async () => "ok");
+    expect(result).toBe("ok");
+  });
+
+  it("withTokenAccounting allows calls when no cap is set (default)", async () => {
+    const result = await withTokenAccounting("co-no-budget", "pillar_1", async () => "free");
+    expect(result).toBe("free");
+  });
+
   it("clearTokenUsage removes the aggregate file", async () => {
     await withTokenAccounting("co-clear", "pillar_1", async () => {
       writeEvent({ in: 10, out: 5 });

@@ -385,6 +385,20 @@ export const opOmegaOnboardingApi = {
       };
     }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
 
+  // Token budget (project-level cap, opt-in)
+  getTokenBudget: (companyId: string) =>
+    call<{
+      ok: true;
+      budget: { cap_tokens: number | null; set_at: string | null };
+      used: number;
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/token-budget`),
+
+  setTokenBudget: (companyId: string, cap_tokens: number | null) =>
+    call<{
+      ok: true;
+      budget: { cap_tokens: number | null; set_at: string | null };
+    }>("POST", `/api/instance/${encodeURIComponent(companyId)}/token-budget`, { cap_tokens }),
+
   // Token usage (T2 cost tracking, per-company aggregate)
   tokenUsage: (companyId: string) =>
     call<{

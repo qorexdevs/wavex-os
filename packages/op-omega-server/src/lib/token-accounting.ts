@@ -159,12 +159,19 @@ function mergeInto(agg: PhaseAggregate, ev: T2Event): void {
 
 /** Wraps a route handler. Sweeps the events file after the await for any
  *  T2 calls that completed during the handler's execution and attributes
- *  them to (companyId, phase). */
+ *  them to (companyId, phase). Also enforces the per-company token budget
+ *  BEFORE running fn — throws BudgetExhaustedError when the cap has been
+ *  reached, which routes translate to HTTP 429. Calls already in flight
+ *  are not aborted. */
 export async function withTokenAccounting<T>(
   companyId: string,
   phase: PhaseKey,
   fn: () => Promise<T>,
 ): Promise<T> {
+  // Lazy import to avoid a cycle (token-budget imports readTokenUsage).
+  const { assertWithinBudget } = await import("./token-budget.js");
+  await assertWithinBudget(companyId);
+
   const startMs = Date.now();
   const result = await fn();
   const endMs = Date.now();

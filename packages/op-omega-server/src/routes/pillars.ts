@@ -17,6 +17,7 @@ import {
 } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting, type PhaseKey } from "../lib/token-accounting.js";
+import { BudgetExhaustedError } from "../lib/token-budget.js";
 
 const pillar1Schema = z.object({
   companyId: z.string().min(1),
@@ -119,6 +120,12 @@ export function registerPillarRoutes(app: FastifyInstance): void {
       } catch (e) {
         if (isOnboardingHaltError(e)) {
           return reply.status(409).send({ ok: false, halt: e.toJSON() });
+        }
+        if (e instanceof BudgetExhaustedError) {
+          return reply.status(429).send({
+            ok: false, error: e.message,
+            budget: { used: e.used, cap: e.cap, companyId: e.companyId },
+          });
         }
         throw e;
       }

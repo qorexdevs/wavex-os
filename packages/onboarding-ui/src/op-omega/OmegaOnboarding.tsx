@@ -10,6 +10,7 @@ import { useCompany } from "./lib/CompanyContext";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ConfirmResetModal } from "./components/ConfirmResetModal";
 import { TokenCounter } from "./components/TokenCounter";
+import { BudgetChip } from "./components/BudgetChip";
 import { preserveDevFlags } from "./lib/dev-flags";
 import { Pillar1 } from "./pillars/Pillar1";
 import { Pillar2 } from "./pillars/Pillar2";
@@ -223,6 +224,7 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
             ↺ Reset
           </button>
           <TokenCounter companyId={companyId} />
+          <BudgetChip companyId={companyId} />
         </div>
         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
           {STEPS.map((s, i) => (

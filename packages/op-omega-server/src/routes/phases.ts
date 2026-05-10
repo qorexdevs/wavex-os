@@ -16,6 +16,7 @@ import {
 import { listConnections } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting } from "../lib/token-accounting.js";
+import { BudgetExhaustedError } from "../lib/token-budget.js";
 
 const generateConnectorSchema = z.object({
   companyId: z.string().min(1),
@@ -52,6 +53,12 @@ function authReq(req: FastifyRequest) {
 function bodyError(reply: FastifyReply, e: unknown) {
   if (isOnboardingHaltError(e)) {
     return reply.status(409).send({ ok: false, halt: e.toJSON() });
+  }
+  if (e instanceof BudgetExhaustedError) {
+    return reply.status(429).send({
+      ok: false, error: e.message,
+      budget: { used: e.used, cap: e.cap, companyId: e.companyId },
+    });
   }
   throw e;
 }
