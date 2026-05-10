@@ -23,7 +23,11 @@ const STATUS_COLOR: Record<string, string> = {
   disabled: "#555",
 };
 
-interface ManifestWithOverlays { template_overlays?: Record<string, string> }
+interface AddedAgent { slot: string; parent_slot: string; template_id: string; added_at: string }
+interface ManifestWithOverlays {
+  template_overlays?: Record<string, string>;
+  template_additions?: AddedAgent[];
+}
 
 export function Phase3Swarm({ companyId, onComplete }: Props) {
   const [manifest, setManifest] = useState<SwarmManifest | null>(null);
@@ -35,6 +39,7 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
   // so swap saves/resets are reflected in the chart immediately).
   const [swapSlot, setSwapSlot] = useState<string | null>(null);
   const [overlays, setOverlays] = useState<Record<string, string>>({});
+  const [additions, setAdditions] = useState<AddedAgent[]>([]);
 
   async function generate(skipInference = false): Promise<void> {
     setBusy(true);
@@ -78,8 +83,9 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
     let alive = true;
     opOmegaOnboardingApi.getInstanceManifest(companyId).then((r) => {
       if (!alive || !r.manifest) return;
-      const o = (r.manifest as unknown as ManifestWithOverlays).template_overlays ?? {};
-      setOverlays(o);
+      const m = r.manifest as unknown as ManifestWithOverlays;
+      setOverlays(m.template_overlays ?? {});
+      setAdditions(m.template_additions ?? []);
     }).catch(() => { /* manifest doesn't exist yet — fine */ });
     return () => { alive = false; };
   }, [companyId]);
@@ -123,22 +129,32 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
 
           <Card>
             <h3 style={{ margin: "0 0 0.75rem 0", fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Org chart <span style={{ textTransform: "none", fontWeight: 400, color: "var(--text-dim)" }}>· click any agent to swap its template</span>
+              Org chart <span style={{ textTransform: "none", fontWeight: 400, color: "var(--text-dim)" }}>· click any agent to swap its template OR add a new agent under its parent</span>
             </h3>
             <OrgGraph
-              agents={agentEntries.map(([slot, a]): OrgAgent => ({
-                id: slot,
-                slot,
-                templateId: overlays[slot] ?? templateIdForSlot(slot),
-                reportsToSlot: a.reports_to ?? undefined,
-                status: a.status,
-              }))}
+              agents={[
+                ...agentEntries.map(([slot, a]): OrgAgent => ({
+                  id: slot,
+                  slot,
+                  templateId: overlays[slot] ?? templateIdForSlot(slot),
+                  reportsToSlot: a.reports_to ?? undefined,
+                  status: a.status,
+                })),
+                ...additions.map((add): OrgAgent => ({
+                  id: add.slot,
+                  slot: add.slot,
+                  templateId: overlays[add.slot] ?? add.template_id,
+                  reportsToSlot: add.parent_slot,
+                  status: "active",
+                })),
+              ]}
               height={540}
               onAgentClick={(a) => setSwapSlot(a.slot)}
             />
-            {Object.keys(overlays).length > 0 && (
+            {(Object.keys(overlays).length > 0 || additions.length > 0) && (
               <div className="text-dim" style={{ fontSize: 11, marginTop: "0.5rem" }}>
-                {Object.keys(overlays).length} operator-chosen template overlay{Object.keys(overlays).length === 1 ? "" : "s"} active.
+                {Object.keys(overlays).length > 0 && `${Object.keys(overlays).length} swap${Object.keys(overlays).length === 1 ? "" : "s"} · `}
+                {additions.length > 0 && `${additions.length} added agent${additions.length === 1 ? "" : "s"}`}
               </div>
             )}
           </Card>
@@ -186,23 +202,52 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
 
       <NavRow next={{ onClick: onComplete, label: "Continue → workflows" }} nextDisabled={busy || !manifest} />
 
-      {swapSlot && (
-        <AgentSwapPanel
-          companyId={companyId}
-          slot={swapSlot}
-          currentTemplateId={overlays[swapSlot] ?? templateIdForSlot(swapSlot)}
-          defaultTemplateId={templateIdForSlot(swapSlot)}
-          onClose={() => setSwapSlot(null)}
-          onSwapped={(newTemplateId) => {
-            setOverlays((prev) => {
-              const next = { ...prev };
-              if (newTemplateId === null) delete next[swapSlot];
-              else next[swapSlot] = newTemplateId;
-              return next;
-            });
-          }}
-        />
-      )}
+      {swapSlot && (() => {
+        // Resolve metadata about the clicked slot — could be a base-roster
+        // entry or an operator addition. Both surfaces support swap; only
+        // additions support remove.
+        const baseEntry = manifest?.agents?.[swapSlot];
+        const additionEntry = additions.find((a) => a.slot === swapSlot);
+        const isAdded = !!additionEntry;
+        const parentSlot = baseEntry?.reports_to ?? additionEntry?.parent_slot ?? null;
+        const defaultTemplateId = isAdded
+          ? (additionEntry!.template_id)
+          : templateIdForSlot(swapSlot);
+        const currentTemplateId = overlays[swapSlot] ?? defaultTemplateId;
+
+        return (
+          <AgentSwapPanel
+            companyId={companyId}
+            slot={swapSlot}
+            currentTemplateId={currentTemplateId}
+            defaultTemplateId={defaultTemplateId}
+            parentSlot={parentSlot}
+            isAddedAgent={isAdded}
+            onClose={() => setSwapSlot(null)}
+            onSwapped={(newTemplateId) => {
+              setOverlays((prev) => {
+                const next = { ...prev };
+                if (newTemplateId === null) delete next[swapSlot];
+                else next[swapSlot] = newTemplateId;
+                return next;
+              });
+            }}
+            onAdded={(newSlot, templateId) => {
+              setAdditions((prev) => [...prev, {
+                slot: newSlot, parent_slot: parentSlot ?? "", template_id: templateId, added_at: new Date().toISOString(),
+              }]);
+            }}
+            onRemoved={(removedSlot) => {
+              setAdditions((prev) => prev.filter((a) => a.slot !== removedSlot));
+              setOverlays((prev) => {
+                const next = { ...prev };
+                delete next[removedSlot];
+                return next;
+              });
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

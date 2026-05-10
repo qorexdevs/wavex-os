@@ -18,6 +18,12 @@ import { selectTemplatesForManifest } from "../selection/scorer.js";
 
 interface ManifestWithOverlays extends CompanyManifest {
   template_overlays?: Record<string, string>;
+  template_additions?: Array<{
+    slot: string;
+    parent_slot: string;
+    template_id: string;
+    added_at: string;
+  }>;
   template_selections?: Record<string, {
     chosenTemplateId: string;
     defaultTemplateId: string;
@@ -58,7 +64,29 @@ export async function bridgeAgents(
   });
 
   // 2. UPSERT agents — pass 1: insert without reports_to_agent_id
-  const slotEntries = Object.entries(manifest.swarm_manifest.agents);
+  // Operator additions (manifest.template_additions) merge in here as
+  // pseudo-base-roster entries with synthesized AgentManifestEntry shape.
+  // They inherit the parent's status semantics (default active).
+  const additions = (manifest as ManifestWithOverlays).template_additions ?? [];
+  const baseEntries = Object.entries(manifest.swarm_manifest.agents);
+  const addedEntries: Array<[string, typeof baseEntries[0][1]]> = additions.map((a) => {
+    const parentEntry = manifest.swarm_manifest.agents[a.parent_slot];
+    return [a.slot, {
+      status: "active" as const,
+      adapter: parentEntry?.adapter ?? "claude-code",
+      heartbeat: parentEntry?.heartbeat ?? "2h",
+      budget_monthly_usd: parentEntry?.budget_monthly_usd ?? 60,
+      skill_overlay: null,
+      department: parentEntry?.department ?? "ops",
+      level: "L·IV" as const,
+      reports_to: a.parent_slot,
+      spawnable: true,
+    }];
+  });
+  const slotEntries = [...baseEntries, ...addedEntries];
+  if (additions.length > 0) {
+    warnings.push(`${additions.length} operator-added agent${additions.length === 1 ? "" : "s"} merged into roster`);
+  }
   let warnedOnOwnedKpis = false;
 
   // Resolution order per slot:
@@ -84,16 +112,28 @@ export async function bridgeAgents(
     }]),
   );
 
+  // Index additions by slot so we can resolve their explicit template_id
+  // without going through SLOT_TO_TEMPLATE (which doesn't know about them).
+  const additionBySlot = new Map(additions.map((a) => [a.slot, a]));
+
   for (const [slot, entry] of slotEntries) {
     const tier = tierForSlot(slot);
     const overlayTemplate = overlays[slot];
+    const addition = additionBySlot.get(slot);
     const selection = selections.get(slot);
-    const templateId = overlayTemplate ?? selection?.chosenTemplateId ?? templateIdForSlot(slot);
-    if (templateId === slot && !slot.match(/^(ceo\.orchestrator|cpo|cmo|cro|cfo|cdo|coo)$/)) {
+    // Resolution order for added agents: overlay > addition.template_id > selection > default.
+    // Resolution order for base roster: overlay > selection > default.
+    const templateId = overlayTemplate
+      ?? addition?.template_id
+      ?? selection?.chosenTemplateId
+      ?? templateIdForSlot(slot);
+    if (!addition && templateId === slot && !slot.match(/^(ceo\.orchestrator|cpo|cmo|cro|cfo|cdo|coo)$/)) {
       warnings.push(`no template mapping for slot "${slot}" — using slot as templateId fallback`);
     }
     if (overlayTemplate) {
       warnings.push(`slot "${slot}" using operator-chosen overlay template "${overlayTemplate}" (default was "${templateIdForSlot(slot)}")`);
+    } else if (addition) {
+      warnings.push(`slot "${slot}" is an operator-added agent (template "${addition.template_id}", added ${addition.added_at})`);
     } else if (selection?.diverged) {
       warnings.push(`slot "${slot}" matrix-selected "${selection.chosenTemplateId}" (default was "${selection.defaultTemplateId}") — ${selection.rationale}`);
     }

@@ -321,6 +321,24 @@ export const opOmegaOnboardingApi = {
       slot: input.slot, templateId: input.templateId,
     }),
 
+  // Add agent — creates a new agent slot under an existing parent.
+  // Persists to manifest.template_additions; bridge merges on activate.
+  addAgent: (input: { companyId: string; parent_slot: string; template_id: string; slot_suffix?: string }) =>
+    call<{
+      ok: true;
+      added: { slot: string; parent_slot: string; template_id: string; added_at: string };
+      additions: Array<{ slot: string; parent_slot: string; template_id: string; added_at: string }>;
+      sha256: string;
+    }>("POST", `/api/instance/${encodeURIComponent(input.companyId)}/add-agent`, {
+      parent_slot: input.parent_slot, template_id: input.template_id, slot_suffix: input.slot_suffix,
+    }),
+
+  // Remove an operator-added agent (no-op if it's a base-roster slot).
+  removeAddedAgent: (input: { companyId: string; slot: string }) =>
+    call<{ ok: true; removed_slot: string; sha256: string }>(
+      "DELETE", `/api/instance/${encodeURIComponent(input.companyId)}/add-agent`, { slot: input.slot },
+    ),
+
   // Reset — wipe ALL state for a company (filesystem onboarding artifacts +
   // every DB row keyed by company_id). Destructive. UI must confirm.
   resetCompany: (companyId: string) =>

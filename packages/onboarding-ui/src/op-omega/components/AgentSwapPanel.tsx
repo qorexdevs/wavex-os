@@ -17,8 +17,20 @@ export interface AgentSwapPanelProps {
   currentTemplateId: string;
   /** templateId from the catalog default (so we can show "Reset to default" appropriately). */
   defaultTemplateId: string;
+  /** Parent slot the agent reports to. Required to enable "Add as new agent"
+   *  (so we know which chief the new sibling reports under). Slots without a
+   *  parent (ceo.orchestrator) get the add-button hidden. */
+  parentSlot?: string | null;
+  /** True if the current slot is itself an operator addition (not in the
+   *  base op-omega roster). Removable via the panel. */
+  isAddedAgent?: boolean;
   onClose: () => void;
   onSwapped: (newTemplateId: string | null) => void;
+  /** Fired after a new agent was added under parentSlot. The parent surface
+   *  re-fetches additions from the manifest so the org chart re-renders. */
+  onAdded?: (newSlot: string, templateId: string) => void;
+  /** Fired after this agent (an addition) was removed. */
+  onRemoved?: (slot: string) => void;
 }
 
 /** Adjacent divisions for cross-discipline swaps. Each value is a list of
@@ -60,7 +72,10 @@ function alternativesFor(currentTemplateId: string, defaultTemplateId: string): 
     });
 }
 
-export function AgentSwapPanel({ companyId, slot, currentTemplateId, defaultTemplateId, onClose, onSwapped }: AgentSwapPanelProps) {
+export function AgentSwapPanel({
+  companyId, slot, currentTemplateId, defaultTemplateId,
+  parentSlot, isAddedAgent, onClose, onSwapped, onAdded, onRemoved,
+}: AgentSwapPanelProps) {
   const [selected, setSelected] = useState<string>(currentTemplateId);
   const [skill, setSkill] = useState<string | null>(null);
   const [skillLoading, setSkillLoading] = useState(false);
@@ -71,6 +86,9 @@ export function AgentSwapPanel({ companyId, slot, currentTemplateId, defaultTemp
   const selectedTpl = TEMPLATES_BY_ID[selected];
   const isDirty = selected !== currentTemplateId;
   const isOverlay = currentTemplateId !== defaultTemplateId;
+  // Add is only meaningful when there's a parent + the operator picked something
+  // different from the current template (otherwise it'd duplicate this exact agent).
+  const canAdd = !!parentSlot && !!onAdded && selected !== currentTemplateId;
 
   // Load SKILL.md preview for the selected template
   useEffect(() => {
@@ -112,6 +130,38 @@ export function AgentSwapPanel({ companyId, slot, currentTemplateId, defaultTemp
     try {
       await opOmegaOnboardingApi.swapTemplate({ companyId, slot, templateId: null });
       onSwapped(null);
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addAsNewAgent(): Promise<void> {
+    if (!parentSlot || !onAdded) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opOmegaOnboardingApi.addAgent({
+        companyId, parent_slot: parentSlot, template_id: selected,
+      });
+      onAdded(r.added.slot, r.added.template_id);
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeThisAddedAgent(): Promise<void> {
+    if (!isAddedAgent || !onRemoved) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await opOmegaOnboardingApi.removeAddedAgent({ companyId, slot });
+      onRemoved(slot);
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -223,7 +273,19 @@ export function AgentSwapPanel({ companyId, slot, currentTemplateId, defaultTemp
         {error && <div style={{ color: "var(--warning)", fontSize: 12, marginBottom: "0.75rem" }}>✗ {error}</div>}
 
         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
-          {isOverlay && (
+          {isAddedAgent && onRemoved && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void removeThisAddedAgent()}
+              disabled={busy}
+              style={{ fontSize: 12, color: "var(--warning)", borderColor: "var(--warning)" }}
+              title="Remove this operator-added agent"
+            >
+              ✕ Remove this agent
+            </button>
+          )}
+          {isOverlay && !isAddedAgent && (
             <button type="button" className="secondary" onClick={() => void resetToDefault()} disabled={busy} style={{ fontSize: 12 }}>
               ↶ Reset to default ({defaultTemplateId})
             </button>
@@ -231,6 +293,17 @@ export function AgentSwapPanel({ companyId, slot, currentTemplateId, defaultTemp
           <button type="button" className="secondary" onClick={onClose} disabled={busy} style={{ fontSize: 12 }}>
             Cancel
           </button>
+          {canAdd && (
+            <button
+              type="button"
+              onClick={() => void addAsNewAgent()}
+              disabled={busy}
+              style={{ fontSize: 12 }}
+              title={`Add ${selected} as a NEW agent under ${parentSlot} (don't replace current)`}
+            >
+              {busy ? "Adding…" : `+ Add as new agent under ${parentSlot}`}
+            </button>
+          )}
           <button type="button" onClick={() => void save()} disabled={busy || !isDirty} style={{ fontSize: 12 }}>
             {busy ? "Saving…" : `Save swap → ${selected}`}
           </button>
