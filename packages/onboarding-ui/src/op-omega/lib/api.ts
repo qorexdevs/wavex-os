@@ -374,4 +374,18 @@ export const opOmegaOnboardingApi = {
         heartbeatRuns: number;
       };
     }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
+
+  // Token usage (T2 cost tracking, per-company aggregate)
+  tokenUsage: (companyId: string) =>
+    call<{
+      ok: true;
+      usage: {
+        companyId: string;
+        started_at: string;
+        updated_at: string;
+        total: { input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number; calls: number };
+        by_phase: Record<string, { input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number; calls: number; last_call_at?: string }>;
+        recent_calls: Array<{ phase: string; ts_iso: string; input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number }>;
+      };
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/token-usage`),
 };

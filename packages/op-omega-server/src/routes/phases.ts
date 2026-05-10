@@ -15,6 +15,7 @@ import {
 } from "@op-omega/plugin-onboarding";
 import { listConnections } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
+import { withTokenAccounting } from "../lib/token-accounting.js";
 
 const generateConnectorSchema = z.object({
   companyId: z.string().min(1),
@@ -136,13 +137,15 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     if (!responses) return reply.status(404).send({ error: "no pillar responses" });
     const live = await listConnections(parsed.data.companyId);
     try {
-      const result = await generateConnectorManifest({
-        companyId: parsed.data.companyId,
-        responses,
-        skipInference: parsed.data.skipInference,
-        liveConnections: live,
+      return await withTokenAccounting(parsed.data.companyId, "connector_manifest", async () => {
+        const result = await generateConnectorManifest({
+          companyId: parsed.data.companyId,
+          responses,
+          skipInference: parsed.data.skipInference,
+          liveConnections: live,
+        });
+        return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
       });
-      return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
     } catch (e) {
       return bodyError(reply, e);
     }
@@ -157,13 +160,15 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     if (!connector) return reply.status(409).send({ error: "connector manifest not generated" });
     const responses = await loadPillarResponses(parsed.data.companyId);
     try {
-      const result = await generateSwarmManifest({
-        companyId: parsed.data.companyId,
-        responses,
-        connectorManifest: connector,
-        skipInference: parsed.data.skipInference,
+      return await withTokenAccounting(parsed.data.companyId, "swarm_manifest", async () => {
+        const result = await generateSwarmManifest({
+          companyId: parsed.data.companyId,
+          responses,
+          connectorManifest: connector,
+          skipInference: parsed.data.skipInference,
+        });
+        return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
       });
-      return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
     } catch (e) {
       return bodyError(reply, e);
     }
@@ -180,15 +185,17 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     if (!swarm) return reply.status(409).send({ error: "swarm manifest not generated" });
     const responses = await loadPillarResponses(parsed.data.companyId);
     try {
-      const result = await generateWorkflowManifest({
-        companyId: parsed.data.companyId,
-        responses,
-        connectorManifest: connector,
-        swarmManifest: swarm,
-        skipInference: parsed.data.skipInference,
-        bypassBudgetCheck: parsed.data.bypassBudgetCheck,
+      return await withTokenAccounting(parsed.data.companyId, "workflow_manifest", async () => {
+        const result = await generateWorkflowManifest({
+          companyId: parsed.data.companyId,
+          responses,
+          connectorManifest: connector,
+          swarmManifest: swarm,
+          skipInference: parsed.data.skipInference,
+          bypassBudgetCheck: parsed.data.bypassBudgetCheck,
+        });
+        return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
       });
-      return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
     } catch (e) {
       return bodyError(reply, e);
     }
@@ -223,6 +230,7 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     }
 
     try {
+      return await withTokenAccounting(parsed.data.companyId, "finalize", async () => {
       const result = await assembleCompanyManifest({
         companyId: parsed.data.companyId,
         orgId: parsed.data.orgId ?? parsed.data.companyId,
@@ -240,6 +248,7 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         source: result.source,
         warnings: result.warnings,
       };
+      });
     } catch (e) {
       return bodyError(reply, e);
     }

@@ -16,6 +16,7 @@ import {
   nextIncompletePillar,
 } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
+import { withTokenAccounting, type PhaseKey } from "../lib/token-accounting.js";
 
 const pillar1Schema = z.object({
   companyId: z.string().min(1),
@@ -114,58 +115,68 @@ export function registerPillarRoutes(app: FastifyInstance): void {
   };
 
   pillarRoute(1, pillar1Schema, async (body) => {
-    const result = await handlePillar1({
-      org_name: body.org_name,
-      raw_input: body.raw_input,
-      companyId: body.companyId,
-      manual_context: body.manual_context,
+    return withTokenAccounting(body.companyId, "pillar_1", async () => {
+      const result = await handlePillar1({
+        org_name: body.org_name,
+        raw_input: body.raw_input,
+        companyId: body.companyId,
+        manual_context: body.manual_context,
+      });
+      await updatePillar(body.companyId, "pillar_1", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_1", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(2, pillar2Schema, async (body) => {
-    const outcome = await handlePillar2({
-      claude_plan: body.claude_plan,
-      claude_plan_other_note: body.claude_plan_other_note,
+    return withTokenAccounting(body.companyId, "pillar_2", async () => {
+      const outcome = await handlePillar2({
+        claude_plan: body.claude_plan,
+        claude_plan_other_note: body.claude_plan_other_note,
+      });
+      await updatePillar(body.companyId, "pillar_2", outcome.response);
+      return outcome;
     });
-    await updatePillar(body.companyId, "pillar_2", outcome.response);
-    return outcome;
   });
 
   pillarRoute(3, pillar3Schema, async (body) => {
-    const result = await handlePillar3({
-      product_state: body.product_state,
-      product_state_other: body.product_state_other,
-      stage: body.stage,
-      stage_other: body.stage_other,
+    return withTokenAccounting(body.companyId, "pillar_3", async () => {
+      const result = await handlePillar3({
+        product_state: body.product_state,
+        product_state_other: body.product_state_other,
+        stage: body.stage,
+        stage_other: body.stage_other,
+      });
+      await updatePillar(body.companyId, "pillar_3", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_3", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(4, pillar4Schema, async (body) => {
-    const result = await handlePillar4({
-      lead_sources: body.lead_sources,
-      lead_source_other: body.lead_source_other,
-      sales_motion: body.sales_motion,
-      sales_motion_other: body.sales_motion_other,
-      close_channel: body.close_channel,
-      close_channel_other: body.close_channel_other,
+    return withTokenAccounting(body.companyId, "pillar_4", async () => {
+      const result = await handlePillar4({
+        lead_sources: body.lead_sources,
+        lead_source_other: body.lead_source_other,
+        sales_motion: body.sales_motion,
+        sales_motion_other: body.sales_motion_other,
+        close_channel: body.close_channel,
+        close_channel_other: body.close_channel_other,
+      });
+      await updatePillar(body.companyId, "pillar_4", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_4", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(5, pillar5Schema, async (body) => {
-    const result = await handlePillar5({
-      comm_channel: body.comm_channel,
-      comm_channel_other: body.comm_channel_other,
-      urgency_routing: body.urgency_routing,
-      urgency_routing_other: body.urgency_routing_other,
-      board_endpoint_config: body.board_endpoint_config,
+    return withTokenAccounting(body.companyId, "pillar_5", async () => {
+      const result = await handlePillar5({
+        comm_channel: body.comm_channel,
+        comm_channel_other: body.comm_channel_other,
+        urgency_routing: body.urgency_routing,
+        urgency_routing_other: body.urgency_routing_other,
+        board_endpoint_config: body.board_endpoint_config,
+      });
+      await updatePillar(body.companyId, "pillar_5", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_5", result);
-    return { ok: true, response: result };
   });
 }

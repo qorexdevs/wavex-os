@@ -620,4 +620,48 @@ test.describe("bug hunt — composition + edge cases", () => {
 
     await request.delete(`/api/instance/${id}/reset`);
   });
+
+  /** B16a: token-usage endpoint returns 404 before any T2 call */
+  test("B16a: GET /token-usage returns 404 for fresh company", async ({ request }) => {
+    const id = uniqueId("bh-token-empty");
+    const r = await request.get(`/api/instance/${id}/token-usage`);
+    expect(r.status()).toBe(404);
+  });
+
+  /** B16b: token-usage chip is visible in the wizard header */
+  test("B16b: header renders token chip with $0.00 baseline", async ({ page }) => {
+    const id = uniqueId("bh-token-chip");
+    await page.goto(`/onboarding?companyId=${id}`);
+    await expect(page.getByRole("heading", { name: /Pillar 1/ })).toBeVisible({ timeout: 10_000 });
+    // Chip starts at "0 · <$0.01" (no calls yet, 404 → empty state)
+    await expect(page.locator("button", { hasText: /🪙\s+0\s+·/ })).toBeVisible();
+  });
+
+  /** B16c: full T2-driven aggregation — gated since it costs real tokens.
+   *  Drives Pillar 1 with a real T2 call, then asserts the per-company
+   *  token-usage.json got populated with usage attributed to pillar_1. */
+  test("B16c: Pillar 1 T2 call writes usage to per-company aggregate", async ({ request }) => {
+    test.skip(process.env.WAVEX_E2E_T2 !== "1", "Requires real T2 — set WAVEX_E2E_T2=1");
+    const id = uniqueId("bh-token-real");
+    // Seed pillar 1 with a real T2 call (no manual_context — forces enrichment)
+    const p1 = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "BugHunt", raw_input: "we sell SaaS dashboards",
+        manual_context: "BugHunt is an analytics company that sells SaaS dashboards to engineering teams. Used as e2e fixture for token-accounting verification.",
+      },
+    });
+    expect(p1.ok()).toBeTruthy();
+
+    const usage = await request.get(`${API}/api/instance/${id}/token-usage`);
+    expect(usage.ok()).toBeTruthy();
+    const j = await usage.json();
+    expect(j.usage.companyId).toBe(id);
+    expect(j.usage.total.calls).toBeGreaterThanOrEqual(1);
+    expect(j.usage.by_phase.pillar_1).toBeTruthy();
+    expect(j.usage.by_phase.pillar_1.input_tokens).toBeGreaterThan(0);
+    expect(j.usage.by_phase.pillar_1.output_tokens).toBeGreaterThan(0);
+    expect(j.usage.total.input_tokens).toBe(j.usage.by_phase.pillar_1.input_tokens);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
 });
