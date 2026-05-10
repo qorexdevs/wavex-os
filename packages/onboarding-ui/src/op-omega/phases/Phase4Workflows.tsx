@@ -35,10 +35,25 @@ export function Phase4Workflows({ companyId, onComplete }: Props) {
     }
   }
 
-  // T2 refinement runs automatically on mount. Pillar 1 enrichment + active
-  // swarm + connectors drive per-agent workflow patches with attribution.
-  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
-  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
+  // Hydrate-first on mount: load existing workflow manifest from disk if the
+  // operator already passed through this phase. T2 refinement only fires
+  // for first-time visits or via the explicit "↻ Re-refine with T2" button.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const loaded = await opOmegaOnboardingApi.loadWorkflow(companyId);
+        if (!alive) return;
+        if (loaded.exists && loaded.manifest) {
+          setManifest(loaded.manifest);
+          setSource("loaded");
+          return;
+        }
+      } catch { /* fall through to generate */ }
+      if (alive) await generate(isT0FastMode());
+    })();
+    return () => { alive = false; };
+  }, [companyId]);
 
   const agentWorkflows = manifest ? Object.entries(manifest.agent_workflows) : [];
   const bundleWorkflows = manifest ? Object.entries(manifest.bundle_workflows) : [];

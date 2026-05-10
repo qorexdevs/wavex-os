@@ -50,10 +50,25 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
     }
   }
 
-  // T2 refinement runs automatically on mount. Pillar 1 enrichment (ICP,
-  // friction hypothesis, differentiator, tone) shapes per-agent skill_overlays.
-  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
-  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
+  // Hydrate-first on mount: load existing swarm manifest from disk if the
+  // operator already passed through this phase. T2 refinement only fires
+  // for first-time visits or via the explicit "↻ Re-refine with T2" button.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const loaded = await opOmegaOnboardingApi.loadSwarm(companyId);
+        if (!alive) return;
+        if (loaded.exists && loaded.manifest) {
+          setManifest(loaded.manifest);
+          setSource("loaded");
+          return;
+        }
+      } catch { /* fall through to generate */ }
+      if (alive) await generate(isT0FastMode());
+    })();
+    return () => { alive = false; };
+  }, [companyId]);
 
   // Hydrate template overlays from the on-disk manifest (saved by prior swap
   // sessions). The swarm-manifest endpoint doesn't return them, so fetch the

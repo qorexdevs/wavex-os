@@ -83,6 +83,50 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     }
   });
 
+  // GET load endpoints — return the existing manifest from disk if present.
+  // Lets the wizard hydrate phase pages on back-navigation without re-running
+  // T2 (which costs 60-180s + tokens). UI policy: try GET first; only POST
+  // (generate) if no manifest exists. Operator can force a fresh run via the
+  // existing "↻ Re-refine with T2" button on each phase page.
+  app.get("/op-omega/onboarding/connector-manifest", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const { companyId } = (req.query ?? {}) as { companyId?: string };
+    if (!companyId) return reply.status(400).send({ error: "companyId required" });
+    assertCompanyAccess(authReq(req), companyId);
+    const manifest = await loadConnectorManifest(companyId).catch(() => null);
+    if (!manifest) return { ok: true, exists: false, manifest: null };
+    return { ok: true, exists: true, manifest, source: "loaded" as const };
+  });
+
+  app.get("/op-omega/onboarding/swarm-manifest", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const { companyId } = (req.query ?? {}) as { companyId?: string };
+    if (!companyId) return reply.status(400).send({ error: "companyId required" });
+    assertCompanyAccess(authReq(req), companyId);
+    const manifest = await loadSwarmManifest(companyId).catch(() => null);
+    if (!manifest) return { ok: true, exists: false, manifest: null };
+    return { ok: true, exists: true, manifest, source: "loaded" as const };
+  });
+
+  app.get("/op-omega/onboarding/workflow-manifest", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const { companyId } = (req.query ?? {}) as { companyId?: string };
+    if (!companyId) return reply.status(400).send({ error: "companyId required" });
+    assertCompanyAccess(authReq(req), companyId);
+    // op-omega doesn't export a loadWorkflowManifest; read the file directly.
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { getOnboardingDir } = await import("../state-bridge.js");
+    try {
+      const path = join(getOnboardingDir(companyId), "workflow_manifest.json");
+      const raw = await readFile(path, "utf8");
+      const manifest = JSON.parse(raw) as WorkflowManifest;
+      return { ok: true, exists: true, manifest, source: "loaded" as const };
+    } catch {
+      return { ok: true, exists: false, manifest: null };
+    }
+  });
+
   app.post("/op-omega/onboarding/connector-manifest", async (req, reply) => {
     if (!gateBoard(req, reply)) return;
     const parsed = generateConnectorSchema.safeParse(req.body);

@@ -56,12 +56,26 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
     }
   }
 
-  // T2 refinement runs automatically on mount — no button click required.
-  // The matrix baseline is computed server-side first; T2 then refines it
-  // using your Pillar 1 enrichment (ICP, friction, differentiator, etc.) to
-  // tighten per-connector rationale and add/promote based on evidence.
-  // ?t0=1 URL flag forces T0-fast for dev / e2e speed.
-  useEffect(() => { void generate(isT0FastMode()); }, [companyId]);
+  // On mount: try to LOAD existing manifest from disk first (back-navigation
+  // case — operator already ran T2, no point burning 60-90s + tokens again).
+  // Only generate if no manifest exists yet (first visit). Operator can
+  // explicitly re-run via the "↻ Re-refine with T2" button below.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const loaded = await opOmegaOnboardingApi.loadConnector(companyId);
+        if (!alive) return;
+        if (loaded.exists && loaded.manifest) {
+          setManifest(loaded.manifest);
+          setSource("loaded");
+          return;
+        }
+      } catch { /* fall through to generate */ }
+      if (alive) await generate(isT0FastMode());
+    })();
+    return () => { alive = false; };
+  }, [companyId]);
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>

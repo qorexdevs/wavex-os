@@ -199,6 +199,20 @@ export const opOmegaOnboardingApi = {
     call<{ ok: true; manifest: WorkflowManifest; source: "t2" | "fallback"; warnings: string[] }>(
       "POST", "/op-omega/onboarding/workflow-manifest", { companyId, ...opts }),
 
+  // Load existing phase manifests from disk — no T2 cost. Returns
+  // { exists: false, manifest: null } if the phase hasn't been generated yet.
+  loadConnector: (companyId: string) =>
+    call<{ ok: true; exists: boolean; manifest: ConnectorManifest | null; source?: "loaded" }>(
+      "GET", `/op-omega/onboarding/connector-manifest?companyId=${encodeURIComponent(companyId)}`),
+
+  loadSwarm: (companyId: string) =>
+    call<{ ok: true; exists: boolean; manifest: SwarmManifest | null; source?: "loaded" }>(
+      "GET", `/op-omega/onboarding/swarm-manifest?companyId=${encodeURIComponent(companyId)}`),
+
+  loadWorkflow: (companyId: string) =>
+    call<{ ok: true; exists: boolean; manifest: WorkflowManifest | null; source?: "loaded" }>(
+      "GET", `/op-omega/onboarding/workflow-manifest?companyId=${encodeURIComponent(companyId)}`),
+
   connectorRecommendations: (companyId: string) =>
     call<{ ok: true; manifest: ConnectorManifest; source: "t2" | "fallback"; warnings: string[] }>(
       "GET", `/op-omega/onboarding/connector-recommendations?companyId=${encodeURIComponent(companyId)}`),
