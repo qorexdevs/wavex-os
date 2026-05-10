@@ -3,7 +3,7 @@
  *  from /op-omega/onboarding/status on mount. */
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { opOmegaOnboardingApi, ApiError } from "./lib/api";
 import { useCompany } from "./lib/CompanyContext";
@@ -37,14 +37,40 @@ export function OmegaOnboarding() {
   return <CompanyWizard companyId={companyId} qc={qc} />;
 }
 
+const VALID_PHASES: Phase[] = [
+  "welcome",
+  "pillar-1", "pillar-2", "pillar-3", "pillar-4", "pillar-5",
+  "phase-2-connectors", "credential-concierge",
+  "phase-3-swarm", "phase-4-workflows",
+  "materialize",
+];
+
 function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<typeof useQueryClient> }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const status = useQuery({
     queryKey: ["status", companyId],
     queryFn: () => opOmegaOnboardingApi.status(companyId),
   });
 
-  const [phase, setPhase] = useState<Phase>("pillar-1");
-  const [autoRouted, setAutoRouted] = useState(false);
+  // Initialize phase from ?phase= URL param if valid, so refresh/share preserves
+  // wizard position. Falls back to "pillar-1"; auto-route effect below will then
+  // shift to next_pillar (or phase-2-connectors if all done) on first status load.
+  const urlPhase = searchParams.get("phase");
+  const initialPhase: Phase = (urlPhase && (VALID_PHASES as string[]).includes(urlPhase))
+    ? (urlPhase as Phase)
+    : "pillar-1";
+  const [phase, setPhase] = useState<Phase>(initialPhase);
+  // If phase came from URL, treat it as authoritative — don't auto-route over it.
+  const [autoRouted, setAutoRouted] = useState(initialPhase !== "pillar-1");
+
+  // Mirror phase to URL so refresh/back/forward preserve position. Skip when
+  // already in sync to avoid redundant history entries.
+  useEffect(() => {
+    if (searchParams.get("phase") === phase) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("phase", phase);
+    setSearchParams(next, { replace: true });
+  }, [phase, searchParams, setSearchParams]);
 
   // Auto-route from server status — only on first load. After that the user's
   // explicit "Continue →" clicks drive phase transitions.
@@ -58,7 +84,16 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
 
   const advance = (next: Phase) => {
     setPhase(next);
+    setAutoRouted(true); // operator click counts as having decided phase
     qc.invalidateQueries({ queryKey: ["status", companyId] });
+  };
+
+  // Header's onJump bypasses advance() (no qc invalidation needed for a jump).
+  // Set autoRouted there too so a fast click before status loads isn't overridden
+  // by the auto-routing effect when status finally arrives.
+  const handleJump = (next: Phase) => {
+    setPhase(next);
+    setAutoRouted(true);
   };
 
   if (status.isLoading) {
@@ -72,7 +107,7 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <Header companyId={companyId} phase={phase} onJump={setPhase} />
+      <Header companyId={companyId} phase={phase} onJump={handleJump} />
 
       {phase === "pillar-1" && (
         <Pillar1 companyId={companyId} initial={pr?.pillar_1 ?? undefined} onComplete={() => advance("pillar-2")} />
