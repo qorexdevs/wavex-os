@@ -27,7 +27,7 @@ export interface AgentAddPanelProps {
   onAdded: (newSlot: string, parentSlot: string, templateId: string) => void;
 }
 
-interface Recommendation { templateId: string; rationale: string; score: number }
+interface Recommendation { templateId: string; parent_slot: string; rationale: string; score: number }
 
 export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose, onAdded }: AgentAddPanelProps) {
   // Default to the first chief if no initial parent
@@ -54,10 +54,17 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
     try {
       const r = await opOmegaOnboardingApi.recommendAgent({
         companyId, parent_slot: parentSlot, prompt: nlPrompt.trim(),
+        // Pass every parent option so T2 can pick the right reporting line.
+        // role_hint = the parent's division so T2 can map "marketing" → cmo, etc.
+        available_parents: parentChoices.map((p) => ({ slot: p.slot, role_hint: p.division })),
       });
       setRecommendations(r.recommendations);
-      // Auto-select the top pick so the rest of the panel reflects it
-      if (r.recommendations.length > 0) setTemplateId(r.recommendations[0].templateId);
+      // Auto-select the top pick — both the template AND the recommended parent
+      if (r.recommendations.length > 0) {
+        const top = r.recommendations[0];
+        setTemplateId(top.templateId);
+        setParentSlot(top.parent_slot);
+      }
     } catch (e) {
       setRecommendError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
@@ -184,12 +191,16 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
               </div>
               <div style={{ display: "grid", gap: "0.4rem" }}>
                 {recommendations.map((r, i) => {
-                  const isSelected = r.templateId === templateId;
+                  const isSelected = r.templateId === templateId && r.parent_slot === parentSlot;
                   return (
                     <button
-                      key={r.templateId}
+                      key={`${r.templateId}-${r.parent_slot}`}
                       type="button"
-                      onClick={() => setTemplateId(r.templateId)}
+                      onClick={() => {
+                        // Click applies BOTH the template AND the recommended parent
+                        setTemplateId(r.templateId);
+                        setParentSlot(r.parent_slot);
+                      }}
                       style={{
                         textAlign: "left",
                         padding: "0.6rem 0.75rem",
@@ -204,6 +215,7 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
                       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
                         <span>
                           <strong>#{i + 1}</strong> <strong>{r.templateId}</strong>
+                          <span className="text-dim" style={{ marginLeft: 6, fontSize: 10 }}>→ reports to <strong>{r.parent_slot}</strong></span>
                           {isSelected && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>● selected</span>}
                         </span>
                         <span className="text-dim" style={{ fontSize: 10 }}>score {r.score}</span>
