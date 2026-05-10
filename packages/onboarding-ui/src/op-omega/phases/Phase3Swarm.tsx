@@ -11,6 +11,7 @@ import { Card, H2, NavRow, P } from "../components/primitives";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 import { OrgGraph, type OrgAgent } from "../../components/OrgGraph";
 import { AgentSwapPanel } from "../components/AgentSwapPanel";
+import { AgentAddPanel } from "../components/AgentAddPanel";
 import { templateIdForSlot } from "../../data/slot-to-template";
 import { isT0FastMode } from "../lib/dev-flags";
 
@@ -38,6 +39,7 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
   // edited and the local overlays map (mirrors company.manifest.template_overlays
   // so swap saves/resets are reflected in the chart immediately).
   const [swapSlot, setSwapSlot] = useState<string | null>(null);
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
   const [overlays, setOverlays] = useState<Record<string, string>>({});
   const [additions, setAdditions] = useState<AddedAgent[]>([]);
 
@@ -128,9 +130,19 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
           </Card>
 
           <Card>
-            <h3 style={{ margin: "0 0 0.75rem 0", fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Org chart <span style={{ textTransform: "none", fontWeight: 400, color: "var(--text-dim)" }}>· click any agent to swap its template OR add a new agent under its parent</span>
-            </h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.75rem", gap: "1rem", flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0, fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Org chart <span style={{ textTransform: "none", fontWeight: 400, color: "var(--text-dim)" }}>· click any agent to swap or remove</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAddPanelOpen(true)}
+                style={{ fontSize: 12, padding: "0.35rem 0.75rem" }}
+                title="Add a new agent under any existing parent"
+              >
+                + Add new agent
+              </button>
+            </div>
             <OrgGraph
               agents={[
                 ...agentEntries.map(([slot, a]): OrgAgent => ({
@@ -201,6 +213,25 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
       )}
 
       <NavRow next={{ onClick: onComplete, label: "Continue → workflows" }} nextDisabled={busy || !manifest} />
+
+      {addPanelOpen && (
+        <AgentAddPanel
+          companyId={companyId}
+          parentChoices={[
+            ...agentEntries.map(([slot, a]) => ({ slot, division: a.department })),
+            ...additions.map((a) => {
+              const parentDept = manifest?.agents?.[a.parent_slot]?.department ?? "ops";
+              return { slot: a.slot, division: parentDept };
+            }),
+          ]}
+          onClose={() => setAddPanelOpen(false)}
+          onAdded={(newSlot, parentSlot, templateId) => {
+            setAdditions((prev) => [...prev, {
+              slot: newSlot, parent_slot: parentSlot, template_id: templateId, added_at: new Date().toISOString(),
+            }]);
+          }}
+        />
+      )}
 
       {swapSlot && (() => {
         // Resolve metadata about the clicked slot — could be a base-roster
