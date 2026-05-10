@@ -73,7 +73,57 @@ interface ConciergeRow {
   lastTestResult: { ok: boolean; detail?: string } | null;
   skipReason: string | null;
   composioManaged: boolean;
+  /** Operator-facing link to the connector's API key management page.
+   *  Saves the operator from googling "where do I find my Stripe API key".
+   *  Null for connectors with no obvious self-serve URL. */
+  keysUrl: string | null;
 }
+
+/** Per-connector deep links to where the operator gets their API keys.
+ *  These are stable provider URLs — kept here (and not in env) so they're
+ *  versioned with the connector schema. Composio-managed connectors point
+ *  at app.composio.dev where the OAuth handshake actually happens. */
+const CONNECTOR_KEYS_URL: Record<string, string> = {
+  // Direct-key
+  supabase:             "https://supabase.com/dashboard/project/_/settings/api",
+  github:               "https://github.com/settings/tokens",
+  telegram:             "https://core.telegram.org/bots#how-do-i-create-a-bot",
+  whatsapp:             "https://developers.facebook.com/apps/",
+  "twilio-sms":         "https://console.twilio.com/",
+  sendgrid:             "https://app.sendgrid.com/settings/api_keys",
+  anthropic:            "https://console.anthropic.com/settings/keys",
+  openai:               "https://platform.openai.com/api-keys",
+  mixpanel:             "https://mixpanel.com/settings/project",
+  amplitude:            "https://app.amplitude.com/data/sources",
+  posthog:              "https://app.posthog.com/project/settings",
+  segment:              "https://app.segment.com/",
+  stripe:               "https://dashboard.stripe.com/apikeys",
+  "stripe-connect":     "https://dashboard.stripe.com/apikeys",
+  shopify:              "https://help.shopify.com/en/manual/apps/app-types/custom-apps",
+  bigcommerce:          "https://developer.bigcommerce.com/docs/start/authentication/api-accounts",
+  shipstation:          "https://help.shipstation.com/hc/en-us/articles/360025856212",
+  klaviyo:              "https://www.klaviyo.com/account#api-keys-tab",
+  plaid:                "https://dashboard.plaid.com/team/keys",
+  docusign:             "https://developers.docusign.com/platform/auth/",
+  clio:                 "https://app.clio.com/settings/developer_applications",
+  "meta-ads-api":       "https://developers.facebook.com/apps/",
+  "google-ads-api":     "https://developers.google.com/google-ads/api/docs/first-call/dev-token",
+  "linkedin-sales-nav": "https://www.linkedin.com/developers/apps",
+  // Composio-managed → Composio's app, where the OAuth flow runs
+  slack:                "https://app.composio.dev/apps",
+  discord:              "https://app.composio.dev/apps",
+  gmail:                "https://app.composio.dev/apps",
+  hubspot:              "https://app.composio.dev/apps",
+  salesforce:           "https://app.composio.dev/apps",
+  intercom:             "https://app.composio.dev/apps",
+  zendesk:              "https://app.composio.dev/apps",
+  notion:               "https://app.composio.dev/apps",
+  airtable:             "https://app.composio.dev/apps",
+  linear:               "https://app.composio.dev/apps",
+  calendly:             "https://app.composio.dev/apps",
+  google_calendar:      "https://app.composio.dev/apps",
+  google_drive:         "https://app.composio.dev/apps",
+};
 
 /** Per-connector schema of expected vault keys + whether Composio handles
  *  the OAuth handshake. Direct-key connectors expose paste fields; Composio
@@ -181,6 +231,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
           lastTestResult: s?.lastTestResult ?? null,
           skipReason: s?.skipReason ?? null,
           composioManaged: desc.composio,
+          keysUrl: CONNECTOR_KEYS_URL[e.id] ?? null,
         });
       }
     }

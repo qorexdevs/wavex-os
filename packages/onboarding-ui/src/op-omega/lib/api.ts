@@ -172,6 +172,7 @@ export const opOmegaOnboardingApi = {
         lastTestResult: { ok: boolean; detail?: string } | null;
         skipReason: string | null;
         composioManaged: boolean;
+        keysUrl: string | null;
       }>;
       progress: { requiredCount: number; requiredReady: number; allRequiredAddressed: boolean };
     }>("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`),

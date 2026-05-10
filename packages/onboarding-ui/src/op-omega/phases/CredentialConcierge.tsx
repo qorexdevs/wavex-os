@@ -338,7 +338,24 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
       <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.5rem" }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{row.connectorId}</span>
         <span className="text-dim" style={{ fontSize: 11 }}>· {row.priority}</span>
-        <div style={{ marginLeft: "auto" }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {row.keysUrl && (
+            <a
+              href={row.keysUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={`Open ${row.connectorId} key management page`}
+              style={{
+                fontSize: 11, padding: "0.15rem 0.5rem", borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                textDecoration: "none",
+              }}
+            >
+              ↗ Get key
+            </a>
+          )}
           <StatusBadge status={row.status} />
         </div>
       </div>

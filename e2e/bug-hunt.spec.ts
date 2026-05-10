@@ -727,6 +727,41 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B19a: Credential rows include keysUrl deep links */
+  test("B19a: credentials response carries keysUrl per connector", async ({ request }) => {
+    const id = uniqueId("bh-keys-url");
+    // Seed pillar responses (the credentials route requires them) but don't
+    // need to finalize — the route runs the connector matrix on demand.
+    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "KeysCo", raw_input: "no product yet",
+        manual_context: "KeysCo is an e2e fixture company for verifying that the credential concierge endpoint exposes per-connector keysUrl deep links to the operator.",
+      },
+    });
+    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+
+    const r = await request.get(`${API}/op-omega/onboarding/credentials/${id}`);
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(Array.isArray(j.connectors)).toBe(true);
+    expect(j.connectors.length).toBeGreaterThan(0);
+
+    // Every connector row has the keysUrl property (string or null)
+    for (const c of j.connectors) {
+      expect(c).toHaveProperty("keysUrl");
+      expect(c.keysUrl === null || typeof c.keysUrl === "string").toBe(true);
+    }
+    // At least one well-known direct-key connector should have a real URL
+    // (telegram is in the matrix because Pillar 5 picks comm_channel=telegram)
+    const tg = j.connectors.find((c: { connectorId: string }) => c.connectorId === "telegram");
+    if (tg) expect(tg.keysUrl).toMatch(/^https:\/\//);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */
