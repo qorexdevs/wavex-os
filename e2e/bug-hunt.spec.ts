@@ -548,6 +548,63 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B15a: stale ?companyId= + name typed → inline hint promises a rename.
+   *  No T2 needed — just verifies the willRename UX cue. Catches regressions
+   *  where the hint stops rendering or the slug computation drifts. */
+  test("B15a: rename hint appears when typed name differs from URL companyId", async ({ page }) => {
+    const staleId = uniqueId("bh-stale");
+    await page.goto(`/onboarding?companyId=${staleId}`);
+    await expect(page.getByRole("heading", { name: /Pillar 1/ })).toBeVisible({ timeout: 10_000 });
+
+    const nameInput = page.getByPlaceholder(/Acme Tools/i);
+    await nameInput.fill("Stripe Demo Co");
+
+    // Hint must surface the slugified target id + the current stale id.
+    // staleId appears twice: once in the header breadcrumb, once in the hint.
+    await expect(page.getByText(/will be saved under company id/i)).toBeVisible();
+    await expect(page.locator("code", { hasText: "stripe-demo-co" })).toHaveCount(1);
+    await expect(page.locator("code", { hasText: staleId })).toHaveCount(2);
+
+    // Typing the same id back hides the hint (no rename needed) — only header
+    // copy of staleId remains.
+    await nameInput.fill(staleId);
+    await expect(page.getByText(/will be saved under company id/i)).not.toBeVisible();
+    await expect(page.locator("code", { hasText: staleId })).toHaveCount(1);
+  });
+
+  /** B15b: full rename round-trip — submit Pillar 1 with a different name and
+   *  confirm the URL flips to the new id AND the server wrote under the new
+   *  id (not the stale one). Gated behind T2 since Pillar 1 invokes T2. */
+  test("B15b: Pillar 1 first submit renames URL + writes under new id", async ({ page, request }) => {
+    test.skip(process.env.WAVEX_E2E_T2 !== "1", "Requires real T2 — set WAVEX_E2E_T2=1");
+    const staleId = uniqueId("bh-stale-submit");
+    const intendedName = `Acme ${Date.now().toString(36)}`;
+    const expectedSlug = intendedName.toLowerCase().replace(/\s+/g, "-");
+
+    await page.goto(`/onboarding?companyId=${staleId}`);
+    await expect(page.getByRole("heading", { name: /Pillar 1/ })).toBeVisible({ timeout: 10_000 });
+    await page.getByPlaceholder(/Acme Tools/i).fill(intendedName);
+    await page.getByPlaceholder(/acme\.com/i).fill("no product yet");
+    await page.getByRole("button", { name: /Next/ }).click();
+
+    // Pillar 1 lands on the confirm view OR the halt-with-manual-context view,
+    // either way the URL should now point at the new slug, not the stale id.
+    await expect(page).toHaveURL(new RegExp(`companyId=${expectedSlug}\\b`), { timeout: 60_000 });
+
+    // Server wrote under the NEW slug, not the stale id
+    const newStatus = await request.get(`${API}/op-omega/onboarding/status?companyId=${expectedSlug}`);
+    expect(newStatus.ok()).toBeTruthy();
+    const newJson = await newStatus.json();
+    expect(newJson.responses?.pillar_1?.org_name).toBe(intendedName);
+
+    // Stale id has no pillar_1 (the rename worked — old folder never created)
+    const staleStatus = await request.get(`${API}/op-omega/onboarding/status?companyId=${staleId}`);
+    const staleJson = await staleStatus.json();
+    expect(staleJson.responses?.pillar_1).toBeFalsy();
+
+    await request.delete(`/api/instance/${expectedSlug}/reset`);
+  });
+
   /** B14c: refresh after activate — Mission Control loads with the activated fleet */
   test("B14c: refresh on Mission Control after activate — fleet still hydrates", async ({ page, request }) => {
     const id = uniqueId("bh-refresh-activate");

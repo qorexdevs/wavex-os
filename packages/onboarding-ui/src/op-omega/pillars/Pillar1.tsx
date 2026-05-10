@@ -9,9 +9,23 @@
  *    the AI-inferred industry / business_model / has_product before advancing. */
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
+import { preserveDevFlags } from "../lib/dev-flags";
 import type { Pillar1Response } from "@op-omega/plugin-onboarding";
 import { Card, Field, H2, P } from "../components/primitives";
+
+/** URL-safe slug from a free-text company name. Used for first-submit rename:
+ *  if the operator lands on Pillar 1 with a stale `?companyId=…` (e.g. from
+ *  a bookmarked URL or a Reset+restart) and types a different name, we route
+ *  the writes to the new slug instead of the URL's id. */
+function slugify(s: string): string {
+  return s.toLowerCase().trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 interface Props {
   companyId: string;
@@ -41,6 +55,7 @@ const BUSINESS_MODEL_OPTIONS = [
 ];
 
 export function Pillar1({ companyId, initial, onComplete }: Props) {
+  const navigate = useNavigate();
   const [orgName, setOrgName] = useState(initial?.org_name ?? "");
   const [rawInput, setRawInput] = useState("");
   const [manualContext, setManualContext] = useState("");
@@ -49,6 +64,13 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
   const [halt, setHalt] = useState<ApiError["halt"]>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [enriched, setEnriched] = useState<Pillar1Response | undefined>(initial);
+
+  // Once a pillar_1 exists for this companyId (either hydrated from server or
+  // just written), the URL id is locked. Mid-wizard renames of org_name don't
+  // fork the data folder — only the very first write can pick the slug.
+  const [firstSubmitDone, setFirstSubmitDone] = useState<boolean>(!!initial);
+  const proposedSlug = slugify(orgName);
+  const willRename = !firstSubmitDone && proposedSlug.length > 0 && proposedSlug !== companyId;
 
   const [previewIndustry, setPreviewIndustry] = useState("");
   const [previewBusinessModel, setPreviewBusinessModel] = useState("");
@@ -79,14 +101,25 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
     setHalt(undefined);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), PILLAR1_TIMEOUT_MS);
+    // Pick the storage key BEFORE the network call so a successful write lands
+    // in the right folder. If we're renaming, also flip the URL after success
+    // so the breadcrumb + downstream phases see the new id.
+    const targetCompanyId = willRename ? proposedSlug : companyId;
     try {
       const resp = await opOmegaOnboardingApi.pillar1({
-        companyId,
+        companyId: targetCompanyId,
         org_name: orgName.trim(),
         raw_input: rawInput.trim(),
         manual_context: useManual && manualContext.trim().length >= 40 ? manualContext.trim() : undefined,
       });
       setEnriched(resp.response);
+      setFirstSubmitDone(true);
+      if (targetCompanyId !== companyId) {
+        navigate(
+          `/onboarding?${preserveDevFlags(`companyId=${encodeURIComponent(targetCompanyId)}&phase=pillar-1`)}`,
+          { replace: true },
+        );
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setError(`Took longer than ${PILLAR1_TIMEOUT_MS / 1000}s — inference may be slow. Try again, or describe your product manually below.`);
@@ -179,6 +212,11 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
             autoFocus
             disabled={submitting}
           />
+          {willRename && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
+              → will be saved under company id <code>{proposedSlug}</code> (currently <code>{companyId}</code>)
+            </div>
+          )}
         </Field>
 
         <Field label="URL or short pitch" required>
