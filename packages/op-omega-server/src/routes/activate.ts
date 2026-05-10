@@ -7,10 +7,11 @@
  *  Idempotent: re-calling against the same companyId after a refinement
  *  upserts cleanly (deterministic agent ids). */
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import yaml from "js-yaml";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { CompanyManifest } from "@op-omega/plugin-onboarding";
+import { computeManifestHash, type CompanyManifest } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
@@ -54,10 +55,21 @@ export function registerActivateRoute(app: FastifyInstance): void {
       await ensureMigrations();
       const db = await getDb();
       const result = await bridgeAgents(manifest, companyId, db);
+
+      // bridgeAgents mutated the manifest with template_selections (rationale
+      // for each matrix pick). Persist back to disk + re-sign so the dashboard
+      // can surface it and the audit trail is honest about the matrix's choices.
+      const dir = getOnboardingDir(companyId);
+      const newHash = computeManifestHash(manifest);
+      manifest.signatures = { ...manifest.signatures, manifest_hash: newHash };
+      await writeFile(join(dir, "company.manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+      await writeFile(join(dir, "company.manifest.yaml"), yaml.dump(manifest), "utf8");
+
       return {
         ok: true,
         inserted: { companies: result.companies, agents: result.agents },
         warnings: result.warnings,
+        sha256: newHash,
       };
     } catch (e) {
       return reply.status(500).send({
