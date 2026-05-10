@@ -16,6 +16,7 @@ import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim
 import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
 import { bridgeAgents } from "../bridge/finalize-bridge.js";
+import { handoffToPaperclip } from "../bridge/paperclip-handoff.js";
 
 function authReq(req: FastifyRequest) {
   return { method: req.method, headers: req.headers as Record<string, string> };
@@ -65,11 +66,25 @@ export function registerActivateRoute(app: FastifyInstance): void {
       await writeFile(join(dir, "company.manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
       await writeFile(join(dir, "company.manifest.yaml"), yaml.dump(manifest), "utf8");
 
+      // Phase D — opt-in handoff to a running Paperclip instance. When
+      // PAPERCLIP_HANDOFF_URL is set, the C-Suite is mirrored as real
+      // Paperclip agents so they get heartbeats + claude CLI execution.
+      // When unset, this is a no-op and bridgeAgents-only is the contract.
+      const handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
+        enabled: true,
+        paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
+        paperclipCompanyId: null,
+        created: [],
+        skipped: [],
+        errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
+      }));
+
       return {
         ok: true,
         inserted: { companies: result.companies, agents: result.agents },
         warnings: result.warnings,
         sha256: newHash,
+        paperclipHandoff: handoff,
       };
     } catch (e) {
       return reply.status(500).send({
