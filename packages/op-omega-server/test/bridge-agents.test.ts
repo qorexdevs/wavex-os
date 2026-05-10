@@ -32,7 +32,13 @@ function fixtureManifest(orgId: string): CompanyManifest {
   // Cast covers the unread fields we don't populate.
   return {
     org_id: orgId,
-    pillar_responses: { test: true },
+    pillar_responses: {
+      test: true,
+      pillar_1: { industry_hint: "saas-b2b", manual_context: "test fixture" },
+      pillar_3: { stage: "10k_100k_mrr" },
+      pillar_4: { sales_motion: "assisted_demo", lead_sources: ["outbound_cold"] },
+    },
+    connector_manifest: { required: [], suggested: [], deferred: [], blocked_on_manual_approval: [] },
     swarm_manifest: {
       agents: {
         "ceo.orchestrator": {
@@ -122,7 +128,7 @@ describe("bridgeAgents (Slice 1)", () => {
     expect(rows.length).toBe(1);
     expect(rows[0]!.state).toBe("active");
     expect(rows[0]!.name).toBe("acme");
-    expect(rows[0]!.pillarResponses).toEqual({ test: true });
+    expect((rows[0]!.pillarResponses as { test?: boolean })?.test).toBe(true);
   });
 
   it("idempotent — second run returns same counts, no duplicate rows", async () => {

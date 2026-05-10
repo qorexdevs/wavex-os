@@ -14,9 +14,17 @@ import { agents, companies, type Db } from "@wavex-os/db";
 import {
   agentIdForSlot, modelForTier, slotToHumanName, templateIdForSlot, tierForSlot,
 } from "./catalog.js";
+import { selectTemplatesForManifest } from "../selection/scorer.js";
 
 interface ManifestWithOverlays extends CompanyManifest {
   template_overlays?: Record<string, string>;
+  template_selections?: Record<string, {
+    chosenTemplateId: string;
+    defaultTemplateId: string;
+    diverged: boolean;
+    score: number;
+    rationale: string;
+  }>;
 }
 
 export interface BridgeReport {
@@ -53,18 +61,41 @@ export async function bridgeAgents(
   const slotEntries = Object.entries(manifest.swarm_manifest.agents);
   let warnedOnOwnedKpis = false;
 
-  // Operator-chosen template substitutions take precedence over catalog defaults.
+  // Resolution order per slot:
+  //   1. operator overlay (manual swap)  → highest priority
+  //   2. matrix selection (deterministic scorer)
+  //   3. catalog default (SLOT_TO_TEMPLATE)
+  //
+  // The scorer reads pillar 1/3/4 + connector_manifest.required and picks the
+  // strongest-fit template from a curated candidate list per slot. Slots
+  // without per-company variation just return the catalog default.
   const overlays = (manifest as ManifestWithOverlays).template_overlays ?? {};
+  const selections = selectTemplatesForManifest(manifest);
+
+  // Persist selections back onto the manifest so the dashboard / swap UI can
+  // surface the rationale and so refinement loops carry it through.
+  (manifest as ManifestWithOverlays).template_selections = Object.fromEntries(
+    [...selections.entries()].map(([slot, sel]) => [slot, {
+      chosenTemplateId: sel.chosenTemplateId,
+      defaultTemplateId: sel.defaultTemplateId,
+      diverged: sel.diverged,
+      score: sel.score,
+      rationale: sel.rationale,
+    }]),
+  );
 
   for (const [slot, entry] of slotEntries) {
     const tier = tierForSlot(slot);
     const overlayTemplate = overlays[slot];
-    const templateId = overlayTemplate ?? templateIdForSlot(slot);
+    const selection = selections.get(slot);
+    const templateId = overlayTemplate ?? selection?.chosenTemplateId ?? templateIdForSlot(slot);
     if (templateId === slot && !slot.match(/^(ceo\.orchestrator|cpo|cmo|cro|cfo|cdo|coo)$/)) {
       warnings.push(`no template mapping for slot "${slot}" — using slot as templateId fallback`);
     }
     if (overlayTemplate) {
       warnings.push(`slot "${slot}" using operator-chosen overlay template "${overlayTemplate}" (default was "${templateIdForSlot(slot)}")`);
+    } else if (selection?.diverged) {
+      warnings.push(`slot "${slot}" matrix-selected "${selection.chosenTemplateId}" (default was "${selection.defaultTemplateId}") — ${selection.rationale}`);
     }
 
     // owned_kpi_ids isn't on the upstream AgentManifestEntry type — defaults to []
