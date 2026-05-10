@@ -25,6 +25,17 @@ const pillar1Schema = z.object({
   manual_context: z.string().min(40).max(2048).optional(),
 });
 
+/** Operator-edit overrides for pillar_1 fields after T2 enrichment.
+ *  Used when the operator picks "Other — type your own" in the confirm
+ *  view's industry/business_model dropdowns, or just disagrees with
+ *  what T2 inferred. Patches the existing pillar_1 in place. */
+const pillar1EditSchema = z.object({
+  companyId: z.string().min(1),
+  industry_hint: z.string().min(1).max(80).optional(),
+  business_model_hint: z.string().min(1).max(80).optional(),
+  has_product: z.boolean().optional(),
+});
+
 const pillar2Schema = z.object({
   companyId: z.string().min(1),
   claude_plan: z.enum(["max_20x", "max_5x", "api_only", "other"]),
@@ -178,5 +189,25 @@ export function registerPillarRoutes(app: FastifyInstance): void {
       await updatePillar(body.companyId, "pillar_5", result);
       return { ok: true, response: result };
     });
+  });
+
+  app.post("/op-omega/onboarding/pillar/1/edit", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const parsed = pillar1EditSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    const { companyId, ...overrides } = parsed.data;
+    assertCompanyAccess(ar, companyId);
+
+    const responses = await loadPillarResponses(companyId).catch(() => null);
+    if (!responses?.pillar_1) {
+      return reply.status(409).send({ ok: false, error: "no pillar_1 to edit — submit pillar/1 first" });
+    }
+    const updated = { ...responses.pillar_1, ...overrides };
+    await updatePillar(companyId, "pillar_1", updated);
+    return { ok: true, response: updated };
   });
 }

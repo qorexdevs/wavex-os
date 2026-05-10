@@ -666,6 +666,67 @@ test.describe("bug hunt — composition + edge cases", () => {
     }
   });
 
+  /** B18a: edit endpoint patches pillar_1 in place */
+  test("B18a: POST /pillar/1/edit updates industry_hint without re-running T2", async ({ request }) => {
+    const id = uniqueId("bh-edit");
+    // Seed pillar_1 by directly POSTing with manual_context (no T2 needed)
+    const seed = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "EditCo", raw_input: "no product yet",
+        manual_context: "EditCo is a fixture for the pillar/1/edit endpoint test that verifies operator-supplied industry overrides land in the pillar_1 file.",
+      },
+    });
+    expect(seed.ok()).toBeTruthy();
+    const seeded = await seed.json();
+    const originalIndustry = seeded.response.industry_hint;
+
+    // Patch industry_hint to a custom value
+    const edit = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+      data: { companyId: id, industry_hint: "embroidery_hardware" },
+    });
+    expect(edit.ok()).toBeTruthy();
+    const edited = await edit.json();
+    expect(edited.response.industry_hint).toBe("embroidery_hardware");
+    expect(edited.response.industry_hint).not.toBe(originalIndustry);
+
+    // Verify persistence — fetch status should show the edited value
+    const status = await request.get(`${API}/op-omega/onboarding/status?companyId=${id}`);
+    const j = await status.json();
+    expect(j.responses.pillar_1.industry_hint).toBe("embroidery_hardware");
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B18b: edit endpoint rejects when no pillar_1 exists yet */
+  test("B18b: edit returns 409 before pillar_1 is submitted", async ({ request }) => {
+    const id = uniqueId("bh-edit-noseed");
+    const r = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+      data: { companyId: id, industry_hint: "fintech" },
+    });
+    expect(r.status()).toBe(409);
+  });
+
+  /** B18c: edit ignores empty patches (no override fields supplied) */
+  test("B18c: edit with empty patch is a no-op (returns existing pillar_1)", async ({ request }) => {
+    const id = uniqueId("bh-edit-empty");
+    const seed = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "EditEmpty", raw_input: "no product yet",
+        manual_context: "Fixture company for verifying that an edit call with no override fields returns the existing pillar_1 unchanged.",
+      },
+    });
+    const seeded = await seed.json();
+    const r = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+      data: { companyId: id },
+    });
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    expect(j.response.industry_hint).toBe(seeded.response.industry_hint);
+    expect(j.response.business_model_hint).toBe(seeded.response.business_model_hint);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */

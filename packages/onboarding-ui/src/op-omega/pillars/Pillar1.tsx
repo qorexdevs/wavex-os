@@ -76,6 +76,14 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
   const [previewIndustry, setPreviewIndustry] = useState("");
   const [previewBusinessModel, setPreviewBusinessModel] = useState("");
   const [previewHasProduct, setPreviewHasProduct] = useState(true);
+  // "Other" mode: dropdown reads "__other__"; the free-text input below
+  // captures the operator-typed industry/business-model. We track these
+  // separately so toggling the dropdown back to a canonical option doesn't
+  // wipe what they typed.
+  const [otherIndustry, setOtherIndustry] = useState("");
+  const [otherBusinessModel, setOtherBusinessModel] = useState("");
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   useEffect(() => {
     if (enriched) {
@@ -84,6 +92,40 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
       setPreviewHasProduct(enriched.has_product ?? true);
     }
   }, [enriched]);
+
+  // Resolved values that get persisted on Confirm — either the canonical
+  // dropdown selection or the free-text override when "Other" is picked.
+  const OTHER_SENTINEL = "__other__";
+  const resolvedIndustry = previewIndustry === OTHER_SENTINEL ? otherIndustry.trim() : previewIndustry;
+  const resolvedBusinessModel = previewBusinessModel === OTHER_SENTINEL ? otherBusinessModel.trim() : previewBusinessModel;
+  const otherIndustryInvalid = previewIndustry === OTHER_SENTINEL && resolvedIndustry.length === 0;
+  const otherBusinessInvalid = previewBusinessModel === OTHER_SENTINEL && resolvedBusinessModel.length === 0;
+
+  async function persistAndContinue(): Promise<void> {
+    setConfirmSubmitting(true);
+    setConfirmError(null);
+    try {
+      // Only patch fields that diverge from what T2 enriched, so a no-op
+      // confirm doesn't write a redundant pillar_1 update.
+      const patch: Parameters<typeof opOmegaOnboardingApi.pillar1Edit>[0] = { companyId };
+      if (resolvedIndustry && resolvedIndustry !== enriched?.industry_hint) {
+        patch.industry_hint = resolvedIndustry;
+      }
+      if (resolvedBusinessModel && resolvedBusinessModel !== enriched?.business_model_hint) {
+        patch.business_model_hint = resolvedBusinessModel;
+      }
+      if (previewHasProduct !== enriched?.has_product) {
+        patch.has_product = previewHasProduct;
+      }
+      const hasOverride = patch.industry_hint || patch.business_model_hint || patch.has_product !== undefined;
+      if (hasOverride) await opOmegaOnboardingApi.pillar1Edit(patch);
+      onComplete();
+    } catch (e) {
+      setConfirmError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setConfirmSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     if (!submitting) {
@@ -153,15 +195,50 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
           <Field label="Industry" required>
             <select value={previewIndustry} onChange={(e) => setPreviewIndustry(e.target.value)}>
               {INDUSTRY_OPTIONS.map((i) => <option key={i} value={i}>{i.replace(/_/g, " ")}</option>)}
-              {!INDUSTRY_OPTIONS.includes(previewIndustry) && <option value={previewIndustry}>{previewIndustry} (inferred)</option>}
+              {!INDUSTRY_OPTIONS.includes(previewIndustry) && previewIndustry !== OTHER_SENTINEL && (
+                <option value={previewIndustry}>{previewIndustry} (inferred)</option>
+              )}
+              <option value={OTHER_SENTINEL}>Other — type your own…</option>
             </select>
+            {previewIndustry === OTHER_SENTINEL && (
+              <input
+                type="text"
+                value={otherIndustry}
+                onChange={(e) => setOtherIndustry(e.target.value)}
+                placeholder="e.g. embroidery_hardware, robotic_dental"
+                autoFocus
+                style={{ marginTop: 6, width: "100%" }}
+              />
+            )}
+            {otherIndustryInvalid && (
+              <div className="text-dim" style={{ fontSize: 11, marginTop: 4, color: "var(--warning)" }}>
+                Type your industry above (or pick a canonical option).
+              </div>
+            )}
           </Field>
 
           <Field label="Business model" required>
             <select value={previewBusinessModel} onChange={(e) => setPreviewBusinessModel(e.target.value)}>
               {BUSINESS_MODEL_OPTIONS.map((b) => <option key={b} value={b}>{b.replace(/_/g, " ")}</option>)}
-              {!BUSINESS_MODEL_OPTIONS.includes(previewBusinessModel) && <option value={previewBusinessModel}>{previewBusinessModel} (inferred)</option>}
+              {!BUSINESS_MODEL_OPTIONS.includes(previewBusinessModel) && previewBusinessModel !== OTHER_SENTINEL && (
+                <option value={previewBusinessModel}>{previewBusinessModel} (inferred)</option>
+              )}
+              <option value={OTHER_SENTINEL}>Other — type your own…</option>
             </select>
+            {previewBusinessModel === OTHER_SENTINEL && (
+              <input
+                type="text"
+                value={otherBusinessModel}
+                onChange={(e) => setOtherBusinessModel(e.target.value)}
+                placeholder="e.g. equipment_lease_to_own, value_pricing"
+                style={{ marginTop: 6, width: "100%" }}
+              />
+            )}
+            {otherBusinessInvalid && (
+              <div className="text-dim" style={{ fontSize: 11, marginTop: 4, color: "var(--warning)" }}>
+                Type your business model above (or pick a canonical option).
+              </div>
+            )}
           </Field>
 
           <Field label="Do you have a live product?">
@@ -187,9 +264,21 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
           )}
         </Card>
 
+        {confirmError && (
+          <div style={{ marginTop: "0.75rem", padding: "0.5rem", color: "var(--warning)", fontSize: 13 }}>
+            ✗ {confirmError}
+          </div>
+        )}
+
         <div className="nav-buttons">
-          <button type="button" className="secondary" onClick={() => setEnriched(undefined)}>← Re-enrich</button>
-          <button type="button" onClick={onComplete}>Confirm + continue →</button>
+          <button type="button" className="secondary" onClick={() => setEnriched(undefined)} disabled={confirmSubmitting}>← Re-enrich</button>
+          <button
+            type="button"
+            onClick={() => void persistAndContinue()}
+            disabled={confirmSubmitting || otherIndustryInvalid || otherBusinessInvalid}
+          >
+            {confirmSubmitting ? "Saving…" : "Confirm + continue →"}
+          </button>
         </div>
       </div>
     );

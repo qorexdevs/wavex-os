@@ -98,6 +98,15 @@ export const opOmegaOnboardingApi = {
     "POST", "/op-omega/onboarding/pillar/1", input,
   ),
 
+  pillar1Edit: (input: {
+    companyId: string;
+    industry_hint?: string;
+    business_model_hint?: string;
+    has_product?: boolean;
+  }) => call<{ ok: true; response: Pillar1Response }>(
+    "POST", "/op-omega/onboarding/pillar/1/edit", input,
+  ),
+
   pillar2: (input: {
     companyId: string;
     claude_plan: "max_20x" | "max_5x" | "api_only" | "other";
