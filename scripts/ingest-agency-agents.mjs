@@ -29,6 +29,10 @@ const PIN_REF = "main";
 const args = process.argv.slice(2);
 const CHECK = args.includes("--check");
 const REFRESH = args.includes("--refresh");
+// --all expands ingest beyond the curated 30 to auto-discover every .md file
+// in the listed divisions. Used to broaden the catalog so operators have real
+// choice when swapping templates per slot from the Phase 3 org chart.
+const ALL = args.includes("--all");
 
 // V1 curated catalog — 30 templates total.
 // 21 vendored from agency-agents (verified paths). 9 WaveX-authored (C-suite, derived from this session's learnings).
@@ -83,9 +87,67 @@ const CURATED = [
   { src: "__wavex__/composio-integration.md", target: "composio-integration", role: "engineer", tier: 3, kpis: [], division: "specialized", origin: "wavex" },
 ];
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Auto-discovery (--all mode): walk these divisions and ingest every .md
+ * agent template, inferring role/tier/division/templateId from the path.
+ * Filename convention upstream: <division>-<rest-of-name>.md (sometimes the
+ * division prefix is absent; we strip + slugify either way).
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const AUTO_DIVISIONS = [
+  "engineering", "marketing", "sales", "product", "design", "finance",
+  "support", "testing", "paid-media", "project-management", "specialized",
+  "integrations", "strategy",
+];
+
+// Map division → role bucket for swap filtering. Operators picking an
+// alternative for `cdo.signal` (data/L·IV) should see templates whose role
+// is in the data-bucket: engineer + general work fine; pm doesn't.
+const DIVISION_TO_DEFAULT_ROLE = {
+  engineering: "engineer",
+  marketing: "general",
+  sales: "general",
+  product: "pm",
+  design: "researcher",
+  finance: "general",
+  support: "general",
+  testing: "qa",
+  "paid-media": "general",
+  "project-management": "pm",
+  specialized: "general",
+  integrations: "engineer",
+  strategy: "researcher",
+};
+
+const TIER_BY_DIVISION = {
+  engineering: 3, marketing: 3, sales: 3, product: 3, design: 3,
+  finance: 3, support: 3, testing: 4, "paid-media": 3,
+  "project-management": 3, specialized: 3, integrations: 3, strategy: 3,
+};
+
+function filenameToTemplateId(division, filename) {
+  // Strip .md, strip leading "<division>-" prefix if present, slugify.
+  let id = filename.replace(/\.md$/i, "").toLowerCase();
+  const prefix = division + "-";
+  if (id.startsWith(prefix)) id = id.slice(prefix.length);
+  // Some files have e.g. "engineering-engineering-frontend-developer.md"
+  if (id.startsWith(prefix)) id = id.slice(prefix.length);
+  return id.replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function inferRoleFromName(templateId, division) {
+  const t = templateId.toLowerCase();
+  if (/(engineer|developer|architect|programmer|automator)/.test(t)) return "engineer";
+  if (/(researcher|analyst|investigator|scientist)/.test(t)) return "researcher";
+  if (/(manager|lead|director|coordinator)/.test(t)) return "pm";
+  if (/(qa|tester|auditor|reviewer)/.test(t)) return "qa";
+  if (/(devops|sre|platform)/.test(t)) return "devops";
+  return DIVISION_TO_DEFAULT_ROLE[division] ?? "general";
+}
+
 console.log(`WaveX OS · ingest-agency-agents`);
-console.log(`Mode: ${CHECK ? "CHECK (dry-run)" : "INGEST"}`);
-console.log(`Targets: ${CURATED.length} templates`);
+console.log(`Mode: ${CHECK ? "CHECK (dry-run)" : "INGEST"}${ALL ? " · --all (auto-discover)" : ""}`);
+console.log(`Curated targets: ${CURATED.length}${ALL ? ` + auto-discover from ${AUTO_DIVISIONS.length} divisions` : ""}`);
 console.log("");
 
 // Step 1: clone or reuse cached
@@ -205,6 +267,84 @@ for (const entry of CURATED) {
   });
 }
 
+// ── Auto-discovery (--all mode) ────────────────────────────────────────────
+let autoFound = 0;
+if (ALL) {
+  console.log("");
+  console.log("Auto-discovering agents across selected divisions...");
+  const curatedTargets = new Set(CURATED.map((c) => c.target));
+  // Track upstream paths we've already vendored under their curated id so we
+  // don't ingest the same source twice with different ids.
+  const curatedSources = new Set(
+    CURATED.filter((c) => c.origin === "agency-agents").map((c) => c.src.toLowerCase()),
+  );
+
+  for (const division of AUTO_DIVISIONS) {
+    const divDir = path.join(TMP_CLONE, division);
+    if (!existsSync(divDir)) {
+      console.log(`  (no ${division}/ dir in upstream — skipped)`);
+      continue;
+    }
+    let added = 0;
+    for (const entry of readdirSync(divDir)) {
+      if (!entry.endsWith(".md")) continue;
+      // Skip directory READMEs and non-agent files
+      if (/^(readme|contributing|license|index)\.md$/i.test(entry)) continue;
+      const upstreamRel = `${division}/${entry}`;
+      if (curatedSources.has(upstreamRel.toLowerCase())) continue;
+
+      const templateId = filenameToTemplateId(division, entry);
+      if (!templateId) continue;
+      if (curatedTargets.has(templateId)) continue;
+
+      const srcFile = path.join(divDir, entry);
+      const md = readFileSync(srcFile, "utf8");
+      const targetDir = path.join(TPL_DIR, templateId);
+      const targetFile = path.join(targetDir, "SKILL.md");
+
+      if (!CHECK) {
+        mkdirSync(targetDir, { recursive: true });
+        const credit = `<!-- Vendored from agency-agents (MIT) — https://github.com/msitarzewski/agency-agents/blob/${PIN_REF}/${upstreamRel} -->\n\n`;
+        writeFileSync(targetFile, credit + md);
+      }
+
+      const role = inferRoleFromName(templateId, division);
+      const tier = TIER_BY_DIVISION[division] ?? 3;
+
+      registry.push({
+        templateId,
+        role,
+        tier,
+        division,
+        defaultKpis: [],
+        skillPath: `packages/agent-templates/${templateId}/SKILL.md`,
+        sizeBytes: md.length,
+        origin: "agency-agents",
+        upstream: {
+          repo: "msitarzewski/agency-agents",
+          ref: PIN_REF,
+          path: upstreamRel,
+          license: "MIT",
+        },
+      });
+      credits.push({
+        templateId,
+        upstreamPath: upstreamRel,
+        license: "MIT",
+        author: "agency-agents contributors via msitarzewski",
+      });
+      autoFound++;
+      added++;
+      // Track to prevent re-ingest on division reruns (defensive)
+      curatedTargets.add(templateId);
+      curatedSources.add(upstreamRel.toLowerCase());
+    }
+    console.log(`  ${division.padEnd(24)} +${added}`);
+  }
+  console.log(`Auto-discovered: ${autoFound} additional templates`);
+  console.log("");
+}
+
 if (!CHECK) {
   // Write registry
   writeFileSync(
@@ -228,7 +368,7 @@ if (!CHECK) {
 }
 
 console.log("");
-console.log(`Summary: ${found} vendored from agency-agents, ${wavexAuthored} WaveX-authored stubs, ${missing} missing`);
+console.log(`Summary: ${found} curated vendored, ${autoFound} auto-discovered, ${wavexAuthored} WaveX-authored stubs, ${missing} missing`);
 console.log(`Registry: ${CHECK ? "(skipped, --check mode)" : path.join(TPL_DIR, "_registry.json")}`);
 console.log(`Credits:  ${CHECK ? "(skipped, --check mode)" : path.join(TPL_DIR, "_CREDITS.md")}`);
 
