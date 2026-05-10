@@ -46,6 +46,9 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
   const [recommending, setRecommending] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendError, setRecommendError] = useState<string | null>(null);
+  // Tracks which recommendation card is currently mid-add (per-card busy
+  // state, so other cards stay clickable while one is adding).
+  const [addingFromCardKey, setAddingFromCardKey] = useState<string | null>(null);
 
   async function recommend(): Promise<void> {
     if (nlPrompt.trim().length < 3) return;
@@ -122,6 +125,26 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
     }
   }
 
+  /** One-click add from a specific recommendation card — uses that card's
+   *  template + parent directly, bypassing the manual picker entirely. */
+  async function addFromRecommendation(rec: Recommendation): Promise<void> {
+    const key = `${rec.templateId}-${rec.parent_slot}`;
+    setAddingFromCardKey(key);
+    setError(null);
+    setRecommendError(null);
+    try {
+      const r = await opOmegaOnboardingApi.addAgent({
+        companyId, parent_slot: rec.parent_slot, template_id: rec.templateId,
+      });
+      onAdded(r.added.slot, r.added.parent_slot, r.added.template_id);
+      onClose();
+    } catch (e) {
+      setRecommendError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setAddingFromCardKey(null);
+    }
+  }
+
   return (
     <div
       style={{
@@ -191,39 +214,64 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
               </div>
               <div style={{ display: "grid", gap: "0.4rem" }}>
                 {recommendations.map((r, i) => {
+                  const cardKey = `${r.templateId}-${r.parent_slot}`;
                   const isSelected = r.templateId === templateId && r.parent_slot === parentSlot;
+                  const isAddingThisCard = addingFromCardKey === cardKey;
+                  const anyCardAdding = addingFromCardKey !== null;
                   return (
-                    <button
-                      key={`${r.templateId}-${r.parent_slot}`}
-                      type="button"
-                      onClick={() => {
-                        // Click applies BOTH the template AND the recommended parent
-                        setTemplateId(r.templateId);
-                        setParentSlot(r.parent_slot);
-                      }}
+                    <div
+                      key={cardKey}
                       style={{
-                        textAlign: "left",
                         padding: "0.6rem 0.75rem",
                         background: isSelected ? "var(--surface-2)" : "transparent",
                         border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
                         borderRadius: 4,
-                        cursor: "pointer",
                         color: "var(--text)",
                         fontSize: 12,
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: "0.6rem",
+                        alignItems: "center",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
-                        <span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Click body applies BOTH the template AND the recommended parent
+                          // for preview/manual flow (operator can still scroll down + tweak)
+                          setTemplateId(r.templateId);
+                          setParentSlot(r.parent_slot);
+                        }}
+                        disabled={anyCardAdding}
+                        style={{
+                          textAlign: "left", background: "transparent", border: "none",
+                          padding: 0, color: "inherit", fontSize: "inherit", cursor: "pointer",
+                        }}
+                      >
+                        <div>
                           <strong>#{i + 1}</strong> <strong>{r.templateId}</strong>
                           <span className="text-dim" style={{ marginLeft: 6, fontSize: 10 }}>→ reports to <strong>{r.parent_slot}</strong></span>
+                          <span className="text-dim" style={{ marginLeft: 6, fontSize: 10 }}>· score {r.score}</span>
                           {isSelected && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>● selected</span>}
-                        </span>
-                        <span className="text-dim" style={{ fontSize: 10 }}>score {r.score}</span>
-                      </div>
-                      <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
-                        {r.rationale}
-                      </div>
-                    </button>
+                        </div>
+                        <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
+                          {r.rationale}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void addFromRecommendation(r)}
+                        disabled={anyCardAdding}
+                        title={`Add ${r.templateId} under ${r.parent_slot} immediately`}
+                        style={{
+                          fontSize: 11, padding: "0.35rem 0.6rem", whiteSpace: "nowrap",
+                          background: isAddingThisCard ? "var(--surface-2)" : "var(--accent)",
+                          color: isAddingThisCard ? "var(--text-dim)" : "var(--bg)",
+                        }}
+                      >
+                        {isAddingThisCard ? "Adding…" : "+ Add"}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
