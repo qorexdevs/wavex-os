@@ -1,0 +1,32 @@
+{
+  "name": "@wavex-os/db",
+  "version": "0.1.0",
+  "description": "Database layer: Drizzle schema + PGlite (dev) / node-postgres (prod) driver factory + migrations. Backs op-omega onboarding tables and the observability/healing schema.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./migrate": "./src/migrate.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:up": "tsx ./src/cli/up.ts",
+    "db:migrate": "tsx ./src/cli/migrate.ts",
+    "db:reset": "tsx ./src/cli/reset.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.12",
+    "drizzle-orm": "^0.36.4",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "drizzle-kit": "^0.28.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}

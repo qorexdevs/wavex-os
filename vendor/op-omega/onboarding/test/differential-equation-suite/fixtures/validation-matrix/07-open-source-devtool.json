@@ -1,0 +1,24 @@
+{
+  "fixture_id": "vm07-open-source-devtool",
+  "description": "Validation matrix F7 · Open-source devtool with paid tier. Expected: GitHub required, content+community agents active, PLG+community unique pattern.",
+  "expected": {
+    "active_range": [16, 20],
+    "mc_mode": "growth",
+    "github_required": true,
+    "cpo_build_spawnable": true
+  },
+  "pillar_1": {
+    "org_name": "Migroscope",
+    "input": "https://github.com/migroscope/migroscope",
+    "mocked_enrichment": {
+      "company_context": "Open-source CLI tool for database migrations. Free for individuals, $49/dev/mo for teams with cloud sync and access control. 12k GitHub stars, 180 paying teams, $42k MRR. Community-led growth via GitHub and Twitter.",
+      "has_product": true,
+      "industry_hint": "dev_tools",
+      "business_model_hint": "open_core"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "10k_100k_mrr" },
+  "pillar_4": { "lead_sources": ["content_seo", "product_led_viral"], "sales_motion": "self_serve_plg" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

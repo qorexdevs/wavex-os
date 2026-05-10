@@ -1,94 +1,123 @@
-import { useOnboarding } from "../../store";
-import { DEFAULT_ORG, TEMPLATES_BY_ID } from "../../data/templates";
+/** KPI scoreboard. Reads /api/instance/<companyId>/{manifest,kpis} via
+ *  React Query. Shows "complete onboarding" placeholder when no manifest. */
+
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { useCompany } from "../../op-omega/lib/CompanyContext";
+
+interface ManifestPayload {
+  ok: boolean;
+  manifest?: {
+    company?: { id?: string; name?: string };
+    goal?: { kpiId?: string; current?: number; target?: number; days?: number };
+    state?: string;
+  };
+}
+
+interface KpisPayload {
+  ok: boolean;
+  companyId: string;
+  kpis: Array<{
+    kpiId: string;
+    label: string;
+    direction: "higher_is_better" | "lower_is_better";
+    ownerRole?: string;
+    currentValue?: number;
+    targetMicros?: number;
+    windowDays?: number;
+  }>;
+}
 
 export function KpiBoard() {
-  const { goalKpiId, goalCurrent, goalTarget, goalWindowDays, companyName } = useOnboarding();
+  const { companyId } = useCompany();
 
-  // Primary KPI card
-  const hasGoal = goalKpiId.trim().length > 0 && goalTarget > 0;
-  const progressPct = hasGoal && goalTarget !== goalCurrent
-    ? Math.max(0, Math.min(100, Math.round(((goalCurrent - 0) / goalTarget) * 100)))
-    : 0;
+  const manifestQ = useQuery<ManifestPayload>({
+    enabled: !!companyId,
+    queryKey: ["instance-manifest", companyId],
+    queryFn: async () => {
+      const r = await fetch(`/api/instance/${encodeURIComponent(companyId!)}/manifest`);
+      if (r.status === 404) return { ok: false };
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    refetchInterval: 30_000,
+  });
 
-  // Supporting KPIs from templates
-  const supportingKpis: { kpiId: string; ownerLabel: string }[] = [];
-  const seen = new Set<string>([goalKpiId.trim()]);
-  for (const node of DEFAULT_ORG) {
-    const tpl = TEMPLATES_BY_ID[node.templateId];
-    for (const k of tpl?.defaultKpis ?? []) {
-      if (seen.has(k)) continue;
-      seen.add(k);
-      supportingKpis.push({ kpiId: k, ownerLabel: node.label });
-    }
-  }
+  const kpisQ = useQuery<KpisPayload>({
+    enabled: !!companyId && manifestQ.data?.ok === true,
+    queryKey: ["instance-kpis", companyId],
+    queryFn: async () => {
+      const r = await fetch(`/api/instance/${encodeURIComponent(companyId!)}/kpis`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    refetchInterval: 30_000,
+  });
 
-  if (!hasGoal && supportingKpis.length === 0) {
+  if (!companyId) {
     return (
       <div className="card">
         <h3 style={{ marginTop: 0 }}>KPI scoreboard</h3>
         <p className="text-dim" style={{ margin: 0 }}>
-          No KPIs registered yet. Complete onboarding (steps 2 and 5) to populate this scoreboard.
+          No company selected. <Link to="/onboarding">Complete onboarding</Link> to populate this scoreboard.
         </p>
       </div>
     );
   }
 
+  if (manifestQ.isLoading) {
+    return <div className="card"><h3 style={{ marginTop: 0 }}>KPI scoreboard</h3><p className="text-dim">Loading…</p></div>;
+  }
+
+  if (!manifestQ.data?.ok) {
+    return (
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>KPI scoreboard</h3>
+        <p className="text-dim" style={{ margin: 0 }}>
+          No manifest yet for <code>{companyId}</code>. <Link to="/onboarding">Run onboarding to finalize</Link>.
+        </p>
+      </div>
+    );
+  }
+
+  const goal = manifestQ.data.manifest?.goal;
+  const kpis = kpisQ.data?.kpis ?? [];
+  const headline = kpis[0];
+
   return (
-    <div>
-      <h2 style={{ margin: "0 0 1rem", fontSize: 16, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        KPI scoreboard {companyName && <span style={{ color: "var(--text)", textTransform: "none", fontSize: 14, fontWeight: 400, marginLeft: "0.5rem" }}>· {companyName}</span>}
-      </h2>
-
-      {hasGoal && (
-        <div className="card" style={{ borderColor: "var(--accent)", marginBottom: "1rem" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-            <span className="text-accent" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em" }}>PRIMARY · {goalWindowDays}-DAY GOAL</span>
-            <span className="text-dim" style={{ fontSize: 11 }}>owner: CEO</span>
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>KPI scoreboard — {manifestQ.data.manifest?.company?.name ?? companyId}</h3>
+      {headline && (
+        <div style={{ marginBottom: "1rem", padding: "0.75rem", border: "1px solid var(--border)", borderRadius: 6 }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-dim)" }}>
+            HEADLINE GOAL
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem", marginBottom: "0.75rem" }}>
-            <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "ui-monospace, monospace" }}>{goalKpiId}</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "1.5rem", marginBottom: "0.5rem" }}>
-            <div>
-              <div className="text-dim" style={{ fontSize: 11 }}>current</div>
-              <div style={{ fontSize: 22, fontWeight: 600, fontFamily: "ui-monospace, monospace" }}>{goalCurrent.toLocaleString()}</div>
-            </div>
-            <div className="text-dim" style={{ fontSize: 18 }}>→</div>
-            <div>
-              <div className="text-dim" style={{ fontSize: 11 }}>target</div>
-              <div style={{ fontSize: 22, fontWeight: 600, fontFamily: "ui-monospace, monospace", color: "var(--accent)" }}>{goalTarget.toLocaleString()}</div>
-            </div>
-            <div style={{ marginLeft: "auto", textAlign: "right" }}>
-              <div className="text-dim" style={{ fontSize: 11 }}>progress</div>
-              <div style={{ fontSize: 22, fontWeight: 600 }}>{progressPct}%</div>
-            </div>
-          </div>
-          <div style={{ height: 4, background: "var(--surface-2)", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${progressPct}%`, background: "var(--accent)", transition: "width 240ms" }} />
+          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{headline.label}</div>
+          <div className="text-dim" style={{ fontSize: 13, marginTop: 2 }}>
+            {goal?.current != null && goal?.target != null
+              ? `${goal.current.toLocaleString()} → ${goal.target.toLocaleString()} (${goal.days}d window)`
+              : "No baseline captured yet"}
           </div>
         </div>
       )}
-
-      {supportingKpis.length > 0 && (
-        <div className="card">
-          <h3 style={{ margin: "0 0 1rem", fontSize: 13, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Supporting KPIs · {supportingKpis.length}
-          </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "0.5rem" }}>
-            {supportingKpis.map((k) => (
-              <div key={k.kpiId} style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "0.6rem 0.75rem",
-              }}>
-                <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 600 }}>{k.kpiId}</div>
-                <div className="text-dim" style={{ fontSize: 11, marginTop: 2 }}>owner: {k.ownerLabel}</div>
-              </div>
+      {kpis.length > 1 && (
+        <div>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-dim)", marginBottom: 6 }}>
+            SUPPORTING KPIs
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {kpis.slice(1).map((k) => (
+              <li key={k.kpiId} style={{ padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontWeight: 500 }}>{k.label}</span>
+                <span className="text-dim" style={{ fontSize: 12, marginLeft: 8 }}>
+                  · owned by {k.ownerRole}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
+      {kpis.length === 0 && <p className="text-dim" style={{ margin: 0 }}>No KPIs in registry.</p>}
     </div>
   );
 }

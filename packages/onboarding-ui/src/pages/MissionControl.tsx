@@ -1,16 +1,48 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { HealthStrip } from "../components/mission/HealthStrip";
 import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
-import { useOnboarding } from "../store";
+import { useCompany } from "../op-omega/lib/CompanyContext";
+
+interface CompaniesPayload { ok: boolean; companies: Array<{ id: string; name: string }>; }
+
+function CompanyPicker() {
+  const { companyId, setCompanyId } = useCompany();
+  const q = useQuery<CompaniesPayload>({
+    queryKey: ["companies"],
+    queryFn: async () => {
+      const r = await fetch("/api/companies");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+  const companies = q.data?.companies ?? [];
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span className="text-dim" style={{ fontSize: 12 }}>Company:</span>
+      <select
+        value={companyId ?? ""}
+        onChange={(e) => setCompanyId(e.target.value || null)}
+        style={{ fontSize: 13, padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4 }}
+      >
+        <option value="">— select —</option>
+        {companies.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+      <Link to="/onboarding" style={{ fontSize: 12 }}>+ New</Link>
+    </div>
+  );
+}
 
 export default function MissionControl() {
-  const { companyName, sessionId } = useOnboarding();
-  const onboardingComplete = !!sessionId || companyName.trim().length > 0;
+  const { companyId } = useCompany();
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      {/* Top bar */}
       <header style={{
         display: "flex",
         alignItems: "center",
@@ -27,16 +59,13 @@ export default function MissionControl() {
           <span className="text-dim" style={{ fontSize: 12 }}>· Mission Control</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+          <CompanyPicker />
           <HealthStrip />
-          <Link to="/onboarding/welcome" style={{ fontSize: 12 }}>
-            {onboardingComplete ? "Re-run onboarding" : "Start onboarding"}
-          </Link>
         </div>
       </header>
 
-      {/* Content */}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "2rem" }}>
-        {!onboardingComplete && (
+        {!companyId && (
           <div className="card" style={{
             borderColor: "var(--accent)",
             display: "flex",
@@ -46,10 +75,10 @@ export default function MissionControl() {
             marginBottom: "2rem",
           }}>
             <div>
-              <strong>You haven't onboarded yet.</strong>{" "}
-              <span className="text-dim">Complete the 11-step wizard to define KPIs and spawn your fleet.</span>
+              <strong>No company selected.</strong>{" "}
+              <span className="text-dim">Pick one from the dropdown or start onboarding for a new one.</span>
             </div>
-            <Link to="/onboarding/welcome">
+            <Link to="/onboarding">
               <button>Start onboarding →</button>
             </Link>
           </div>
@@ -68,11 +97,11 @@ export default function MissionControl() {
             Coming next
           </h3>
           <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--text-dim)", lineHeight: 1.8, fontSize: 13 }}>
-            <li>Workflows queue (issues by status, filterable) — Phase G</li>
-            <li>Approvals tray (board approvals routed via Telegram + UI) — Phase G</li>
-            <li>Workspace tray (ngrok status, Composio health, etc.) — Phase G</li>
-            <li>Real Paperclip core in place of mock-core — Phase D</li>
-            <li>System Optimizer daily injections — Phase F</li>
+            <li>Workflows queue (issues by status, filterable)</li>
+            <li>Approvals tray (board approvals routed via Telegram + UI)</li>
+            <li>Workspace tray (ngrok status, Composio health, etc.)</li>
+            <li>Real Paperclip core in place of mock-core</li>
+            <li>System Optimizer daily injections</li>
           </ul>
         </div>
 

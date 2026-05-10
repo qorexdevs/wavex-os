@@ -1,0 +1,29 @@
+{
+  "fixture_id": "no-website",
+  "description": "Edge case — operator explicitly has no website or repo. Pillar 1 should take the pre-product branch without attempting T2 enrichment.",
+  "pillar_1": {
+    "org_name": "Ghost Ventures",
+    "input": "no product yet",
+    "mocked_enrichment": {
+      "company_context": "",
+      "has_product": false,
+      "industry_hint": "unknown",
+      "business_model_hint": "unknown"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "idea_only",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "none_yet"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

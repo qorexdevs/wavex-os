@@ -1,0 +1,29 @@
+{
+  "fixture_id": "pre-product-solo",
+  "description": "Edge case — pre-product solo founder, tests the disabled-agent + weights-toward-insight/positioning path",
+  "pillar_1": {
+    "org_name": "Solo Builder",
+    "input": "no product yet",
+    "mocked_enrichment": {
+      "company_context": "Solo founder exploring an idea; no product, no GTM, no customers.",
+      "has_product": false,
+      "industry_hint": "unknown",
+      "business_model_hint": "unknown"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "idea_only",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "none_yet",
+    "sales_motion": "none_yet"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

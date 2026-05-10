@@ -1,0 +1,30 @@
+{
+  "fixture_id": "ecommerce-dtc",
+  "description": "DTC consumer brand at $220k MRR. Shopify-backed, paid-ads heavy, email retention.",
+  "pillar_1": {
+    "org_name": "Copperleaf",
+    "input": "https://copperleaf.example",
+    "mocked_enrichment": {
+      "company_context": "DTC cookware brand on Shopify. Flagship skillet + 6 SKU line. Growth driven by Meta ads + influencer gifting. Retention via email and a loyalty program. 22% repeat rate at 90 days.",
+      "has_product": true,
+      "industry_hint": "dtc_ecommerce",
+      "business_model_hint": "one_time_plus_repeat"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "100k_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "inbound_ads_meta_google",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

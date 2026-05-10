@@ -1,0 +1,22 @@
+{
+  "fixture_id": "vm08-agency-productizing",
+  "description": "Validation matrix F8 · Agency productizing to SaaS — ambiguous state. Expected: pre_scale MC despite agency revenue, validation focus for product.",
+  "expected": {
+    "active_range": [11, 15],
+    "mc_mode": "pre_scale"
+  },
+  "pillar_1": {
+    "org_name": "Halfscope Studio",
+    "input": "https://halfscope.example",
+    "mocked_enrichment": {
+      "company_context": "Performance marketing agency billing $180k/mo, 12 people, now building an AI bid-management tool based on agency playbooks. Tool in beta with own clients. Agency is current revenue; tool is the future.",
+      "has_product": true,
+      "industry_hint": "services_to_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "built_not_selling", "stage": "pre_launch" },
+  "pillar_4": { "lead_sources": ["referral_word_of_mouth"], "sales_motion": "high_touch_enterprise", "close_channel": "mostly_phone_video" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

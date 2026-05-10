@@ -1,0 +1,29 @@
+{
+  "fixture_id": "minimal-comms",
+  "description": "Edge case — email_only comm channel, skips Q9 (urgency routing). Default notification routing applied.",
+  "pillar_1": {
+    "org_name": "Quiet Studio",
+    "input": "https://quiet.example",
+    "mocked_enrichment": {
+      "company_context": "Indie SaaS studio. Small team. Comms kept email-only on purpose — no real-time channels.",
+      "has_product": true,
+      "industry_hint": "b2b_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "less_than_10k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

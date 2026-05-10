@@ -1,0 +1,29 @@
+{
+  "fixture_id": "ai-waitlist",
+  "description": "AI consumer app in waitlist phase. Has landing page + demo. Strategy is pricing once waitlist hits 10k.",
+  "pillar_1": {
+    "org_name": "Draftbird",
+    "input": "https://draftbird.example",
+    "mocked_enrichment": {
+      "company_context": "AI writing assistant for long-form content creators. Currently waitlist-only with a demo loop. 4,800 on the list. Plan is to open paid access at 10k signups with a $19/mo plan.",
+      "has_product": false,
+      "industry_hint": "consumer_ai",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "prototype",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "telegram"
+  }
+}

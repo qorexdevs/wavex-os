@@ -15,12 +15,18 @@ export default defineConfig({
     host: "127.0.0.1",
     open: false, // installer opens the browser; vite shouldn't double-open
     proxy: {
-      // Proxy local mock-core (or Paperclip in Phase D) calls during dev so we share an origin.
-      // Mock-core defaults to 3101 to avoid collision with a running Paperclip on 3100.
       "/api/paperclip": {
         target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/paperclip/, "/api"),
+      },
+      "/api": {
+        target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
+        changeOrigin: true,
+      },
+      "/op-omega": {
+        target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
+        changeOrigin: true,
       },
     },
   },

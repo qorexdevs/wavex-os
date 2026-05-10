@@ -1,0 +1,24 @@
+{
+  "fixture_id": "vm03-plg-consumer-mobile",
+  "description": "Validation matrix F3 · PLG consumer mobile app, $80k MRR, self-serve. Expected: content+activation heavy, no outbound agents.",
+  "expected": {
+    "active_range": [14, 18],
+    "mc_mode": "growth",
+    "cro_outbound_active": false,
+    "cmo_content_active": true
+  },
+  "pillar_1": {
+    "org_name": "Streakbloom",
+    "input": "https://streakbloom.example",
+    "mocked_enrichment": {
+      "company_context": "Consumer mobile habit-tracking app with premium subscription at $9.99/mo. 120k monthly active users, $80k MRR, all self-serve signup. Growth via ASO and Instagram.",
+      "has_product": true,
+      "industry_hint": "consumer_mobile",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "live_paying_customers", "stage": "10k_100k_mrr" },
+  "pillar_4": { "lead_sources": ["content_seo", "referral_word_of_mouth"], "sales_motion": "self_serve_plg" },
+  "pillar_5": { "comm_channel": "slack", "urgency_routing": "digest_plus_urgent_phone" }
+}

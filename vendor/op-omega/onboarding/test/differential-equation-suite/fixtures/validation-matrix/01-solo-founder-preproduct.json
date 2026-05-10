@@ -1,0 +1,23 @@
+{
+  "fixture_id": "vm01-solo-founder-preproduct",
+  "description": "Validation matrix F1 · Solo founder pre-product, B2B dev tool idea. Expected: small swarm (9-12), minimal connectors, MC pre_scale.",
+  "expected": {
+    "active_range": [9, 12],
+    "mc_mode": "pre_scale",
+    "required_connectors_at_most": 2
+  },
+  "pillar_1": {
+    "org_name": "Logcolor",
+    "input": "no product yet",
+    "mocked_enrichment": {
+      "company_context": "Solo founder building a developer observability tool that reduces log noise for backend engineers. Target customer: engineering managers at 50-500 person companies. Nothing built yet.",
+      "has_product": false,
+      "industry_hint": "dev_tools",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": { "claude_plan": "max_20x", "mocked_shell_result": { "exit_code": 0, "stdout": "OK" } },
+  "pillar_3": { "product_state": "idea_only", "stage": "pre_product" },
+  "pillar_4": { "lead_sources": ["none_yet"], "sales_motion": "none_yet" },
+  "pillar_5": { "comm_channel": "telegram", "urgency_routing": "all_to_one_channel" }
+}

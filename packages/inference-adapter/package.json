@@ -1,0 +1,22 @@
+{
+  "name": "@wavex-os/inference-adapter",
+  "version": "0.1.0",
+  "description": "Boundary adapter for op-omega tier-router. Routes T2 inference to the operator's Claude Max OAuth keychain in dev mode (via scripts/wrappers/claude-anthropic-direct.sh) and to ANTHROPIC_API_KEY in production. WAVEX_INFERENCE_MODE switches between them.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@op-omega/plugin-tier-router": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}

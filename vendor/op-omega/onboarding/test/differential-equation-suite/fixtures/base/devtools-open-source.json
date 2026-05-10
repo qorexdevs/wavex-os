@@ -1,0 +1,29 @@
+{
+  "fixture_id": "devtools-open-source",
+  "description": "Open-source devtool with paid hosted tier. $85k MRR, community-led growth.",
+  "pillar_1": {
+    "org_name": "Fluorine",
+    "input": "https://fluorine.example",
+    "mocked_enrichment": {
+      "company_context": "Open-source database observability tool, 14k GitHub stars. Hosted SaaS tier for teams that don't want to self-host. 60% of MRR from 3 enterprise accounts, 40% from long tail of SMBs.",
+      "has_product": true,
+      "industry_hint": "devtools",
+      "business_model_hint": "open_core"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "slack"
+  }
+}

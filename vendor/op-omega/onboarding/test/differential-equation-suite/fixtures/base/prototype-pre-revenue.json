@@ -1,0 +1,31 @@
+{
+  "fixture_id": "prototype-pre-revenue",
+  "description": "Working prototype with 12 design partners, none paying yet. Pre-revenue but post-product.",
+  "pillar_1": {
+    "org_name": "Warehouse AI",
+    "input": "https://warehouse-ai.example",
+    "mocked_enrichment": {
+      "company_context": "AI copilot for warehouse managers. Prototype deployed in 12 3PL facilities for free while we instrument ROI. Conversion to paid gated on proving 15% labor-hour savings.",
+      "has_product": true,
+      "industry_hint": "logistics_tech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "prototype",
+    "stage": "pre_product"
+  },
+  "pillar_4": {
+    "lead_source": "referral_word_of_mouth",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "in_person"
+  },
+  "pillar_5": {
+    "comm_channel": "whatsapp",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

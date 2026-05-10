@@ -1,0 +1,37 @@
+{
+  "fixture_id": "all-other-specified",
+  "description": "Edge case — every pillar uses 'other' with custom free-text. Tests that the pipeline tolerates arbitrary operator vocabulary.",
+  "pillar_1": {
+    "org_name": "Unclassifiable Co",
+    "input": "https://unclassifiable.example",
+    "mocked_enrichment": {
+      "company_context": "Vertical we don't have a category for — adjacent to construction tech but really a workforce-data platform. Hybrid usage + seat billing.",
+      "has_product": true,
+      "industry_hint": "unknown",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "other",
+    "claude_plan_other_note": "Self-hosted Claude API proxy with shared billing across three teams.",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "other",
+    "product_state_other": "Private beta — 8 design partners, none paying yet but committed.",
+    "stage": "other",
+    "stage_other": "Pre-commercial, post-validation."
+  },
+  "pillar_4": {
+    "lead_source": "other",
+    "lead_source_other": "Industry conferences and founder-network intros.",
+    "sales_motion": "other",
+    "sales_motion_other": "Consultative — 3-call close with a VP sponsor."
+  },
+  "pillar_5": {
+    "comm_channel": "other",
+    "comm_channel_other": "Signal (messenger) for urgent, email for digest.",
+    "urgency_routing": "other",
+    "urgency_routing_other": "Any P0 alerts ping the founder's Signal; everything else weekly email."
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@wavex-os/composio-shim",
+  "version": "0.1.0",
+  "description": "Composio integration surface used by op-omega onboarding (listConnections, getFeaturedToolkits, validateApiKey, OAuth init). Soft-disables in dev via WAVEX_COMPOSIO_DISABLED so onboarding works without a Composio account.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}

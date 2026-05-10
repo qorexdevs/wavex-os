@@ -21,7 +21,19 @@
     "build": "pnpm -r --filter \"!./packages/core\" build",
     "ingest:templates": "node scripts/ingest-agency-agents.mjs",
     "lint": "echo 'TODO: eslint'",
-    "test": "echo 'TODO: vitest'"
+    "test": "pnpm -r --filter \"@wavex-os/db\" test",
+    "db:up": "pnpm --filter @wavex-os/db db:up",
+    "db:migrate": "pnpm --filter @wavex-os/db db:migrate",
+    "db:reset": "pnpm --filter @wavex-os/db db:reset",
+    "tuning:map": "node_modules/.pnpm/node_modules/.bin/tsx vendor/op-omega/onboarding/src/tuning/print-map.ts",
+    "tuning:chart": "node_modules/.pnpm/node_modules/.bin/tsx vendor/op-omega/onboarding/src/tuning/print-chart.ts",
+    "baseline:capture": "node_modules/.pnpm/node_modules/.bin/tsx vendor/op-omega/onboarding/test/baseline/capture.ts",
+    "diffeq:suite": "pnpm --filter @op-omega/plugin-onboarding test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
-  "packageManager": "pnpm@8.15.0"
+  "packageManager": "pnpm@8.15.0",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
 }

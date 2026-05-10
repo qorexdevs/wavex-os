@@ -1,0 +1,31 @@
+{
+  "fixture_id": "enterprise-late-stage",
+  "description": "Post-Series-B enterprise SaaS at $1.8M MRR. Full outbound + field sales, long cycles, high ACV.",
+  "pillar_1": {
+    "org_name": "Meridian Platform",
+    "input": "https://meridianplatform.example",
+    "mocked_enrichment": {
+      "company_context": "Enterprise workflow platform for Fortune-500 operations. Six-figure ACVs, 9-month sales cycle, dedicated CSM per account. Recent Series B. 120 employees, quota-carrying AEs with SDRs and SEs.",
+      "has_product": true,
+      "industry_hint": "enterprise_saas",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_20x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "more_than_1m_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "outbound_cold",
+    "sales_motion": "high_touch_enterprise",
+    "close_channel": "mostly_phone_video"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "digest_plus_urgent_phone"
+  }
+}

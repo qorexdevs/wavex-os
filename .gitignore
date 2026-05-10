@@ -60,3 +60,4 @@ coverage/
 
 # Session-specific Paperclip data (NEVER commit user company data)
 ~/.paperclip/
+vendor/op-omega/*/dist/

@@ -1,0 +1,29 @@
+{
+  "fixture_id": "vertical-saas-plg",
+  "description": "Vertical SaaS for independent law firms. Product-led with per-seat billing. $65k MRR.",
+  "pillar_1": {
+    "org_name": "Brieff",
+    "input": "https://brieff.example",
+    "mocked_enrichment": {
+      "company_context": "Vertical SaaS for solo and boutique law firms — case management, timekeeping, client billing. Free trial, self-serve per-seat plan. Growth is word-of-mouth among bar associations.",
+      "has_product": true,
+      "industry_hint": "legal_tech",
+      "business_model_hint": "subscription"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "10k_100k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "content_seo",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "email_only"
+  }
+}

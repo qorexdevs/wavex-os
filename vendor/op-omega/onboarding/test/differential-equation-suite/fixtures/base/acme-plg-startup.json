@@ -1,0 +1,30 @@
+{
+  "fixture_id": "acme-plg-startup",
+  "description": "Early-stage PLG SaaS, <$10k MRR, self-serve, Slack comms",
+  "pillar_1": {
+    "org_name": "Lumen Loops",
+    "input": "https://lumenloops.example",
+    "mocked_enrichment": {
+      "company_context": "Developer analytics platform for growth loops. Free tier plus usage-based pricing. Self-serve signup; no demo required.",
+      "has_product": true,
+      "industry_hint": "dev_tools",
+      "business_model_hint": "usage_based"
+    }
+  },
+  "pillar_2": {
+    "claude_plan": "max_5x",
+    "mocked_shell_result": { "exit_code": 0, "stdout": "OK" }
+  },
+  "pillar_3": {
+    "product_state": "live_paying_customers",
+    "stage": "less_than_10k_mrr"
+  },
+  "pillar_4": {
+    "lead_source": "inbound_ads_meta_google",
+    "sales_motion": "self_serve_plg"
+  },
+  "pillar_5": {
+    "comm_channel": "slack",
+    "urgency_routing": "all_to_one_channel"
+  }
+}
