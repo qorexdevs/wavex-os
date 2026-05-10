@@ -28,6 +28,7 @@ const bodySchema = z.object({
 
 interface ManifestWithOverlays extends CompanyManifest {
   template_overlays?: Record<string, string>;
+  template_additions?: Array<{ slot: string; parent_slot: string; template_id: string; added_at: string }>;
 }
 
 function authReq(req: FastifyRequest) {
@@ -68,8 +69,13 @@ export function registerSwapTemplateRoute(app: FastifyInstance): void {
     const manifest = await loadManifest(companyId);
     if (!manifest) return reply.status(404).send({ ok: false, error: "manifest not found — finalize first" });
 
-    if (!manifest.swarm_manifest.agents[slot]) {
-      return reply.status(400).send({ ok: false, error: `slot "${slot}" is not in the swarm manifest` });
+    // Slot must exist either in the base roster OR as an operator addition.
+    // Without this, swap can't target operator-added agents (added in a prior
+    // session via /add-agent and stored in template_additions[]).
+    const inBaseRoster = !!manifest.swarm_manifest.agents[slot];
+    const inAdditions = (manifest.template_additions ?? []).some((a) => a.slot === slot);
+    if (!inBaseRoster && !inAdditions) {
+      return reply.status(400).send({ ok: false, error: `slot "${slot}" is not in the swarm manifest or operator additions` });
     }
 
     manifest.template_overlays = manifest.template_overlays ?? {};
