@@ -27,6 +27,8 @@ export interface AgentAddPanelProps {
   onAdded: (newSlot: string, parentSlot: string, templateId: string) => void;
 }
 
+interface Recommendation { templateId: string; rationale: string; score: number }
+
 export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose, onAdded }: AgentAddPanelProps) {
   // Default to the first chief if no initial parent
   const [parentSlot, setParentSlot] = useState<string>(initialParent ?? parentChoices[0]?.slot ?? "ceo.orchestrator");
@@ -35,6 +37,33 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
   const [skillLoading, setSkillLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Natural-language recommendation state — operator types what they need,
+  // T2 returns 3-5 ranked picks; clicking one selects it for the rest of
+  // the flow. Designed to skip the 165-template scroll for non-technical
+  // operators.
+  const [nlPrompt, setNlPrompt] = useState("");
+  const [recommending, setRecommending] = useState(false);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
+
+  async function recommend(): Promise<void> {
+    if (nlPrompt.trim().length < 3) return;
+    setRecommending(true);
+    setRecommendError(null);
+    try {
+      const r = await opOmegaOnboardingApi.recommendAgent({
+        companyId, parent_slot: parentSlot, prompt: nlPrompt.trim(),
+      });
+      setRecommendations(r.recommendations);
+      // Auto-select the top pick so the rest of the panel reflects it
+      if (r.recommendations.length > 0) setTemplateId(r.recommendations[0].templateId);
+    } catch (e) {
+      setRecommendError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setRecommending(false);
+    }
+  }
 
   // Group templates by division, parent's division first.
   const parentDivision = useMemo(() => {
@@ -111,8 +140,83 @@ export function AgentAddPanel({ companyId, parentChoices, initialParent, onClose
           <h2 style={{ margin: 0, fontSize: 18 }}>+ Add new agent</h2>
           <button type="button" className="secondary" onClick={onClose} style={{ fontSize: 12 }}>✕ Close</button>
         </div>
-        <div className="text-dim" style={{ fontSize: 12, marginBottom: "1.25rem" }}>
-          Pick a parent + template. Slot name is auto-derived from the template (auto-suffixed if it collides).
+        <div className="text-dim" style={{ fontSize: 12, marginBottom: "1rem" }}>
+          Describe what you need in plain English, or pick a parent + template manually below.
+        </div>
+
+        {/* ── Natural-language recommendation (top of panel) ─────────────── */}
+        <div style={{
+          background: "var(--bg)",
+          border: `1px solid ${recommendations.length > 0 ? "var(--accent)" : "var(--border)"}`,
+          borderRadius: 6,
+          padding: "0.85rem",
+          marginBottom: "1.25rem",
+        }}>
+          <label style={{ display: "block", fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.4rem" }}>
+            ✨ Describe what you need
+          </label>
+          <textarea
+            value={nlPrompt}
+            onChange={(e) => setNlPrompt(e.target.value)}
+            placeholder="e.g. someone to manage our Meta + Google ad campaigns, or a person who can debug production incidents at 3am"
+            rows={2}
+            disabled={recommending}
+            style={{ width: "100%", fontSize: 13, marginBottom: "0.5rem", resize: "vertical", minHeight: 56 }}
+          />
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => void recommend()}
+              disabled={recommending || nlPrompt.trim().length < 3}
+              style={{ fontSize: 12 }}
+            >
+              {recommending ? "Recommending… (~10-30s)" : "Recommend agent"}
+            </button>
+            {recommendError && (
+              <span style={{ fontSize: 11, color: "var(--warning)" }}>✗ {recommendError}</span>
+            )}
+          </div>
+
+          {recommendations.length > 0 && (
+            <div style={{ marginTop: "0.85rem" }}>
+              <div className="text-dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.4rem" }}>
+                Top {recommendations.length} pick{recommendations.length === 1 ? "" : "s"}
+              </div>
+              <div style={{ display: "grid", gap: "0.4rem" }}>
+                {recommendations.map((r, i) => {
+                  const isSelected = r.templateId === templateId;
+                  return (
+                    <button
+                      key={r.templateId}
+                      type="button"
+                      onClick={() => setTemplateId(r.templateId)}
+                      style={{
+                        textAlign: "left",
+                        padding: "0.6rem 0.75rem",
+                        background: isSelected ? "var(--surface-2)" : "transparent",
+                        border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        color: "var(--text)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
+                        <span>
+                          <strong>#{i + 1}</strong> <strong>{r.templateId}</strong>
+                          {isSelected && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>● selected</span>}
+                        </span>
+                        <span className="text-dim" style={{ fontSize: 10 }}>score {r.score}</span>
+                      </div>
+                      <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
+                        {r.rationale}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Parent dropdown */}

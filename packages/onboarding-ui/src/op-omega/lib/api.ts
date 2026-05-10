@@ -321,6 +321,15 @@ export const opOmegaOnboardingApi = {
       slot: input.slot, templateId: input.templateId,
     }),
 
+  // Natural-language recommendation for the Add-agent flow. T2 reads the
+  // 165-template registry + company pillar context + parent + operator's
+  // prompt and returns 3-5 ranked candidates.
+  recommendAgent: (input: { companyId: string; parent_slot: string; prompt: string }) =>
+    call<{
+      ok: true;
+      recommendations: Array<{ templateId: string; rationale: string; score: number }>;
+    }>("POST", "/op-omega/onboarding/recommend-agent", input),
+
   // Add agent — creates a new agent slot under an existing parent.
   // Persists to manifest.template_additions; bridge merges on activate.
   addAgent: (input: { companyId: string; parent_slot: string; template_id: string; slot_suffix?: string }) =>
