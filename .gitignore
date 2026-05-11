@@ -58,6 +58,9 @@ npm-shrinkwrap.json
 coverage/
 .nyc_output/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Session-specific Paperclip data (NEVER commit user company data)
 ~/.paperclip/
 vendor/op-omega/*/dist/
