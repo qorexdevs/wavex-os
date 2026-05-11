@@ -459,4 +459,28 @@ export const opOmegaOnboardingApi = {
         recent_calls: Array<{ phase: string; ts_iso: string; input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number }>;
       };
     }>("GET", `/api/instance/${encodeURIComponent(companyId)}/token-usage`),
+
+  // Pricing tiers (System Optimizer subscription screen)
+  listTiers: () =>
+    call<{
+      ok: true;
+      tiers: Array<{
+        id: "trial" | "founder" | "growth" | "custom";
+        displayName: string;
+        priceLabel: string;
+        priceCents: number;
+        features: string[];
+        recommended: boolean;
+        ctaLabel: string;
+      }>;
+    }>("GET", "/api/tiers"),
+
+  subscribeTier: (input: {
+    orgId: string;
+    tierId: "trial" | "founder" | "growth" | "custom";
+    origin: "subscribe" | "skip";
+  }) =>
+    call<{ ok: true; orgId: string; tierId: string; origin: string }>(
+      "POST", "/api/tier-subscriptions", input,
+    ),
 };

@@ -133,8 +133,25 @@ test.describe("ricoma full T2 → Paperclip handoff", () => {
     const cosAgent = agentArr.find((a) => /chief.of.staff/i.test(a.name) || /chief.of.staff/i.test(a.capabilities ?? ""));
     expect(cosAgent, "Chief of Staff must appear in Paperclip after handoff").toBeTruthy();
 
+    // ── Advance to Pricing phase ──────────────────────────────────────
+    // The post-activate button is now "Choose plan →" (renamed from
+    // "Open Mission Control" since pricing is the next step before MC).
+    await page.getByRole("button", { name: /Choose plan/i }).click();
+
+    // ── Pricing screen ────────────────────────────────────────────────
+    await expect(page.getByRole("heading", { name: /System Optimizer subscription/i }))
+      .toBeVisible({ timeout: 10_000 });
+    // All 4 tier cards render
+    await expect(page.getByText(/^Free trial$/i)).toBeVisible();
+    await expect(page.getByText(/^Founder$/i).first()).toBeVisible();
+    await expect(page.getByText(/^Growth$/i)).toBeVisible();
+    await expect(page.getByText(/^Custom$/i)).toBeVisible();
+    // "Most popular" badge sits on the Founder card
+    await expect(page.getByText(/^Most popular$/i)).toBeVisible();
+    // Skip button advances without subscribing
+    await page.getByRole("button", { name: /Skip.*continue without subscription/i }).click();
+
     // ── Mission Control ───────────────────────────────────────────────
-    await page.getByRole("button", { name: /Open Mission Control/i }).click();
     await expect(page.getByRole("heading", { name: /KPI scoreboard/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Fleet · \d+ agents/)).toBeVisible({ timeout: 15_000 });
     // Should show "Chief of Staff" node in the FleetGraph

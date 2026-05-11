@@ -125,9 +125,15 @@ test.describe("full T2-enriched walk", () => {
     const handoffStatus = page.getByText(/Mirrored \d+ agents to Paperclip|Paperclip not detected|Paperclip handoff:.*failed/i);
     await expect(handoffStatus).toBeVisible({ timeout: 5_000 });
 
-    // ---- Mission Control: operator manually clicks "Open Mission Control" -
-    // (auto-navigate was removed so operators can read the handoff status)
-    await page.getByRole("button", { name: /Open Mission Control/i }).click();
+    // ---- Pricing step (new) ------------------------------------------
+    // Activate now advances to the pricing screen instead of opening Mission
+    // Control directly. Click "Choose plan →" → land on pricing → Skip.
+    await page.getByRole("button", { name: /Choose plan/i }).click();
+    await expect(page.getByRole("heading", { name: /System Optimizer subscription/i }))
+      .toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /Skip.*continue without subscription/i }).click();
+
+    // ---- Mission Control ---------------------------------------------
     await expect(page.getByRole("heading", { name: /KPI scoreboard/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Fleet · \d+ agents/)).toBeVisible({ timeout: 15_000 });
   });

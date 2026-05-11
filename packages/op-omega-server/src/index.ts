@@ -31,6 +31,7 @@ import { registerTokenUsageRoute } from "./routes/token-usage.js";
 import { registerTokenBudgetRoute } from "./routes/token-budget.js";
 import { registerRedundancyRoutes } from "./routes/redundancy.js";
 import { registerHelpChatRoute } from "./routes/help-chat.js";
+import { registerTiersRoutes } from "./routes/tiers.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -65,6 +66,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerTokenBudgetRoute(app);
   registerRedundancyRoutes(app);
   registerHelpChatRoute(app);
+  registerTiersRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

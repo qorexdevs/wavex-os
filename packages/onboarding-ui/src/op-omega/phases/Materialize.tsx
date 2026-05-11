@@ -23,7 +23,18 @@ import { HaltScreen } from "../components/HaltScreen";
 import { RefinementPanel } from "./RefinementPanel";
 import { RedundancyReview } from "../components/RedundancyReview";
 
-interface Props { companyId: string; }
+interface Props {
+  companyId: string;
+  /** Called after Activate succeeds. Carries the paperclipUrl forward so
+   *  the parent (OmegaOnboarding) can open the Paperclip tab AFTER the
+   *  pricing step instead of from here. Defer-the-open is what makes the
+   *  pricing screen feel like a natural step rather than an interruption. */
+  onActivated?: (paperclipUrl: string | null, paperclipCompanyId: string | null) => void;
+  /** Called when the operator clicks "Choose plan →" to advance to the
+   *  pricing screen. When omitted, falls back to direct Mission Control
+   *  navigation (legacy behavior). */
+  onAdvance?: () => void;
+}
 
 interface FinalizeResult {
   manifest: CompanyManifest;
@@ -32,7 +43,7 @@ interface FinalizeResult {
   warnings: string[];
 }
 
-export function Materialize({ companyId }: Props) {
+export function Materialize({ companyId, onActivated, onAdvance }: Props) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<FinalizeResult | null>(null);
@@ -64,13 +75,10 @@ export function Materialize({ companyId }: Props) {
         created: h.created.length,
         errors: h.errors.length,
       });
-      // If handoff succeeded, open Paperclip in a new tab so the operator
-      // sees their fleet there. The wavex tab stays on this page so the
-      // operator can read the handoff status + manually navigate.
-      if (h.enabled && h.paperclipUrl && h.created.length > 0) {
-        window.open(paperclipUiUrl(h.paperclipUrl), "_blank", "noopener");
-      }
-      // No auto-navigate — operator clicks "Open Mission Control →" when ready.
+      // DO NOT open the Paperclip tab here — the pricing step (next phase)
+      // owns that transition. The operator picks a tier / Skips, THEN
+      // Paperclip opens. See IMPLEMENTATION_PLAN.md §2.4 for why.
+      onActivated?.(h.paperclipUrl, h.paperclipCompanyId);
     } catch (e) {
       setActivateError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -317,9 +325,12 @@ export function Materialize({ companyId }: Props) {
           {activated && (
             <button
               type="button"
-              onClick={() => navigate(`/?companyId=${encodeURIComponent(companyId)}`)}
+              onClick={() => {
+                if (onAdvance) onAdvance();
+                else navigate(`/?companyId=${encodeURIComponent(companyId)}`);
+              }}
             >
-              Open Mission Control →
+              {onAdvance ? "Choose plan →" : "Open Mission Control →"}
             </button>
           )}
 
