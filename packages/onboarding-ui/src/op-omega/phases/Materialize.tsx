@@ -53,12 +53,12 @@ export function Materialize({ companyId }: Props) {
         errors: h.errors.length,
       });
       // If handoff succeeded, open Paperclip in a new tab so the operator
-      // sees their fleet there. The wavex tab continues to Mission Control.
+      // sees their fleet there. The wavex tab stays on this page so the
+      // operator can read the handoff status + manually navigate.
       if (h.enabled && h.paperclipUrl && h.created.length > 0) {
         window.open(h.paperclipUrl, "_blank", "noopener");
       }
-      // Brief pause so the operator sees the summary before navigating
-      setTimeout(() => navigate(`/?companyId=${encodeURIComponent(companyId)}`), 1500);
+      // No auto-navigate — operator clicks "Open Mission Control →" when ready.
     } catch (e) {
       setActivateError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -259,15 +259,58 @@ export function Materialize({ companyId }: Props) {
       }}>
         <div style={{
           maxWidth: 760, margin: "0 auto",
-          display: "flex", justifyContent: "flex-end",
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem",
         }}>
-          <button
-            type="button"
-            onClick={() => void activateAndNavigate()}
-            disabled={!result || activating}
-          >
-            {activating ? "Activating…" : "Activate fleet →"}
-          </button>
+          {/* Left side: handoff status badge — visible IN the operator's
+              sight-line when they click Activate, so they can't miss the
+              outcome. Empty before activate completes. */}
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+            {!handoff && activated == null && (
+              <span title="No handoff status yet — click Activate fleet →">
+                {/* placeholder so the layout doesn't jump after activate */}
+                &nbsp;
+              </span>
+            )}
+            {handoff && handoff.enabled && handoff.created > 0 && handoff.errors === 0 && (
+              <span style={{ color: "var(--accent)" }}>
+                ✓ Mirrored {handoff.created} agents to{" "}
+                <a href={handoff.paperclipUrl ?? "#"} target="_blank" rel="noreferrer noopener" style={{ color: "inherit", textDecoration: "underline" }}>
+                  Paperclip ↗
+                </a>
+              </span>
+            )}
+            {handoff && handoff.enabled && handoff.errors > 0 && (
+              <span style={{ color: "var(--warning)" }}>
+                ✗ Paperclip handoff: {handoff.errors} hire{handoff.errors === 1 ? "" : "s"} failed
+              </span>
+            )}
+            {handoff && !handoff.enabled && (
+              <span style={{ color: "var(--text-dim)" }}>
+                ⚠ Paperclip not detected — fleet in wavex DB only
+              </span>
+            )}
+          </div>
+
+          {/* Right side: primary CTA. Switches from Activate → Open Mission
+              Control once activate has succeeded. */}
+          {!activated && (
+            <button
+              type="button"
+              onClick={() => void activateAndNavigate()}
+              disabled={!result || activating}
+            >
+              {activating ? "Activating…" : "Activate fleet →"}
+            </button>
+          )}
+          {activated && (
+            <button
+              type="button"
+              onClick={() => navigate(`/?companyId=${encodeURIComponent(companyId)}`)}
+            >
+              Open Mission Control →
+            </button>
+          )}
+
         </div>
       </div>
     </div>
