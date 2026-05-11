@@ -56,6 +56,11 @@ const PAPERCLIP_ROLE_ENUM = new Set([
  *  the agent's actual behavior comes from instructionsBundle, not the role
  *  label. We pick the closest enum value + record the original in metadata. */
 function mapRoleToPaperclipEnum(slot: string): { role: string; orig: string } {
+  // Special case: kernel CoS sits under ceo.* so the head-based logic
+  // below would label it as "ceo" (same role as the actual CEO). Paperclip
+  // has no chief-of-staff enum value, so fall back to "general" with the
+  // CoS-flavored capabilities surfacing via the AGENTS.md bundle.
+  if (slot === "ceo.chief-of-staff") return { role: "general", orig: "chief_of_staff" };
   const head = slot.split(".")[0];
   if (PAPERCLIP_ROLE_ENUM.has(head)) return { role: head, orig: head };
   // Map non-enum wavex roles to closest equivalents
@@ -81,6 +86,10 @@ const ICON_BY_HEAD: Record<string, string> = {
 };
 
 function iconForSlot(slot: string): string {
+  // CoS sits at ceo.* but isn't the actual CEO — give it the "eye" icon
+  // to reflect its observer role per MINIMAL_INCEPTION.md ("one acts; one
+  // observes"). Without this special case, it'd inherit "crown" from CEO.
+  if (slot === "ceo.chief-of-staff") return "eye";
   return ICON_BY_HEAD[slot.split(".")[0]] ?? "bot";
 }
 
@@ -237,9 +246,13 @@ async function hireOne(
   return { agentId: body.agent.id, status };
 }
 
-/** v1: which slots get handed off. Top-tier only — L·IV specialists deferred. */
+/** v1: which slots get handed off. Top-tier only — L·IV specialists deferred.
+ *  Includes the kernel pair (CEO + Chief of Staff per MINIMAL_INCEPTION.md)
+ *  and the C-suite chiefs. CoS is what closes the kernel loop on the
+ *  Paperclip side ("one acts, one observes"). */
 const V1_HANDOFF_SLOTS = new Set([
   "ceo.orchestrator",
+  "ceo.chief-of-staff",
   "cpo",
   "cmo",
   "cro",
