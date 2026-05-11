@@ -91,7 +91,7 @@ export function Pillar5({ companyId, initial, onComplete }: Props) {
   const chatIdLooksValid = tgChatId.length === 0 || /^-?\d+$/.test(tgChatId);
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
       <H2>Pillar 5 · Board Communication</H2>
       <P>
         Where the CEO agent reports to you. Criticality changes, spawn

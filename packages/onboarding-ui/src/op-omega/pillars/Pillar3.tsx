@@ -64,7 +64,7 @@ export function Pillar3({ companyId, initial, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
       <H2>Pillar 3 · Product & Stage</H2>
       <P>
         Shapes the flywheel's starting KPIs and which bundles fire hardest in

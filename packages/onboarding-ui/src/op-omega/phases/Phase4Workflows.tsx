@@ -61,7 +61,7 @@ export function Phase4Workflows({ companyId, onComplete }: Props) {
   const t2patches = manifest?.t2_patches ?? [];
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 4 — Workflows</H2>
       <P>
         Per-agent on_fire task sequences + cross-agent bundle workflows + scheduled

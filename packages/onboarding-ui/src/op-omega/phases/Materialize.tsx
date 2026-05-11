@@ -72,7 +72,7 @@ export function Materialize({ companyId }: Props) {
   return (
     // paddingBottom leaves room for the sticky footer so the last bit of
     // content (errors, redundancy panel, refinement) isn't hidden behind it.
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
       <H2>Finalize</H2>
       <P>
         Run Monte Carlo across 5 strategies, generate the imprint review,
@@ -194,7 +194,7 @@ export function Materialize({ companyId }: Props) {
         zIndex: 20,
       }}>
         <div style={{
-          maxWidth: 1280, margin: "0 auto",
+          maxWidth: 760, margin: "0 auto",
           display: "flex", justifyContent: "flex-end",
         }}>
           <button
