@@ -70,7 +70,9 @@ export function Materialize({ companyId }: Props) {
 
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    // paddingBottom leaves room for the sticky footer so the last bit of
+    // content (errors, redundancy panel, refinement) isn't hidden behind it.
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
       <H2>Finalize</H2>
       <P>
         Run Monte Carlo across 5 strategies, generate the imprint review,
@@ -177,10 +179,25 @@ export function Materialize({ companyId }: Props) {
         </Card>
       )}
 
-      <NavRow
-        next={{ onClick: () => void activateAndNavigate(), label: activating ? "Activating…" : "Activate fleet →" }}
-        nextDisabled={!result || activating}
-      />
+      {/* Sticky activate footer — keeps the primary CTA reachable no matter
+          how tall the redundancy review or refinement panels grow. The
+          backdrop has a soft border + blur so it reads as a footer, not as
+          inline content. */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        background: "color-mix(in srgb, var(--surface) 92%, transparent)",
+        borderTop: "1px solid var(--border)",
+        backdropFilter: "blur(6px)",
+        padding: "0.75rem 2rem",
+        zIndex: 20,
+      }}>
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <NavRow
+            next={{ onClick: () => void activateAndNavigate(), label: activating ? "Activating…" : "Activate fleet →" }}
+            nextDisabled={!result || activating}
+          />
+        </div>
+      </div>
     </div>
   );
 }
