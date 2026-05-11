@@ -98,6 +98,15 @@ export const opOmegaOnboardingApi = {
     "POST", "/op-omega/onboarding/pillar/1", input,
   ),
 
+  pillar1Edit: (input: {
+    companyId: string;
+    industry_hint?: string;
+    business_model_hint?: string;
+    has_product?: boolean;
+  }) => call<{ ok: true; response: Pillar1Response }>(
+    "POST", "/op-omega/onboarding/pillar/1/edit", input,
+  ),
+
   pillar2: (input: {
     companyId: string;
     claude_plan: "max_20x" | "max_5x" | "api_only" | "other";
@@ -163,6 +172,7 @@ export const opOmegaOnboardingApi = {
         lastTestResult: { ok: boolean; detail?: string } | null;
         skipReason: string | null;
         composioManaged: boolean;
+        keysUrl: string | null;
       }>;
       progress: { requiredCount: number; requiredReady: number; allRequiredAddressed: boolean };
     }>("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`),
@@ -306,6 +316,15 @@ export const opOmegaOnboardingApi = {
       ok: true;
       inserted: { companies: number; agents: number };
       warnings: string[];
+      sha256: string;
+      paperclipHandoff: {
+        enabled: boolean;
+        paperclipUrl: string | null;
+        paperclipCompanyId: string | null;
+        created: Array<{ slot: string; agentId: string; status: string }>;
+        skipped: Array<{ slot: string; reason: string }>;
+        errors: Array<{ slot: string; message: string }>;
+      };
     }>("POST", `/api/instance/${encodeURIComponent(companyId)}/activate`),
 
   // Swap — record an operator-chosen template substitution for one slot.
@@ -374,4 +393,94 @@ export const opOmegaOnboardingApi = {
         heartbeatRuns: number;
       };
     }>("DELETE", `/api/instance/${encodeURIComponent(companyId)}/reset`),
+
+  // Help chat (per-company conversational sidebar)
+  getHelpChat: (companyId: string) =>
+    call<{
+      ok: true;
+      messages: Array<{ role: "user" | "assistant"; ts_iso: string; text: string; phase?: string; field?: string }>;
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/help-chat`),
+
+  postHelpChat: (companyId: string, body: { message: string; phase?: string; field?: string }) =>
+    call<{
+      ok: true;
+      messages: Array<{ role: "user" | "assistant"; ts_iso: string; text: string; phase?: string; field?: string }>;
+      latest_assistant: { role: "assistant"; ts_iso: string; text: string; phase?: string; field?: string };
+    }>("POST", `/api/instance/${encodeURIComponent(companyId)}/help-chat`, body),
+
+  // Redundancy review (exact templateId duplicate groups)
+  getRedundancy: (companyId: string) =>
+    call<{
+      ok: true;
+      groups: Array<{
+        template_id: string;
+        slots: Array<{ slot: string; parent_slot: string; template_id: string; origin: string; muted: boolean }>;
+        by_parent: Record<string, number>;
+        weight: number;
+      }>;
+      all_slots: Array<{ slot: string; parent_slot: string; template_id: string; origin: string; muted: boolean }>;
+      mutes: string[];
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/redundancy`),
+
+  muteSlot: (companyId: string, slot: string) =>
+    call<{ ok: true; mutes: string[]; sha256: string }>(
+      "POST", `/api/instance/${encodeURIComponent(companyId)}/mute-slot`, { slot },
+    ),
+
+  unmuteSlot: (companyId: string, slot: string) =>
+    call<{ ok: true; mutes: string[]; sha256: string }>(
+      "DELETE", `/api/instance/${encodeURIComponent(companyId)}/mute-slot`, { slot },
+    ),
+
+  // Token budget (project-level cap, opt-in)
+  getTokenBudget: (companyId: string) =>
+    call<{
+      ok: true;
+      budget: { cap_tokens: number | null; set_at: string | null };
+      used: number;
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/token-budget`),
+
+  setTokenBudget: (companyId: string, cap_tokens: number | null) =>
+    call<{
+      ok: true;
+      budget: { cap_tokens: number | null; set_at: string | null };
+    }>("POST", `/api/instance/${encodeURIComponent(companyId)}/token-budget`, { cap_tokens }),
+
+  // Token usage (T2 cost tracking, per-company aggregate)
+  tokenUsage: (companyId: string) =>
+    call<{
+      ok: true;
+      usage: {
+        companyId: string;
+        started_at: string;
+        updated_at: string;
+        total: { input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number; calls: number };
+        by_phase: Record<string, { input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number; calls: number; last_call_at?: string }>;
+        recent_calls: Array<{ phase: string; ts_iso: string; input_tokens: number; output_tokens: number; cached_input_tokens: number; cost_usd: number; duration_ms: number }>;
+      };
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/token-usage`),
+
+  // Pricing tiers (System Optimizer subscription screen)
+  listTiers: () =>
+    call<{
+      ok: true;
+      tiers: Array<{
+        id: "trial" | "founder" | "growth" | "custom";
+        displayName: string;
+        priceLabel: string;
+        priceCents: number;
+        features: string[];
+        recommended: boolean;
+        ctaLabel: string;
+      }>;
+    }>("GET", "/api/tiers"),
+
+  subscribeTier: (input: {
+    orgId: string;
+    tierId: "trial" | "founder" | "growth" | "custom";
+    origin: "subscribe" | "skip";
+  }) =>
+    call<{ ok: true; orgId: string; tierId: string; origin: string }>(
+      "POST", "/api/tier-subscriptions", input,
+    ),
 };

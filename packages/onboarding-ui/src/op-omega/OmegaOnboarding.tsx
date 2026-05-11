@@ -9,6 +9,9 @@ import { opOmegaOnboardingApi, ApiError } from "./lib/api";
 import { useCompany } from "./lib/CompanyContext";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ConfirmResetModal } from "./components/ConfirmResetModal";
+import { TokenCounter } from "./components/TokenCounter";
+import { BudgetChip } from "./components/BudgetChip";
+import { HelpChat } from "./components/HelpChat";
 import { preserveDevFlags } from "./lib/dev-flags";
 import { Pillar1 } from "./pillars/Pillar1";
 import { Pillar2 } from "./pillars/Pillar2";
@@ -20,13 +23,22 @@ import { CredentialConcierge } from "./phases/CredentialConcierge";
 import { Phase3Swarm } from "./phases/Phase3Swarm";
 import { Phase4Workflows } from "./phases/Phase4Workflows";
 import { Materialize } from "./phases/Materialize";
+import { Pricing } from "./pricing/Pricing";
+
+/** Map paperclip API URL → UI URL (dev convention: 3100 → 5174).
+ *  Mirrors the helper inside Materialize.tsx; duplicated here so the
+ *  pricing → mission-control transition can open the Paperclip tab. */
+function paperclipUiUrl(apiUrl: string | null): string {
+  if (!apiUrl) return "#";
+  return apiUrl.replace(/:3100\b/, ":5174");
+}
 
 type Phase =
   | "welcome"
   | "pillar-1" | "pillar-2" | "pillar-3" | "pillar-4" | "pillar-5"
   | "phase-2-connectors" | "credential-concierge"
   | "phase-3-swarm" | "phase-4-workflows"
-  | "materialize";
+  | "materialize" | "pricing";
 
 export function OmegaOnboarding() {
   const { companyId } = useCompany();
@@ -42,7 +54,7 @@ const VALID_PHASES: Phase[] = [
   "pillar-1", "pillar-2", "pillar-3", "pillar-4", "pillar-5",
   "phase-2-connectors", "credential-concierge",
   "phase-3-swarm", "phase-4-workflows",
-  "materialize",
+  "materialize", "pricing",
 ];
 
 function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<typeof useQueryClient> }) {
@@ -60,6 +72,11 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
     ? (urlPhase as Phase)
     : "pillar-1";
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  const navigate = useNavigate();
+  // Holds the Paperclip API URL captured from activate response.
+  // Materialize calls onActivated with this; Pricing's onContinue uses it
+  // to open the Paperclip tab after the operator picks/skips a plan.
+  const [pendingPaperclipUrl, setPendingPaperclipUrl] = useState<string | null>(null);
   // If phase came from URL, treat it as authoritative — don't auto-route over it.
   const [autoRouted, setAutoRouted] = useState(initialPhase !== "pillar-1");
 
@@ -144,8 +161,28 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
         <Phase4Workflows companyId={companyId} onComplete={() => advance("materialize")} />
       )}
       {phase === "materialize" && (
-        <Materialize companyId={companyId} />
+        <Materialize
+          companyId={companyId}
+          onActivated={(url) => setPendingPaperclipUrl(url)}
+          onAdvance={() => advance("pricing")}
+        />
       )}
+      {phase === "pricing" && (
+        <Pricing
+          companyId={companyId}
+          onContinue={() => {
+            // Operator chose a tier or skipped. Open Paperclip in a new
+            // tab (if the handoff produced a URL) then navigate this tab
+            // to Mission Control.
+            if (pendingPaperclipUrl) {
+              window.open(paperclipUiUrl(pendingPaperclipUrl), "_blank", "noopener");
+            }
+            navigate(`/?companyId=${encodeURIComponent(companyId)}`);
+          }}
+        />
+      )}
+
+      <HelpChat companyId={companyId} phase={phase} />
     </div>
   );
 }
@@ -168,6 +205,7 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
     { key: "phase-3-swarm", label: "Swarm" },
     { key: "phase-4-workflows", label: "Workflows" },
     { key: "materialize", label: "Finalize" },
+    { key: "pricing", label: "Plan" },
   ];
   const idx = STEPS.findIndex((s) => s.key === phase);
 
@@ -221,6 +259,8 @@ function Header({ companyId, phase, onJump }: { companyId: string; phase: Phase;
           >
             ↺ Reset
           </button>
+          <TokenCounter companyId={companyId} />
+          <BudgetChip companyId={companyId} />
         </div>
         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
           {STEPS.map((s, i) => (

@@ -70,6 +70,12 @@ export function registerActivateRoute(app: FastifyInstance): void {
       // PAPERCLIP_HANDOFF_URL is set, the C-Suite is mirrored as real
       // Paperclip agents so they get heartbeats + claude CLI execution.
       // When unset, this is a no-op and bridgeAgents-only is the contract.
+      //
+      // Re-run auto-detection on each activate — if Paperclip wasn't running
+      // when wavex booted but is up now, detection picks it up here and the
+      // handoff fires. Self-heals without requiring a wavex restart.
+      const { detectAndConfigurePaperclip } = await import("../lib/paperclip-detect.js");
+      await detectAndConfigurePaperclip();
       const handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
         enabled: true,
         paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,

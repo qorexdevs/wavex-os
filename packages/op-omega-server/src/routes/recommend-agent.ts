@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { route as tierRoute } from "@op-omega/plugin-tier-router";
+import { withTokenAccounting } from "../lib/token-accounting.js";
 import { loadPillarResponses } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 
@@ -226,18 +227,20 @@ export function registerRecommendAgentRoute(app: FastifyInstance): void {
 
     let raw: string;
     try {
-      const resp = await tierRoute({
-        agent_id: "onboarding.add-agent.recommend",
-        prompt: fullPrompt,
-        task_metadata: {
-          creativity_required: false, customer_facing: false,
-          reasoning_depth: "shallow", priority: "high",
-        },
-        companyId,
-        outputFormat: "json",
-        timeout_ms: 60_000,
+      raw = await withTokenAccounting(companyId, "recommend_agent", async () => {
+        const resp = await tierRoute({
+          agent_id: "onboarding.add-agent.recommend",
+          prompt: fullPrompt,
+          task_metadata: {
+            creativity_required: false, customer_facing: false,
+            reasoning_depth: "shallow", priority: "high",
+          },
+          companyId,
+          outputFormat: "json",
+          timeout_ms: 60_000,
+        });
+        return resp.output;
       });
-      raw = resp.output;
     } catch (e) {
       return reply.status(503).send({
         ok: false,

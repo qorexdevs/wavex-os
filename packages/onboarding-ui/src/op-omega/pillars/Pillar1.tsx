@@ -9,9 +9,24 @@
  *    the AI-inferred industry / business_model / has_product before advancing. */
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
+import { preserveDevFlags } from "../lib/dev-flags";
 import type { Pillar1Response } from "@op-omega/plugin-onboarding";
 import { Card, Field, H2, P } from "../components/primitives";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+
+/** URL-safe slug from a free-text company name. Used for first-submit rename:
+ *  if the operator lands on Pillar 1 with a stale `?companyId=…` (e.g. from
+ *  a bookmarked URL or a Reset+restart) and types a different name, we route
+ *  the writes to the new slug instead of the URL's id. */
+function slugify(s: string): string {
+  return s.toLowerCase().trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 interface Props {
   companyId: string;
@@ -41,6 +56,7 @@ const BUSINESS_MODEL_OPTIONS = [
 ];
 
 export function Pillar1({ companyId, initial, onComplete }: Props) {
+  const navigate = useNavigate();
   const [orgName, setOrgName] = useState(initial?.org_name ?? "");
   const [rawInput, setRawInput] = useState("");
   const [manualContext, setManualContext] = useState("");
@@ -50,9 +66,24 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [enriched, setEnriched] = useState<Pillar1Response | undefined>(initial);
 
+  // Once a pillar_1 exists for this companyId (either hydrated from server or
+  // just written), the URL id is locked. Mid-wizard renames of org_name don't
+  // fork the data folder — only the very first write can pick the slug.
+  const [firstSubmitDone, setFirstSubmitDone] = useState<boolean>(!!initial);
+  const proposedSlug = slugify(orgName);
+  const willRename = !firstSubmitDone && proposedSlug.length > 0 && proposedSlug !== companyId;
+
   const [previewIndustry, setPreviewIndustry] = useState("");
   const [previewBusinessModel, setPreviewBusinessModel] = useState("");
   const [previewHasProduct, setPreviewHasProduct] = useState(true);
+  // "Other" mode: dropdown reads "__other__"; the free-text input below
+  // captures the operator-typed industry/business-model. We track these
+  // separately so toggling the dropdown back to a canonical option doesn't
+  // wipe what they typed.
+  const [otherIndustry, setOtherIndustry] = useState("");
+  const [otherBusinessModel, setOtherBusinessModel] = useState("");
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   useEffect(() => {
     if (enriched) {
@@ -61,6 +92,40 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
       setPreviewHasProduct(enriched.has_product ?? true);
     }
   }, [enriched]);
+
+  // Resolved values that get persisted on Confirm — either the canonical
+  // dropdown selection or the free-text override when "Other" is picked.
+  const OTHER_SENTINEL = "__other__";
+  const resolvedIndustry = previewIndustry === OTHER_SENTINEL ? otherIndustry.trim() : previewIndustry;
+  const resolvedBusinessModel = previewBusinessModel === OTHER_SENTINEL ? otherBusinessModel.trim() : previewBusinessModel;
+  const otherIndustryInvalid = previewIndustry === OTHER_SENTINEL && resolvedIndustry.length === 0;
+  const otherBusinessInvalid = previewBusinessModel === OTHER_SENTINEL && resolvedBusinessModel.length === 0;
+
+  async function persistAndContinue(): Promise<void> {
+    setConfirmSubmitting(true);
+    setConfirmError(null);
+    try {
+      // Only patch fields that diverge from what T2 enriched, so a no-op
+      // confirm doesn't write a redundant pillar_1 update.
+      const patch: Parameters<typeof opOmegaOnboardingApi.pillar1Edit>[0] = { companyId };
+      if (resolvedIndustry && resolvedIndustry !== enriched?.industry_hint) {
+        patch.industry_hint = resolvedIndustry;
+      }
+      if (resolvedBusinessModel && resolvedBusinessModel !== enriched?.business_model_hint) {
+        patch.business_model_hint = resolvedBusinessModel;
+      }
+      if (previewHasProduct !== enriched?.has_product) {
+        patch.has_product = previewHasProduct;
+      }
+      const hasOverride = patch.industry_hint || patch.business_model_hint || patch.has_product !== undefined;
+      if (hasOverride) await opOmegaOnboardingApi.pillar1Edit(patch);
+      onComplete();
+    } catch (e) {
+      setConfirmError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setConfirmSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     if (!submitting) {
@@ -79,14 +144,25 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
     setHalt(undefined);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), PILLAR1_TIMEOUT_MS);
+    // Pick the storage key BEFORE the network call so a successful write lands
+    // in the right folder. If we're renaming, also flip the URL after success
+    // so the breadcrumb + downstream phases see the new id.
+    const targetCompanyId = willRename ? proposedSlug : companyId;
     try {
       const resp = await opOmegaOnboardingApi.pillar1({
-        companyId,
+        companyId: targetCompanyId,
         org_name: orgName.trim(),
         raw_input: rawInput.trim(),
         manual_context: useManual && manualContext.trim().length >= 40 ? manualContext.trim() : undefined,
       });
       setEnriched(resp.response);
+      setFirstSubmitDone(true);
+      if (targetCompanyId !== companyId) {
+        navigate(
+          `/onboarding?${preserveDevFlags(`companyId=${encodeURIComponent(targetCompanyId)}&phase=pillar-1`)}`,
+          { replace: true },
+        );
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setError(`Took longer than ${PILLAR1_TIMEOUT_MS / 1000}s — inference may be slow. Try again, or describe your product manually below.`);
@@ -119,15 +195,50 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
           <Field label="Industry" required>
             <select value={previewIndustry} onChange={(e) => setPreviewIndustry(e.target.value)}>
               {INDUSTRY_OPTIONS.map((i) => <option key={i} value={i}>{i.replace(/_/g, " ")}</option>)}
-              {!INDUSTRY_OPTIONS.includes(previewIndustry) && <option value={previewIndustry}>{previewIndustry} (inferred)</option>}
+              {!INDUSTRY_OPTIONS.includes(previewIndustry) && previewIndustry !== OTHER_SENTINEL && (
+                <option value={previewIndustry}>{previewIndustry} (inferred)</option>
+              )}
+              <option value={OTHER_SENTINEL}>Other — type your own…</option>
             </select>
+            {previewIndustry === OTHER_SENTINEL && (
+              <input
+                type="text"
+                value={otherIndustry}
+                onChange={(e) => setOtherIndustry(e.target.value)}
+                placeholder="e.g. embroidery_hardware, robotic_dental"
+                autoFocus
+                style={{ marginTop: 6, width: "100%" }}
+              />
+            )}
+            {otherIndustryInvalid && (
+              <div className="text-dim" style={{ fontSize: 11, marginTop: 4, color: "var(--warning)" }}>
+                Type your industry above (or pick a canonical option).
+              </div>
+            )}
           </Field>
 
           <Field label="Business model" required>
             <select value={previewBusinessModel} onChange={(e) => setPreviewBusinessModel(e.target.value)}>
               {BUSINESS_MODEL_OPTIONS.map((b) => <option key={b} value={b}>{b.replace(/_/g, " ")}</option>)}
-              {!BUSINESS_MODEL_OPTIONS.includes(previewBusinessModel) && <option value={previewBusinessModel}>{previewBusinessModel} (inferred)</option>}
+              {!BUSINESS_MODEL_OPTIONS.includes(previewBusinessModel) && previewBusinessModel !== OTHER_SENTINEL && (
+                <option value={previewBusinessModel}>{previewBusinessModel} (inferred)</option>
+              )}
+              <option value={OTHER_SENTINEL}>Other — type your own…</option>
             </select>
+            {previewBusinessModel === OTHER_SENTINEL && (
+              <input
+                type="text"
+                value={otherBusinessModel}
+                onChange={(e) => setOtherBusinessModel(e.target.value)}
+                placeholder="e.g. equipment_lease_to_own, value_pricing"
+                style={{ marginTop: 6, width: "100%" }}
+              />
+            )}
+            {otherBusinessInvalid && (
+              <div className="text-dim" style={{ fontSize: 11, marginTop: 4, color: "var(--warning)" }}>
+                Type your business model above (or pick a canonical option).
+              </div>
+            )}
           </Field>
 
           <Field label="Do you have a live product?">
@@ -153,9 +264,21 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
           )}
         </Card>
 
+        {confirmError && (
+          <div style={{ marginTop: "0.75rem", padding: "0.5rem", color: "var(--warning)", fontSize: 13 }}>
+            ✗ {confirmError}
+          </div>
+        )}
+
         <div className="nav-buttons">
-          <button type="button" className="secondary" onClick={() => setEnriched(undefined)}>← Re-enrich</button>
-          <button type="button" onClick={onComplete}>Confirm + continue →</button>
+          <button type="button" className="secondary" onClick={() => setEnriched(undefined)} disabled={confirmSubmitting}>← Re-enrich</button>
+          <button
+            type="button"
+            onClick={() => void persistAndContinue()}
+            disabled={confirmSubmitting || otherIndustryInvalid || otherBusinessInvalid}
+          >
+            {confirmSubmitting ? "Saving…" : "Confirm + continue →"}
+          </button>
         </div>
       </div>
     );
@@ -179,6 +302,11 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
             autoFocus
             disabled={submitting}
           />
+          {willRename && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
+              → will be saved under company id <code>{proposedSlug}</code> (currently <code>{companyId}</code>)
+            </div>
+          )}
         </Field>
 
         <Field label="URL or short pitch" required>
@@ -190,6 +318,11 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
             disabled={submitting}
           />
         </Field>
+
+        {/* Authoritative progress: real elapsed time + history-backed ETA. */}
+        <div style={{ marginTop: submitting ? "0.75rem" : 0 }}>
+          <T2ProgressIndicator active={submitting} phase="pillar-1" />
+        </div>
 
         {submitting && (
           <div style={{ padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, marginTop: "0.75rem" }}>

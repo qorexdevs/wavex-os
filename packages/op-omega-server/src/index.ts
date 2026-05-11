@@ -11,6 +11,7 @@
 import type { FastifyInstance } from "fastify";
 import { applyInferenceEnv } from "@wavex-os/inference-adapter";
 import { applyStateBridge } from "./state-bridge.js";
+import { detectAndConfigurePaperclip } from "./lib/paperclip-detect.js";
 import { registerPillarRoutes } from "./routes/pillars.js";
 import { registerPhaseRoutes } from "./routes/phases.js";
 import { registerProbeRoutes } from "./routes/probe.js";
@@ -26,12 +27,21 @@ import { registerSwapTemplateRoute } from "./routes/swap-template.js";
 import { registerInferenceStatusRoute } from "./routes/inference-status.js";
 import { registerAddAgentRoute } from "./routes/add-agent.js";
 import { registerRecommendAgentRoute } from "./routes/recommend-agent.js";
+import { registerTokenUsageRoute } from "./routes/token-usage.js";
+import { registerTokenBudgetRoute } from "./routes/token-budget.js";
+import { registerRedundancyRoutes } from "./routes/redundancy.js";
+import { registerHelpChatRoute } from "./routes/help-chat.js";
+import { registerTiersRoutes } from "./routes/tiers.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
   if (bootstrapped) return;
   applyInferenceEnv();
   applyStateBridge();
+  // Fire-and-forget Paperclip detection — don't block route registration on
+  // the network probe. If Paperclip comes up later, the operator can either
+  // restart wavex or set PAPERCLIP_HANDOFF_URL by hand.
+  void detectAndConfigurePaperclip();
   bootstrapped = true;
 }
 
@@ -52,6 +62,11 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerInferenceStatusRoute(app);
   registerAddAgentRoute(app);
   registerRecommendAgentRoute(app);
+  registerTokenUsageRoute(app);
+  registerTokenBudgetRoute(app);
+  registerRedundancyRoutes(app);
+  registerHelpChatRoute(app);
+  registerTiersRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

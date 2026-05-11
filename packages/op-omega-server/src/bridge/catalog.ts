@@ -20,6 +20,12 @@ export const SLOT_TO_TEMPLATE: Record<string, string> = {
   // L·II
   "ceo.orchestrator": "ceo",
 
+  // Kernel: Chief of Staff. Sits between CEO and the C-suite line as the
+  //   read-only fleet observer (see docs/MINIMAL_INCEPTION.md). Auto-injected
+  //   by lib/kernel-slots.ts during swarm-manifest generation, so this entry
+  //   exists primarily so templateIdForSlot resolves cleanly during bridge.
+  "ceo.chief-of-staff": "chief-of-staff",
+
   // L·III chiefs (1:1 mapping)
   cpo: "cpo",
   cmo: "cmo",
@@ -69,11 +75,12 @@ export const SLOT_TO_TEMPLATE: Record<string, string> = {
 };
 
 /** Tier classification for the throttle ladder + model selector.
- *    1 = ceo.orchestrator (always allowed under critical wake reasons)
+ *    1 = ceo.orchestrator + ceo.chief-of-staff (kernel — always allowed
+ *        under critical wake reasons; both run on opus per CoS provision script)
  *    2 = bare chiefs
  *    3 = dotted L·IV sub-agents */
 export function tierForSlot(slot: string): 1 | 2 | 3 {
-  if (slot === "ceo.orchestrator") return 1;
+  if (slot === "ceo.orchestrator" || slot === "ceo.chief-of-staff") return 1;
   return slot.includes(".") ? 3 : 2;
 }
 
@@ -93,6 +100,7 @@ export function templateIdForSlot(slot: string): string {
 /** Human-readable agent name. "cpo.build" → "CPO · Build". */
 export function slotToHumanName(slot: string): string {
   if (slot === "ceo.orchestrator") return "CEO Orchestrator";
+  if (slot === "ceo.chief-of-staff") return "Chief of Staff";
   const parts = slot.split(".");
   if (parts.length === 1) return parts[0]!.toUpperCase();
   const [chief, suffix] = parts as [string, string];

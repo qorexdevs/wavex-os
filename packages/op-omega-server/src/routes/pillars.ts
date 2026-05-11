@@ -16,12 +16,25 @@ import {
   nextIncompletePillar,
 } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
+import { withTokenAccounting, type PhaseKey } from "../lib/token-accounting.js";
+import { BudgetExhaustedError } from "../lib/token-budget.js";
 
 const pillar1Schema = z.object({
   companyId: z.string().min(1),
   org_name: z.string().min(1).max(120),
   raw_input: z.string().min(1).max(2048),
   manual_context: z.string().min(40).max(2048).optional(),
+});
+
+/** Operator-edit overrides for pillar_1 fields after T2 enrichment.
+ *  Used when the operator picks "Other — type your own" in the confirm
+ *  view's industry/business_model dropdowns, or just disagrees with
+ *  what T2 inferred. Patches the existing pillar_1 in place. */
+const pillar1EditSchema = z.object({
+  companyId: z.string().min(1),
+  industry_hint: z.string().min(1).max(80).optional(),
+  business_model_hint: z.string().min(1).max(80).optional(),
+  has_product: z.boolean().optional(),
 });
 
 const pillar2Schema = z.object({
@@ -108,64 +121,100 @@ export function registerPillarRoutes(app: FastifyInstance): void {
         if (isOnboardingHaltError(e)) {
           return reply.status(409).send({ ok: false, halt: e.toJSON() });
         }
+        if (e instanceof BudgetExhaustedError) {
+          return reply.status(429).send({
+            ok: false, error: e.message,
+            budget: { used: e.used, cap: e.cap, companyId: e.companyId },
+          });
+        }
         throw e;
       }
     });
   };
 
   pillarRoute(1, pillar1Schema, async (body) => {
-    const result = await handlePillar1({
-      org_name: body.org_name,
-      raw_input: body.raw_input,
-      companyId: body.companyId,
-      manual_context: body.manual_context,
+    return withTokenAccounting(body.companyId, "pillar_1", async () => {
+      const result = await handlePillar1({
+        org_name: body.org_name,
+        raw_input: body.raw_input,
+        companyId: body.companyId,
+        manual_context: body.manual_context,
+      });
+      await updatePillar(body.companyId, "pillar_1", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_1", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(2, pillar2Schema, async (body) => {
-    const outcome = await handlePillar2({
-      claude_plan: body.claude_plan,
-      claude_plan_other_note: body.claude_plan_other_note,
+    return withTokenAccounting(body.companyId, "pillar_2", async () => {
+      const outcome = await handlePillar2({
+        claude_plan: body.claude_plan,
+        claude_plan_other_note: body.claude_plan_other_note,
+      });
+      await updatePillar(body.companyId, "pillar_2", outcome.response);
+      return outcome;
     });
-    await updatePillar(body.companyId, "pillar_2", outcome.response);
-    return outcome;
   });
 
   pillarRoute(3, pillar3Schema, async (body) => {
-    const result = await handlePillar3({
-      product_state: body.product_state,
-      product_state_other: body.product_state_other,
-      stage: body.stage,
-      stage_other: body.stage_other,
+    return withTokenAccounting(body.companyId, "pillar_3", async () => {
+      const result = await handlePillar3({
+        product_state: body.product_state,
+        product_state_other: body.product_state_other,
+        stage: body.stage,
+        stage_other: body.stage_other,
+      });
+      await updatePillar(body.companyId, "pillar_3", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_3", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(4, pillar4Schema, async (body) => {
-    const result = await handlePillar4({
-      lead_sources: body.lead_sources,
-      lead_source_other: body.lead_source_other,
-      sales_motion: body.sales_motion,
-      sales_motion_other: body.sales_motion_other,
-      close_channel: body.close_channel,
-      close_channel_other: body.close_channel_other,
+    return withTokenAccounting(body.companyId, "pillar_4", async () => {
+      const result = await handlePillar4({
+        lead_sources: body.lead_sources,
+        lead_source_other: body.lead_source_other,
+        sales_motion: body.sales_motion,
+        sales_motion_other: body.sales_motion_other,
+        close_channel: body.close_channel,
+        close_channel_other: body.close_channel_other,
+      });
+      await updatePillar(body.companyId, "pillar_4", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_4", result);
-    return { ok: true, response: result };
   });
 
   pillarRoute(5, pillar5Schema, async (body) => {
-    const result = await handlePillar5({
-      comm_channel: body.comm_channel,
-      comm_channel_other: body.comm_channel_other,
-      urgency_routing: body.urgency_routing,
-      urgency_routing_other: body.urgency_routing_other,
-      board_endpoint_config: body.board_endpoint_config,
+    return withTokenAccounting(body.companyId, "pillar_5", async () => {
+      const result = await handlePillar5({
+        comm_channel: body.comm_channel,
+        comm_channel_other: body.comm_channel_other,
+        urgency_routing: body.urgency_routing,
+        urgency_routing_other: body.urgency_routing_other,
+        board_endpoint_config: body.board_endpoint_config,
+      });
+      await updatePillar(body.companyId, "pillar_5", result);
+      return { ok: true, response: result };
     });
-    await updatePillar(body.companyId, "pillar_5", result);
-    return { ok: true, response: result };
+  });
+
+  app.post("/op-omega/onboarding/pillar/1/edit", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const parsed = pillar1EditSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    const { companyId, ...overrides } = parsed.data;
+    assertCompanyAccess(ar, companyId);
+
+    const responses = await loadPillarResponses(companyId).catch(() => null);
+    if (!responses?.pillar_1) {
+      return reply.status(409).send({ ok: false, error: "no pillar_1 to edit — submit pillar/1 first" });
+    }
+    const updated = { ...responses.pillar_1, ...overrides };
+    await updatePillar(companyId, "pillar_1", updated);
+    return { ok: true, response: updated };
   });
 }

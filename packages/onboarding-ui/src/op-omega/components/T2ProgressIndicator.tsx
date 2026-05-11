@@ -24,14 +24,20 @@ interface InferenceStatus {
   updated_at_ms?: number;
 }
 
-/** Soft per-phase ETAs in seconds — only used to size the progress bar.
- *  Real elapsed time is what we display; ETA is a visual reference. */
-const ETA_SECONDS: Record<string, number> = {
-  "phase-2": 60,
-  "phase-3": 60,
-  "phase-4": 75,
-  "pillar-1": 120,
-  finalize: 90,
+interface PhaseEta {
+  median_ms: number;
+  p90_ms: number;
+  samples: number;
+  is_default: boolean;
+}
+
+/** Map UI phase keys → server PhaseKey used by the eta endpoint. */
+const PHASE_TO_SERVER_KEY: Record<string, string> = {
+  "pillar-1": "pillar_1",
+  "phase-2": "connector_manifest",
+  "phase-3": "swarm_manifest",
+  "phase-4": "workflow_manifest",
+  finalize: "finalize",
 };
 
 export function T2ProgressIndicator({
@@ -41,6 +47,23 @@ export function T2ProgressIndicator({
   phase: "phase-2" | "phase-3" | "phase-4" | "pillar-1" | "finalize";
 }) {
   const [status, setStatus] = useState<InferenceStatus | null>(null);
+  const [eta, setEta] = useState<PhaseEta | null>(null);
+
+  // Fetch the historical ETA once when this phase activates. Median + p90
+  // come from past T2 calls for the same phase across all companies (see
+  // packages/op-omega-server/src/lib/token-accounting.ts:getPhaseEta).
+  useEffect(() => {
+    if (!active) return;
+    const serverPhase = PHASE_TO_SERVER_KEY[phase] ?? phase;
+    let alive = true;
+    void fetch(`/api/inference/eta?phase=${encodeURIComponent(serverPhase)}`)
+      .then((r) => r.json())
+      .then((j: { ok: boolean; eta?: PhaseEta }) => {
+        if (alive && j.eta) setEta(j.eta);
+      })
+      .catch(() => { /* silent — falls back to default */ });
+    return () => { alive = false; };
+  }, [active, phase]);
 
   useEffect(() => {
     if (!active) {
@@ -64,15 +87,24 @@ export function T2ProgressIndicator({
 
   const elapsedMs = status?.live_elapsed_ms ?? status?.elapsed_ms ?? 0;
   const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
-  const etaSec = ETA_SECONDS[phase] ?? 60;
+  const etaSec = Math.max(1, Math.round((eta?.median_ms ?? 60_000) / 1000));
+  const p90Sec = Math.max(etaSec, Math.round((eta?.p90_ms ?? etaSec * 1500) / 1000));
   const pct = Math.min(95, Math.round((elapsedSec / etaSec) * 100));
+  const overP90 = elapsedSec > p90Sec;
   const overEta = elapsedSec > etaSec;
+  const remainingSec = Math.max(0, etaSec - elapsedSec);
 
   // States we render distinctly:
   const isIdle = !status || status.idle;
   const isAlive = status?.alive && !status.stale;
   const isCompleted = status?.completed;
   const isStale = status?.stale;
+
+  // Suffix shows the source of the ETA so operators understand it's history-
+  // backed when samples > 0, or a default when not.
+  const etaSrc = eta && !eta.is_default
+    ? `from ${eta.samples} prior call${eta.samples === 1 ? "" : "s"}`
+    : "default — no history yet";
 
   let label: string;
   let barColor = "var(--accent)";
@@ -83,11 +115,16 @@ export function T2ProgressIndicator({
     label = `⚠ T2 process stale (no heartbeat in ${Math.floor((Date.now() - (status?.updated_at_ms ?? 0)) / 1000)}s)`;
     barColor = "var(--warning)";
   } else if (isAlive) {
-    label = overEta
-      ? `⟲ T2 generating · ${elapsedSec}s elapsed (longer than typical ${etaSec}s)`
-      : `⟲ T2 generating · ${elapsedSec}s elapsed (≈${etaSec}s expected)`;
+    if (overP90) {
+      label = `⟲ T2 generating · ${elapsedSec}s elapsed · taking longer than usual (>p90 ${p90Sec}s)`;
+      barColor = "var(--warning)";
+    } else if (overEta) {
+      label = `⟲ T2 generating · ${elapsedSec}s elapsed · ~${remainingSec}s above median (median ~${etaSec}s, ${etaSrc})`;
+    } else {
+      label = `⟲ T2 generating · ${elapsedSec}s elapsed · ~${remainingSec}s remaining (median ~${etaSec}s, ${etaSrc})`;
+    }
   } else if (isIdle) {
-    label = `⟲ T2 starting…`;
+    label = `⟲ T2 starting… (~${etaSec}s expected)`;
   } else {
     label = `⟲ T2 generating…`;
   }

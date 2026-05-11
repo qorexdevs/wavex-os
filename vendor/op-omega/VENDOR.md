@@ -63,9 +63,12 @@ wavex-os workspace layout. Vendor-update scripts must re-apply these:
 | `tsconfig.base.json` | New file (mirrors upstream `tsconfig.base.json`) | Sibling base for the package tsconfigs |
 | `shared/tsconfig.json` | Adds `types: ["node"]` + `exclude: ["src/**/*.test.ts"]` | Build was emitting test files; @types/node was missing from devDeps |
 | `shared/package.json` | Adds `@types/node` to devDependencies | Fix for the same |
+| `onboarding/src/phases/finalize/imprint-review.ts` | Bumps `timeout_ms: 120_000 → 300_000` on the deep+creative imprint T2 call | Upstream's 2 min timeout was triggering the deterministic fallback too often; the imprint pass routinely needs 2-4 min in real runs. Same value, different deadline — pure behavior fix, no contract change |
 
-These edits are ergonomic-only. They don't change behavior. The next vendor
-sync should diff these against upstream and re-apply.
+The first four edits are ergonomic-only. The fifth (imprint-review timeout) does
+change behavior — bumping the timeout means slow T2 calls now succeed where they
+previously fell back. The next vendor sync should diff all of these against
+upstream and re-apply, and audit whether upstream has bumped the timeout itself.
 
 ## Do not modify (other than the above)
 

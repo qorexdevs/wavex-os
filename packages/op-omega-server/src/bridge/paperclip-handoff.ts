@@ -56,6 +56,11 @@ const PAPERCLIP_ROLE_ENUM = new Set([
  *  the agent's actual behavior comes from instructionsBundle, not the role
  *  label. We pick the closest enum value + record the original in metadata. */
 function mapRoleToPaperclipEnum(slot: string): { role: string; orig: string } {
+  // Special case: kernel CoS sits under ceo.* so the head-based logic
+  // below would label it as "ceo" (same role as the actual CEO). Paperclip
+  // has no chief-of-staff enum value, so fall back to "general" with the
+  // CoS-flavored capabilities surfacing via the AGENTS.md bundle.
+  if (slot === "ceo.chief-of-staff") return { role: "general", orig: "chief_of_staff" };
   const head = slot.split(".")[0];
   if (PAPERCLIP_ROLE_ENUM.has(head)) return { role: head, orig: head };
   // Map non-enum wavex roles to closest equivalents
@@ -81,6 +86,10 @@ const ICON_BY_HEAD: Record<string, string> = {
 };
 
 function iconForSlot(slot: string): string {
+  // CoS sits at ceo.* but isn't the actual CEO — give it the "eye" icon
+  // to reflect its observer role per MINIMAL_INCEPTION.md ("one acts; one
+  // observes"). Without this special case, it'd inherit "crown" from CEO.
+  if (slot === "ceo.chief-of-staff") return "eye";
   return ICON_BY_HEAD[slot.split(".")[0]] ?? "bot";
 }
 
@@ -237,16 +246,38 @@ async function hireOne(
   return { agentId: body.agent.id, status };
 }
 
-/** v1: which slots get handed off. Top-tier only — L·IV specialists deferred. */
-const V1_HANDOFF_SLOTS = new Set([
-  "ceo.orchestrator",
-  "cpo",
-  "cmo",
-  "cro",
-  "cfo",
-  "cdo",
-  "coo",
-]);
+/** Topologically sort swarm slots so parents land in Paperclip before
+ *  their children. Required because Paperclip's reportsTo schema needs a
+ *  real UUID — the parent's hire response provides it. If a child fires
+ *  before its parent, reportsTo would be null and the child would orphan
+ *  at Paperclip's root.
+ *
+ *  Cycles or unresolvable parents fall to the end (treated as roots). */
+function topoSortSlots(swarm: Record<string, SwarmAgentEntry>): Array<[string, SwarmAgentEntry]> {
+  const all = Object.entries(swarm);
+  const known = new Set(all.map(([s]) => s));
+  const placed = new Set<string>();
+  const result: Array<[string, SwarmAgentEntry]> = [];
+  while (placed.size < all.length) {
+    const before = placed.size;
+    for (const [slot, entry] of all) {
+      if (placed.has(slot)) continue;
+      const parent = entry.reports_to;
+      // Place when: no parent OR parent isn't in this swarm OR parent already placed.
+      if (!parent || !known.has(parent) || placed.has(parent)) {
+        result.push([slot, entry]);
+        placed.add(slot);
+      }
+    }
+    if (placed.size === before) {
+      // No progress → cycle. Push remaining as-is and break.
+      for (const [slot, entry] of all) {
+        if (!placed.has(slot)) { result.push([slot, entry]); placed.add(slot); }
+      }
+    }
+  }
+  return result;
+}
 
 export async function handoffToPaperclip(
   manifest: CompanyManifest,
@@ -288,10 +319,20 @@ export async function handoffToPaperclip(
   // Track slot -> paperclip agentId for reports_to resolution
   const slotToPaperclipId: Record<string, string> = { ...(existing?.agents ?? {}) };
 
-  // Pass 1: hire C-Suite roots (no reports_to dependency)
-  for (const [slot, entry] of Object.entries(swarm)) {
-    if (!V1_HANDOFF_SLOTS.has(slot)) {
-      report.skipped.push({ slot, reason: "outside-v1-scope" });
+  // Operator may have muted slots via the redundancy review — skip them
+  // in Paperclip too, matching the bridge's behavior.
+  const mutes = new Set(
+    (manifest as unknown as { template_mutes?: string[] }).template_mutes ?? [],
+  );
+
+  // Full handoff: every slot in the swarm, sorted topologically so parents
+  // land before children. The original V1 scope was C-suite only — fine
+  // for early dev, but the "wavex-os/<company>" record in Paperclip then
+  // hid 27 of 35 agents (every L·IV specialist) which made the dashboard
+  // misleading. Now the manifest in Paperclip matches wavex 1:1.
+  for (const [slot, entry] of topoSortSlots(swarm)) {
+    if (mutes.has(slot)) {
+      report.skipped.push({ slot, reason: "muted-by-operator" });
       continue;
     }
     if (slotToPaperclipId[slot]) {

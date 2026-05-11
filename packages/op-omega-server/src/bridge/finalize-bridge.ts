@@ -31,6 +31,10 @@ interface ManifestWithOverlays extends CompanyManifest {
     score: number;
     rationale: string;
   }>;
+  /** Slots the operator has muted via the redundancy review. The bridge
+   *  skips them when writing agents to DB; the manifest still records them
+   *  so a future un-mute can restore the slot without re-running phases. */
+  template_mutes?: string[];
 }
 
 export interface BridgeReport {
@@ -116,7 +120,16 @@ export async function bridgeAgents(
   // without going through SLOT_TO_TEMPLATE (which doesn't know about them).
   const additionBySlot = new Map(additions.map((a) => [a.slot, a]));
 
+  // Operator mutes from the redundancy review — skip these slots entirely.
+  // Persisting them on the manifest (rather than deleting the slot) keeps
+  // the un-mute path cheap and doesn't lose the matrix's original choice.
+  const mutes = new Set((manifest as ManifestWithOverlays).template_mutes ?? []);
+  if (mutes.size > 0) {
+    warnings.push(`${mutes.size} slot${mutes.size === 1 ? "" : "s"} muted by operator: ${[...mutes].join(", ")}`);
+  }
+
   for (const [slot, entry] of slotEntries) {
+    if (mutes.has(slot)) continue;
     const tier = tierForSlot(slot);
     const overlayTemplate = overlays[slot];
     const addition = additionBySlot.get(slot);
@@ -181,19 +194,36 @@ export async function bridgeAgents(
     });
   }
 
-  // 3. Pass 2 — resolve reports_to_agent_id now that all rows exist
+  // 3. Pass 2 — resolve reports_to_agent_id now that all rows exist.
+  //    Skip muted slots (their row was never inserted) and re-parent any
+  //    children whose direct parent was muted to that parent's grandparent.
+  //    Walks both base roster + operator additions so additions can be
+  //    chained through too (rare but possible).
+  const slotEntryMap = new Map(slotEntries);
+  function effectiveParent(slot: string): string | null {
+    let next: string | null = slot;
+    while (next && mutes.has(next)) {
+      const entry = slotEntryMap.get(next);
+      next = entry?.reports_to ?? null;
+    }
+    return next;
+  }
   for (const [slot, entry] of slotEntries) {
+    if (mutes.has(slot)) continue;
     if (!entry.reports_to) continue;
+    const parent = effectiveParent(entry.reports_to);
+    if (!parent) continue;
     const agentId = agentIdForSlot(companyId, slot);
-    const reportsToId = agentIdForSlot(companyId, entry.reports_to);
+    const reportsToId = agentIdForSlot(companyId, parent);
     await db.update(agents)
       .set({ reportsToAgentId: reportsToId })
       .where(sql`${agents.id} = ${agentId}`);
   }
 
+  const insertedCount = slotEntries.length - mutes.size;
   return {
     companies: 1,
-    agents: slotEntries.length,
+    agents: insertedCount,
     warnings,
   };
 }
