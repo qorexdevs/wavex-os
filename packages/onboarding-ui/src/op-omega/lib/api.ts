@@ -316,6 +316,15 @@ export const opOmegaOnboardingApi = {
       ok: true;
       inserted: { companies: number; agents: number };
       warnings: string[];
+      sha256: string;
+      paperclipHandoff: {
+        enabled: boolean;
+        paperclipUrl: string | null;
+        paperclipCompanyId: string | null;
+        created: Array<{ slot: string; agentId: string; status: string }>;
+        skipped: Array<{ slot: string; reason: string }>;
+        errors: Array<{ slot: string; message: string }>;
+      };
     }>("POST", `/api/instance/${encodeURIComponent(companyId)}/activate`),
 
   // Swap — record an operator-chosen template substitution for one slot.

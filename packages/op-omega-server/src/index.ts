@@ -11,6 +11,7 @@
 import type { FastifyInstance } from "fastify";
 import { applyInferenceEnv } from "@wavex-os/inference-adapter";
 import { applyStateBridge } from "./state-bridge.js";
+import { detectAndConfigurePaperclip } from "./lib/paperclip-detect.js";
 import { registerPillarRoutes } from "./routes/pillars.js";
 import { registerPhaseRoutes } from "./routes/phases.js";
 import { registerProbeRoutes } from "./routes/probe.js";
@@ -36,6 +37,10 @@ function bootstrap(): void {
   if (bootstrapped) return;
   applyInferenceEnv();
   applyStateBridge();
+  // Fire-and-forget Paperclip detection — don't block route registration on
+  // the network probe. If Paperclip comes up later, the operator can either
+  // restart wavex or set PAPERCLIP_HANDOFF_URL by hand.
+  void detectAndConfigurePaperclip();
   bootstrapped = true;
 }
 

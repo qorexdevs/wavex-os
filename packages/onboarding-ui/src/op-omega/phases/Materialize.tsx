@@ -30,6 +30,13 @@ export function Materialize({ companyId }: Props) {
   const [activating, setActivating] = useState(false);
   const [activated, setActivated] = useState<{ companies: number; agents: number } | null>(null);
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<{
+    enabled: boolean;
+    paperclipUrl: string | null;
+    paperclipCompanyId: string | null;
+    created: number;
+    errors: number;
+  } | null>(null);
 
   async function activateAndNavigate(): Promise<void> {
     setActivating(true);
@@ -37,8 +44,21 @@ export function Materialize({ companyId }: Props) {
     try {
       const r = await opOmegaOnboardingApi.activate(companyId);
       setActivated(r.inserted);
+      const h = r.paperclipHandoff;
+      setHandoff({
+        enabled: h.enabled,
+        paperclipUrl: h.paperclipUrl,
+        paperclipCompanyId: h.paperclipCompanyId,
+        created: h.created.length,
+        errors: h.errors.length,
+      });
+      // If handoff succeeded, open Paperclip in a new tab so the operator
+      // sees their fleet there. The wavex tab continues to Mission Control.
+      if (h.enabled && h.paperclipUrl && h.created.length > 0) {
+        window.open(h.paperclipUrl, "_blank", "noopener");
+      }
       // Brief pause so the operator sees the summary before navigating
-      setTimeout(() => navigate(`/?companyId=${encodeURIComponent(companyId)}`), 800);
+      setTimeout(() => navigate(`/?companyId=${encodeURIComponent(companyId)}`), 1500);
     } catch (e) {
       setActivateError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -164,6 +184,50 @@ export function Materialize({ companyId }: Props) {
           before the bridge writes them to DB. Only renders once finalize
           has produced the manifest. */}
       {result && <RedundancyReview companyId={companyId} />}
+
+      {handoff && (
+        <Card>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.4rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Paperclip handoff
+          </div>
+          {!handoff.enabled && (
+            <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+              ⚠ disabled — no Paperclip detected on localhost. The fleet
+              landed in wavex's local DB only. Start Paperclip with{" "}
+              <code>cd packages/core &amp;&amp; pnpm dev:server</code> and re-activate
+              to mirror the C-Suite into Paperclip.
+            </div>
+          )}
+          {handoff.enabled && handoff.errors > 0 && (
+            <div style={{ fontSize: 13, color: "var(--warning)" }}>
+              ✗ Reached Paperclip at <code>{handoff.paperclipUrl}</code> but{" "}
+              {handoff.errors} hire{handoff.errors === 1 ? "" : "s"} failed —
+              check server logs for details.
+            </div>
+          )}
+          {handoff.enabled && handoff.errors === 0 && handoff.created > 0 && (
+            <div style={{ fontSize: 13 }}>
+              ✓ Mirrored {handoff.created} C-Suite agent{handoff.created === 1 ? "" : "s"} to{" "}
+              <a
+                href={handoff.paperclipUrl ?? "#"}
+                target="_blank"
+                rel="noreferrer noopener"
+                style={{ color: "var(--accent)" }}
+              >
+                {handoff.paperclipUrl} ↗
+              </a>{" "}
+              · opening Paperclip in a new tab…
+            </div>
+          )}
+          {handoff.enabled && handoff.created === 0 && handoff.errors === 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+              ✓ Reached Paperclip at <code>{handoff.paperclipUrl}</code> — all
+              C-Suite slots already mapped from a prior activation; no new
+              agents to mirror.
+            </div>
+          )}
+        </Card>
+      )}
 
       {activated && (
         <Card accent>
