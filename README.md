@@ -16,6 +16,8 @@ After the wizard you're on a **Mission Control** dashboard with a live fleet gra
 
 ## Walkthrough — what you actually see
 
+▶ **[Open the interactive walkthrough](https://htmlpreview.github.io/?https://github.com/aimerdoux/wavex-os/blob/main/docs/wizard.html)** — single-page wizard with autoplay, keyboard nav, and step-by-step captions. Source: [`docs/wizard.html`](docs/wizard.html) (no build step; open the file directly).
+
 The screenshots below come straight out of the e2e suite — every one is the real wizard against a real `pnpm dev`. Reproducible via `pnpm test:e2e e2e/screenshot-walkthrough.spec.ts`.
 
 | Step | Screen |
