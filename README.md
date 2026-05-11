@@ -33,8 +33,9 @@ The screenshots below come straight out of the e2e suite — every one is the re
 | **Credential Concierge.** Either paste OAuth tokens now, or click Skip per-connector. Vault encrypts everything before disk. | ![Concierge](docs/images/wizard/09-credential-concierge.png) |
 | **Phase 3 — Swarm.** Reactflow org chart of your generated roster. Drag, swap templates per slot, add specialist agents under any chief. | ![Phase 3](docs/images/wizard/10-phase-3-swarm.png) |
 | **Phase 4 — Workflow.** Each agent's initial workload + bundle allocation. | ![Phase 4](docs/images/wizard/11-phase-4-workflow.png) |
-| **Finalize — Imprint + Monte Carlo.** Simulator projects KPI movement against your goal over N cycles. Signed company manifest written to disk. | ![Finalize](docs/images/wizard/12-finalize.png) |
-| **Mission Control.** KPI scoreboard + live fleet graph (reactflow, polls every 8s). Click any agent to see runs, comments, budget. | ![Mission Control](docs/images/wizard/13-mission-control.png) |
+| **Finalize — Imprint + Monte Carlo.** Click *Finalize + sign*: the simulator projects KPI movement against your goal over N cycles. Signed company manifest written to disk. | ![Finalize](docs/images/wizard/12-finalize.png) |
+| **Summary before inception.** Imprint review + signed manifest summary. *Activate fleet →* enables once the signature lands. This is your last chance to inspect before agents go live. | ![Summary](docs/images/wizard/12b-finalize-after-sign.png) |
+| **Mission Control — Paperclip live.** Activate hands the 35-agent fleet off to the running Paperclip instance and lands you here: KPI scoreboard + live reactflow fleet graph that polls every 8s. Click any agent to see runs, comments, budget. | ![Mission Control](docs/images/wizard/13-mission-control.png) |
 
 ---
 
