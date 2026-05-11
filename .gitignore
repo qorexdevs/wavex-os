@@ -61,3 +61,8 @@ coverage/
 # Session-specific Paperclip data (NEVER commit user company data)
 ~/.paperclip/
 vendor/op-omega/*/dist/
+
+# Playwright artifacts (don't commit reports/traces — only the test specs)
+playwright-report/
+test-results/
+
