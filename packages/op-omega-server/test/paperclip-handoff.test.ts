@@ -19,8 +19,72 @@ import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
 import { handoffToPaperclip } from "../src/bridge/paperclip-handoff.js";
+
+// ── Real Paperclip schemas (mirrored from packages/core/packages/shared/src/) ──
+// Mirroring rather than importing to avoid the cross-package dependency
+// graph. If Paperclip's upstream schema changes, these need to be re-mirrored.
+// Audited 2026-05-10 against vendored core@HEAD.
+const PAPERCLIP_AGENT_ROLES = [
+  "ceo", "cto", "cmo", "cfo", "security", "engineer",
+  "designer", "pm", "qa", "devops", "researcher", "general",
+] as const;
+
+const PAPERCLIP_AGENT_ICONS = [
+  "atom", "backlog", "bot", "brain", "bug", "circuit-board", "code", "cog",
+  "cpu", "crown", "database", "eye", "file-code", "fingerprint", "flame",
+  "gem", "git-branch", "globe", "hammer", "heart", "hexagon", "lightbulb",
+  "lock", "mail", "message-square", "microscope", "package", "pentagon",
+  "puzzle", "radar", "rocket", "search", "shield", "sparkles", "star",
+  "swords", "target", "telescope", "terminal", "wand", "wrench", "zap",
+] as const;
+
+const PAPERCLIP_ADAPTER_TYPES = [
+  "process", "http", "acpx_local", "claude_local", "codex_local",
+  "gemini_local", "opencode_local", "pi_local", "cursor", "openclaw_gateway",
+] as const;
+
+const envBindingSchema = z.union([
+  z.string(),
+  z.object({ type: z.literal("plain"), value: z.string() }),
+  z.object({ type: z.literal("secret_ref"), secretId: z.string().uuid() }),
+]);
+
+const paperclipCreateCompanySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional().nullable(),
+  budgetMonthlyCents: z.number().int().nonnegative().optional(),
+});
+
+const paperclipCreateAgentHireSchema = z.object({
+  name: z.string().min(1),
+  role: z.enum(PAPERCLIP_AGENT_ROLES).optional(),
+  title: z.string().optional().nullable(),
+  icon: z.enum(PAPERCLIP_AGENT_ICONS).optional().nullable(),
+  reportsTo: z.string().uuid().optional().nullable(),
+  capabilities: z.string().optional().nullable(),
+  adapterType: z.string().min(1),
+  adapterConfig: z.record(z.unknown()).optional(),
+  instructionsBundle: z.object({
+    files: z.record(z.string()).refine((f) => Object.keys(f).length > 0),
+  }).optional(),
+  runtimeConfig: z.record(z.unknown()).optional(),
+}).superRefine((value, ctx) => {
+  // adapterConfig.env must validate against envConfigSchema if present
+  const env = (value.adapterConfig as Record<string, unknown> | undefined)?.env;
+  if (env !== undefined) {
+    const parsed = z.record(envBindingSchema).safeParse(env);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `adapterConfig.env invalid: ${parsed.error.issues[0]?.message ?? "unknown"}`,
+        path: ["adapterConfig", "env"],
+      });
+    }
+  }
+});
 
 interface MockState {
   companies: Map<string, { id: string; name: string }>;
@@ -94,35 +158,45 @@ beforeAll(async () => {
       return;
     }
 
-    // POST /api/companies — create new
+    // POST /api/companies — create new (validates against Paperclip's real schema)
     if (req.method === "POST" && url === "/api/companies") {
       let body = "";
       req.on("data", (chunk) => { body += chunk; });
       req.on("end", () => {
-        const parsed = JSON.parse(body) as { name: string; description: string };
-        const id = `pc-co-${state.companies.size + 1}`;
-        state.companies.set(id, { id, name: parsed.name });
+        const parsed = paperclipCreateCompanySchema.safeParse(JSON.parse(body));
+        if (!parsed.success) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "schema mismatch", issues: parsed.error.issues }));
+          return;
+        }
+        const id = `00000000-0000-4000-8000-${String(state.companies.size + 1).padStart(12, "0")}`;
+        state.companies.set(id, { id, name: parsed.data.name });
         res.writeHead(201);
-        res.end(JSON.stringify({ id, name: parsed.name }));
+        res.end(JSON.stringify({ id, name: parsed.data.name }));
       });
       return;
     }
 
-    // POST /api/companies/:id/agent-hires — hire one agent
+    // POST /api/companies/:id/agent-hires — hire (validates real schema)
     if (req.method === "POST" && url.match(/^\/api\/companies\/[^/]+\/agent-hires$/)) {
       let body = "";
       req.on("data", (chunk) => { body += chunk; });
       req.on("end", () => {
         const paperclipCompanyId = url.split("/")[3]!;
-        const payload = JSON.parse(body) as Record<string, unknown>;
+        const parsed = paperclipCreateAgentHireSchema.safeParse(JSON.parse(body));
+        if (!parsed.success) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "schema mismatch", issues: parsed.error.issues }));
+          return;
+        }
         if (state.failHires) {
           res.writeHead(500);
           res.end(JSON.stringify({ error: "simulated failure" }));
           return;
         }
-        state.hires.push({ paperclipCompanyId, payload });
-        const agentId = `pc-ag-${state.hires.length}`;
-        const approvalId = `pc-ap-${state.hires.length}`;
+        state.hires.push({ paperclipCompanyId, payload: parsed.data });
+        const agentId = `00000000-0000-4000-8000-${String(state.hires.length + 100).padStart(12, "0")}`;
+        const approvalId = `00000000-0000-4000-8000-${String(state.hires.length + 200).padStart(12, "0")}`;
         res.writeHead(201);
         res.end(JSON.stringify({
           agent: { id: agentId, status: "pending" },
@@ -195,12 +269,13 @@ describe("handoffToPaperclip", () => {
 
     expect(report.enabled).toBe(true);
     expect(report.paperclipUrl).toBe(baseUrl);
-    expect(report.paperclipCompanyId).toMatch(/^pc-co-/);
+    // Mock returns UUID-shaped IDs (matching Paperclip's real id format)
+    expect(report.paperclipCompanyId).toMatch(/^[0-9a-f-]{36}$/);
     expect(report.errors).toEqual([]);
     expect(report.created.length).toBe(7);
 
     // Every V1 slot should have been hired exactly once
-    const hiredSlots = state.hires.map((h) => h.payload.name as string);
+    const hiredSlots = state.hires.map((h) => (h.payload as { name: string }).name);
     expect(hiredSlots).toContain("CEO / ORCHESTRATOR");
     expect(hiredSlots.filter((n) => n === "CPO").length).toBe(1);
     expect(hiredSlots.filter((n) => n === "CMO").length).toBe(1);
@@ -212,6 +287,16 @@ describe("handoffToPaperclip", () => {
     // All approvals should have auto-acked
     expect(state.approvals.length).toBe(7);
     expect(report.created.every((c) => c.status === "approved")).toBe(true);
+
+    // Schema-conformance check — validate that every chief reports to the
+    // CEO via a real UUID. If wavex were sending non-UUID reportsTo values,
+    // Paperclip's createAgentHireSchema would have rejected the request and
+    // we'd see errors in the report.
+    const ceoHire = state.hires.find((h) => (h.payload as { name: string }).name === "CEO / ORCHESTRATOR");
+    expect(ceoHire).toBeTruthy();
+    expect((ceoHire!.payload as { reportsTo?: string }).reportsTo).toBeFalsy();
+    const cmoHire = state.hires.find((h) => (h.payload as { name: string }).name === "CMO");
+    expect((cmoHire!.payload as { reportsTo?: string }).reportsTo).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("respects the V1 scope — non-handoff slots get reported as skipped", async () => {
