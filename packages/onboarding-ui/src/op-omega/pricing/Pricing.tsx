@@ -68,7 +68,7 @@ export function Pricing({ companyId, onContinue }: PricingProps) {
   const tiers = q.data?.tiers ?? [];
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
+    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
       <H2>System Optimizer subscription</H2>
       <P>
         Strategic prompt injections to your CEO. Your WaveX Agent monitors performance and intervenes when agents drift.
@@ -76,7 +76,7 @@ export function Pricing({ companyId, onContinue }: PricingProps) {
 
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
         gap: "1rem",
         marginTop: "2rem",
       }}>
@@ -109,7 +109,7 @@ export function Pricing({ companyId, onContinue }: PricingProps) {
         zIndex: 20,
       }}>
         <div style={{
-          maxWidth: 1100, margin: "0 auto",
+          maxWidth: 1400, margin: "0 auto",
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem",
         }}>
           <span className="text-dim" style={{ fontSize: 12 }}>
