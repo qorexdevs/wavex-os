@@ -7,6 +7,18 @@ import { useNavigate } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
 import { Card, H2, P } from "../components/primitives";
+
+/** Map the Paperclip API URL to its UI URL. The handoff response gives us
+ *  the API URL (port 3100) because that's where the bridge talks to. The
+ *  operator wants to land on the UI (port 5174 in dev — Paperclip's vite
+ *  config). When the API port doesn't follow the convention, fall back to
+ *  the API URL — better than a dead link. */
+function paperclipUiUrl(apiUrl: string | null): string {
+  if (!apiUrl) return "#";
+  // Dev convention: API on 3100 → UI on 5174 (Paperclip's vite default
+  // when we override 5173 to avoid wavex collision).
+  return apiUrl.replace(/:3100\b/, ":5174");
+}
 import { HaltScreen } from "../components/HaltScreen";
 import { RefinementPanel } from "./RefinementPanel";
 import { RedundancyReview } from "../components/RedundancyReview";
@@ -56,7 +68,7 @@ export function Materialize({ companyId }: Props) {
       // sees their fleet there. The wavex tab stays on this page so the
       // operator can read the handoff status + manually navigate.
       if (h.enabled && h.paperclipUrl && h.created.length > 0) {
-        window.open(h.paperclipUrl, "_blank", "noopener");
+        window.open(paperclipUiUrl(h.paperclipUrl), "_blank", "noopener");
       }
       // No auto-navigate — operator clicks "Open Mission Control →" when ready.
     } catch (e) {
@@ -209,7 +221,7 @@ export function Materialize({ companyId }: Props) {
             <div style={{ fontSize: 13 }}>
               ✓ Mirrored {handoff.created} C-Suite agent{handoff.created === 1 ? "" : "s"} to{" "}
               <a
-                href={handoff.paperclipUrl ?? "#"}
+                href={paperclipUiUrl(handoff.paperclipUrl)}
                 target="_blank"
                 rel="noreferrer noopener"
                 style={{ color: "var(--accent)" }}
@@ -274,7 +286,7 @@ export function Materialize({ companyId }: Props) {
             {handoff && handoff.enabled && handoff.created > 0 && handoff.errors === 0 && (
               <span style={{ color: "var(--accent)" }}>
                 ✓ Mirrored {handoff.created} agents to{" "}
-                <a href={handoff.paperclipUrl ?? "#"} target="_blank" rel="noreferrer noopener" style={{ color: "inherit", textDecoration: "underline" }}>
+                <a href={paperclipUiUrl(handoff.paperclipUrl)} target="_blank" rel="noreferrer noopener" style={{ color: "inherit", textDecoration: "underline" }}>
                   Paperclip ↗
                 </a>
               </span>
