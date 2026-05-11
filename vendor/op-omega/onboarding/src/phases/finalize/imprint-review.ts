@@ -105,7 +105,10 @@ export async function generateImprintReview(args: {
       },
       companyId: args.companyId,
       outputFormat: "text",
-      timeout_ms: 120_000,
+      // wavex-os patch: bumped 120_000 → 300_000 (see vendor/op-omega/VENDOR.md).
+      // The deep+creative imprint pass routinely exceeds 2 min; the deterministic
+      // fallback was firing too often and degrading manifest quality.
+      timeout_ms: 300_000,
     });
     if (resp.warnings) warnings.push(...resp.warnings);
     const text = resp.output.trim();
