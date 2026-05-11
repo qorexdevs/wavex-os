@@ -299,10 +299,10 @@ describe("handoffToPaperclip", () => {
     expect((cmoHire!.payload as { reportsTo?: string }).reportsTo).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("respects the V1 scope — non-handoff slots get reported as skipped", async () => {
+  it("mirrors every slot (not just C-suite) — full employee manifest in Paperclip", async () => {
     process.env.PAPERCLIP_HANDOFF_URL = baseUrl;
     const manifest = buildMinimalManifest("co-scope");
-    // Add an L·IV slot that should NOT be handed off in v1
+    // Add an L·IV slot — must also land in Paperclip, not be filtered.
     (manifest as unknown as { swarm_manifest: { agents: Record<string, unknown> } })
       .swarm_manifest.agents["cpo.build"] = {
         reports_to: "cpo", status: "active", adapter: "claude-code",
@@ -310,10 +310,40 @@ describe("handoffToPaperclip", () => {
         department: "ops", level: "L·IV", spawnable: true,
       };
     const report = await handoffToPaperclip(manifest, "co-scope");
-    expect(report.created.length).toBe(7); // still just V1
-    const skipped = report.skipped.map((s) => s.slot);
-    expect(skipped).toContain("cpo.build");
-    expect(report.skipped.find((s) => s.slot === "cpo.build")?.reason).toBe("outside-v1-scope");
+    // 7 V1 slots in buildMinimalManifest + 1 L·IV added here = 8 total
+    expect(report.created.length).toBe(8);
+    const createdSlots = report.created.map((c) => c.slot);
+    expect(createdSlots).toContain("cpo.build");
+    // None should be skipped for being "outside-v1-scope" — that filter is gone.
+    expect(report.skipped.find((s) => s.reason === "outside-v1-scope")).toBeUndefined();
+  });
+
+  it("muted slots get skipped with the mute reason (not handed off)", async () => {
+    process.env.PAPERCLIP_HANDOFF_URL = baseUrl;
+    const manifest = buildMinimalManifest("co-mute");
+    (manifest as unknown as { template_mutes: string[] }).template_mutes = ["cpo", "cmo"];
+    const report = await handoffToPaperclip(manifest, "co-mute");
+    expect(report.created.length).toBe(5); // 7 V1 - 2 muted
+    const muted = report.skipped.filter((s) => s.reason === "muted-by-operator").map((s) => s.slot);
+    expect(muted.sort()).toEqual(["cmo", "cpo"]);
+  });
+
+  it("topological order — children land after their parent (reportsTo resolves to real UUID)", async () => {
+    process.env.PAPERCLIP_HANDOFF_URL = baseUrl;
+    const manifest = buildMinimalManifest("co-topo");
+    // Add a leaf reporting to cpo. If the loop processed leaves before
+    // chiefs, cpo.build would have reportsTo=null in Paperclip.
+    (manifest as unknown as { swarm_manifest: { agents: Record<string, unknown> } })
+      .swarm_manifest.agents["cpo.build"] = {
+        reports_to: "cpo", status: "active", adapter: "claude-code",
+        heartbeat: "2h", budget_monthly_usd: 60, skill_overlay: null,
+        department: "ops", level: "L·IV", spawnable: true,
+      };
+    await handoffToPaperclip(manifest, "co-topo");
+    const cpoBuildHire = state.hires.find((h) => (h.payload as { name: string }).name === "CPO / BUILD");
+    expect(cpoBuildHire, "cpo.build must have been hired").toBeTruthy();
+    expect((cpoBuildHire!.payload as { reportsTo?: string }).reportsTo)
+      .toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("idempotent — re-running skips slots already in the mapping", async () => {

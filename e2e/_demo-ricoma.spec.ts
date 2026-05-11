@@ -98,8 +98,11 @@ test.describe("ricoma full T2 → Paperclip handoff", () => {
     await page.getByRole("button", { name: /Activate fleet/i }).click();
     await expect(page.getByText(/Activated.*agents written to db/i)).toBeVisible({ timeout: 30_000 });
 
-    // Handoff status must be the SUCCESS variant (not "not detected" / "failed")
-    await expect(page.getByText(/Mirrored 8 agents to Paperclip/i)).toBeVisible({ timeout: 10_000 });
+    // Handoff status must be the SUCCESS variant (not "not detected" / "failed").
+    // Count is the full wavex fleet (33 base + 1 kernel CoS + any C-Suite extras
+    // from origin's vendored work) — match a 2-digit number to stay generic
+    // across roster-size changes.
+    await expect(page.getByText(/Mirrored \d{2,} agents to Paperclip/i)).toBeVisible({ timeout: 30_000 });
 
     // ── Verify Paperclip received the company + all 8 V1 slots ────────
     // Re-fetch via the wavex-side activate response shape would be cleaner,
@@ -117,7 +120,15 @@ test.describe("ricoma full T2 → Paperclip handoff", () => {
     const agentArr: Array<{ name: string; role: string; capabilities?: string }> =
       Array.isArray(agentsList) ? agentsList : agentsList.agents ?? [];
     const agentNames = agentArr.map((a) => a.name);
-    expect(agentNames.length, "Paperclip should have 8 V1 agents").toBe(8);
+    // Paperclip should mirror the FULL wavex roster (post-V1-removal),
+    // not just the C-suite. Cross-check by fetching wavex's count and
+    // asserting Paperclip matches.
+    const wavexAgentsResp = await request.get(`http://127.0.0.1:3101/api/agents?companyId=${COMPANY_NAME}`);
+    const wavexAgents = await wavexAgentsResp.json();
+    const wavexCount = (wavexAgents.agents ?? []).length;
+    expect(wavexCount, "wavex should have 30+ agents").toBeGreaterThanOrEqual(30);
+    expect(agentArr.length, "Paperclip count should equal wavex count after full handoff")
+      .toBe(wavexCount);
     // CoS check — the wavex slot ceo.chief-of-staff becomes name CEO / CHIEF-OF-STAFF
     const cosAgent = agentArr.find((a) => /chief.of.staff/i.test(a.name) || /chief.of.staff/i.test(a.capabilities ?? ""));
     expect(cosAgent, "Chief of Staff must appear in Paperclip after handoff").toBeTruthy();
