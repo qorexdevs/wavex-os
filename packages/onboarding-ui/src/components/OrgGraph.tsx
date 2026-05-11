@@ -156,8 +156,15 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   const Y_T2 = NODE_H + T1_T2_GAP;
   const Y_T3 = Y_T2 + NODE_H + T2_T3_GAP;
 
-  // Tier 1 (CEO) — center horizontally over the chief row.
-  for (const ceo of tier1) nodes.push(makeNode(ceo, 0, Y_T1, 1));
+  // Tier 1 (CEO + any kernel agents like Chief of Staff) — lay out in a
+  // row at the top, centered. With one tier-1 agent the row sits at x=0;
+  // with two it spreads them ±NODE_W so they're visible side-by-side.
+  const t1Width = tier1.length * NODE_W + Math.max(0, tier1.length - 1) * COL_GAP;
+  const t1StartX = -t1Width / 2 + NODE_W / 2;
+  tier1.forEach((agent, i) => {
+    const x = t1StartX + i * (NODE_W + COL_GAP);
+    nodes.push(makeNode(agent, x, Y_T1, 1));
+  });
 
   // Tier 2 chiefs + their tier-3 children stacked below.
   tier2.forEach((chief, i) => {

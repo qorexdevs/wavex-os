@@ -1058,6 +1058,31 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B23d: end-to-end UI — Chief of Staff visible in Mission Control's
+   *  FleetGraph after seedFinalized + activate. Closes the loop: kernel
+   *  injection → manifest → bridge → DB → org chart node. */
+  test("B23d: Mission Control FleetGraph shows Chief of Staff node under CEO", async ({ page, request }) => {
+    const id = uniqueId("bh-cos-ui");
+    await seedFinalized(request, id);
+    await activate(request, id);
+
+    await page.goto(`/?companyId=${id}`);
+    await expect(page.getByText(/Fleet · \d+ agents/)).toBeVisible({ timeout: 15_000 });
+
+    // CoS node renders with display name "Chief of Staff" (templateIdToDisplayName
+    // splits chief-of-staff and lower-cases "of" via SMALL_WORDS). The node label
+    // appears as a div inside the React Flow node.
+    await expect(page.getByText(/^Chief of Staff$/, { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+
+    // The agents row count should be base-roster + 1 kernel slot
+    const headerMatch = await page.getByText(/Fleet · (\d+) agents/).textContent();
+    const m = headerMatch?.match(/(\d+)/);
+    expect(m, "fleet count regex match").toBeTruthy();
+    expect(parseInt(m![1]!, 10)).toBeGreaterThanOrEqual(34); // 33 base + ≥1 kernel
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */
