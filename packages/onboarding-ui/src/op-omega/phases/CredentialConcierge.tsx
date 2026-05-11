@@ -78,7 +78,7 @@ export function CredentialConcierge({ companyId, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Credential Concierge</H2>
       <P>
         Vault credentials for every connector your fleet needs. Required

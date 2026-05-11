@@ -180,7 +180,7 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
 
   if (enriched) {
     return (
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
         <H2>Pillar 1 — confirm what we inferred</H2>
         <P>
           Quick check: does this look right? These three signals cascade into
@@ -285,7 +285,7 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Pillar 1 — who you are</H2>
       <P>
         One line about your company: paste your website URL, a GitHub repo,

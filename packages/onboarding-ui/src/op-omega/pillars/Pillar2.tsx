@@ -51,7 +51,7 @@ export function Pillar2({ companyId, initial, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Verifying your setup</H2>
       <P>
         Every downstream step uses Claude. We'll verify <code>claude</code> is

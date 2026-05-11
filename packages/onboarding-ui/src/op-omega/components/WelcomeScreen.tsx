@@ -55,7 +55,7 @@ export function WelcomeScreen() {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Onboarding</H2>
       <P>
         Define your company's identity, choose your headline KPI, and materialize the kernel

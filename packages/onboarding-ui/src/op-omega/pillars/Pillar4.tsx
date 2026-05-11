@@ -75,7 +75,7 @@ export function Pillar4({ companyId, initial, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Pillar 4 · Go-To-Market Motion</H2>
       <P>Drives connector selection, swarm topology, and workflow sequencing.</P>
 

@@ -95,7 +95,7 @@ export function Phase3Swarm({ companyId, onComplete }: Props) {
   const agentEntries = manifest ? Object.entries(manifest.agents) : [];
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 3 — Swarm</H2>
       <P>
         Predicate-driven activation: kernel (CEO + Chief of Staff) always active; C-suite

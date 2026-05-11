@@ -78,7 +78,7 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
   }, [companyId]);
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "2rem" }}>
       <H2>Phase 2 — Connectors</H2>
       <P>
         Derived from Pillars 1-5. <strong>Required</strong> connectors must be configured
