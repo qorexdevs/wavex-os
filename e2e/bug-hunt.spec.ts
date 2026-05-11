@@ -990,6 +990,74 @@ test.describe("bug hunt — composition + edge cases", () => {
     await request.delete(`/api/instance/${id}/reset`);
   });
 
+  /** B23a: kernel slot — Chief of Staff lands in swarm-manifest under CEO */
+  test("B23a: swarm-manifest auto-injects ceo.chief-of-staff under CEO", async ({ request }) => {
+    const id = uniqueId("bh-cos-swarm");
+    // Seed enough to call swarm-manifest
+    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "CoSCo", raw_input: "no product yet",
+        manual_context: "CoSCo is an e2e fixture for verifying the kernel-slot injection adds Chief of Staff to the swarm manifest under CEO.",
+      },
+    });
+    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+    await request.post(`${API}/op-omega/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
+    const r = await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } });
+    expect(r.ok()).toBeTruthy();
+    const j = await r.json();
+    const cos = j.manifest.agents["ceo.chief-of-staff"];
+    expect(cos, "Chief of Staff slot missing from swarm manifest").toBeTruthy();
+    expect(cos.reports_to).toBe("ceo.orchestrator");
+    expect(cos.heartbeat).toBe("4h");
+    expect(cos.department).toBe("ceo");
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B23b: kernel slot — CoS row appears in the agents table after activate */
+  test("B23b: activate writes Chief of Staff row to DB with role=chief_of_staff", async ({ request }) => {
+    const id = uniqueId("bh-cos-bridge");
+    await seedFinalized(request, id);
+    const act = await request.post(`/api/instance/${id}/activate`);
+    expect(act.ok()).toBeTruthy();
+
+    const agents = await request.get(`/api/agents?companyId=${id}`);
+    const j = await agents.json();
+    const cos = j.agents.find((a: { slot: string }) => a.slot === "ceo.chief-of-staff");
+    expect(cos, "Chief of Staff agent missing from DB after activate").toBeTruthy();
+    expect(cos.templateId).toBe("chief-of-staff");
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
+  /** B23c: re-running swarm-manifest is idempotent for kernel slots */
+  test("B23c: re-generating swarm doesn't duplicate CoS", async ({ request }) => {
+    const id = uniqueId("bh-cos-idempotent");
+    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+      data: {
+        companyId: id, org_name: "Idem", raw_input: "no product yet",
+        manual_context: "Fixture for verifying that calling swarm-manifest twice doesn't duplicate the kernel-injected Chief of Staff slot.",
+      },
+    });
+    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+    await request.post(`${API}/op-omega/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
+
+    const first = await (await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
+    const second = await (await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
+    const cosKeys1 = Object.keys(first.manifest.agents).filter((k) => k === "ceo.chief-of-staff");
+    const cosKeys2 = Object.keys(second.manifest.agents).filter((k) => k === "ceo.chief-of-staff");
+    expect(cosKeys1).toHaveLength(1);
+    expect(cosKeys2).toHaveLength(1);
+
+    await request.delete(`/api/instance/${id}/reset`);
+  });
+
   /** B16c: full T2-driven aggregation — gated since it costs real tokens.
    *  Drives Pillar 1 with a real T2 call, then asserts the per-company
    *  token-usage.json got populated with usage attributed to pillar_1. */

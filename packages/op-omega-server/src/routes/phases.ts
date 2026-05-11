@@ -17,6 +17,21 @@ import { listConnections } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting } from "../lib/token-accounting.js";
 import { BudgetExhaustedError } from "../lib/token-budget.js";
+import { injectKernelSlots } from "../bridge/kernel-slots.js";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import yaml from "js-yaml";
+import { getOnboardingDir } from "../state-bridge.js";
+
+/** Re-persist the swarm manifest after mutation. The vendored generator
+ *  writes the file internally; this overrides with the kernel-injected
+ *  version so subsequent disk reads (loadSwarmManifest, finalize-bridge)
+ *  see the canonical shape. */
+async function persistSwarmManifest(companyId: string, swarm: unknown): Promise<void> {
+  const dir = getOnboardingDir(companyId);
+  await writeFile(join(dir, "swarm_manifest.json"), JSON.stringify(swarm, null, 2), "utf8");
+  await writeFile(join(dir, "swarm_manifest.yaml"), yaml.dump(swarm), "utf8");
+}
 
 const generateConnectorSchema = z.object({
   companyId: z.string().min(1),
@@ -174,6 +189,13 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
           connectorManifest: connector,
           skipInference: parsed.data.skipInference,
         });
+        // Inject kernel slots (Chief of Staff, etc.) so they appear in the
+        // Phase 3 org chart AND get bridged to DB on activate. The vendored
+        // generator persists swarm_manifest.{json,yaml} internally; we
+        // re-write after mutation so the on-disk file matches.
+        if (injectKernelSlots(result.manifest)) {
+          await persistSwarmManifest(parsed.data.companyId, result.manifest);
+        }
         return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
       });
     } catch (e) {
