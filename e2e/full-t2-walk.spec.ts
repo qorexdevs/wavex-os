@@ -117,7 +117,17 @@ test.describe("full T2-enriched walk", () => {
     await page.getByRole("button", { name: /Activate fleet/i }).click();
     await expect(page.getByText(/Activated.*agents written to db/i)).toBeVisible({ timeout: 30_000 });
 
-    // ---- Mission Control: KpiBoard + FleetGraph hydrate ---------------
+    // ---- Paperclip handoff status visible in sticky footer -------------
+    // After activate, the footer should show one of three handoff states.
+    // For a live demo we want "✓ Mirrored N agents to Paperclip ↗".
+    // If Paperclip isn't running the assertion below is relaxed — the
+    // important thing is that SOME status renders (not blank or error).
+    const handoffStatus = page.getByText(/Mirrored \d+ agents to Paperclip|Paperclip not detected|Paperclip handoff:.*failed/i);
+    await expect(handoffStatus).toBeVisible({ timeout: 5_000 });
+
+    // ---- Mission Control: operator manually clicks "Open Mission Control" -
+    // (auto-navigate was removed so operators can read the handoff status)
+    await page.getByRole("button", { name: /Open Mission Control/i }).click();
     await expect(page.getByRole("heading", { name: /KPI scoreboard/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Fleet · \d+ agents/)).toBeVisible({ timeout: 15_000 });
   });
