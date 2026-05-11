@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
-import { Card, H2, NavRow, P } from "../components/primitives";
+import { Card, H2, P } from "../components/primitives";
 import { HaltScreen } from "../components/HaltScreen";
 import { RefinementPanel } from "./RefinementPanel";
 import { RedundancyReview } from "../components/RedundancyReview";
@@ -180,9 +180,11 @@ export function Materialize({ companyId }: Props) {
       )}
 
       {/* Sticky activate footer — keeps the primary CTA reachable no matter
-          how tall the redundancy review or refinement panels grow. The
-          backdrop has a soft border + blur so it reads as a footer, not as
-          inline content. */}
+          how tall the redundancy review or refinement panels grow. We
+          render the button directly (rather than via NavRow) because
+          .nav-buttons applies margin-top: 3rem + padding-top: 2rem from
+          the global stylesheet, which would push the button below the
+          viewport edge inside this fixed container. */}
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0,
         background: "color-mix(in srgb, var(--surface) 92%, transparent)",
@@ -191,11 +193,17 @@ export function Materialize({ companyId }: Props) {
         padding: "0.75rem 2rem",
         zIndex: 20,
       }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <NavRow
-            next={{ onClick: () => void activateAndNavigate(), label: activating ? "Activating…" : "Activate fleet →" }}
-            nextDisabled={!result || activating}
-          />
+        <div style={{
+          maxWidth: 760, margin: "0 auto",
+          display: "flex", justifyContent: "flex-end",
+        }}>
+          <button
+            type="button"
+            onClick={() => void activateAndNavigate()}
+            disabled={!result || activating}
+          >
+            {activating ? "Activating…" : "Activate fleet →"}
+          </button>
         </div>
       </div>
     </div>
