@@ -18,12 +18,22 @@ async function pingPaperclip(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DETECT_TIMEOUT_MS);
   try {
+    // Hit /api/health AND verify the response contains a Paperclip-specific
+    // field. Otherwise we'd false-match wavex's own mock-core (which also
+    // serves /api/health on port 3101, and would loop the handoff back to
+    // itself if detected — exactly the bug we just hit in dev).
     const r = await fetch(`${url}/api/health`, { signal: controller.signal });
     if (!r.ok) return false;
-    // Health endpoint returns JSON with at least { status: "..." }; we don't
-    // require any specific shape — just that it responds with 2xx JSON.
-    await r.json().catch(() => null);
-    return true;
+    const body = await r.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) return false;
+    // Paperclip's health response includes serverVersion + deploymentMode
+    // (see packages/core/server/src/routes/health.ts). Wavex's mock-core
+    // doesn't. Either field discriminates.
+    const isPaperclip =
+      typeof body.serverVersion === "string" ||
+      typeof body.deploymentMode === "string" ||
+      typeof body.deploymentExposure === "string";
+    return isPaperclip;
   } catch {
     return false;
   } finally {
