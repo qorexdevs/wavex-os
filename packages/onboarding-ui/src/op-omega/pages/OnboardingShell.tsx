@@ -19,7 +19,13 @@ import { isT0FastMode } from "../lib/dev-flags";
 import { TokenCounter } from "../components/TokenCounter";
 import { BudgetChip } from "../components/BudgetChip";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { Pillar1ConfirmCard } from "../components/inline-cards/Pillar1ConfirmCard";
+import { Pillar1HaltCard } from "../components/inline-cards/Pillar1HaltCard";
+import { Pillar3PromptCard } from "../components/inline-cards/Pillar3PromptCard";
+import { Pillar4PromptCard } from "../components/inline-cards/Pillar4PromptCard";
+import { Pillar5PromptCard } from "../components/inline-cards/Pillar5PromptCard";
 import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
+import type { Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
  *  If yes we'll use the hostname as the slug seed; otherwise first 3 words. */
@@ -66,6 +72,68 @@ export function OnboardingShell() {
     }
   }, [companyId]);
 
+  /** Run Pillar 1 inference end-to-end. Emits a thinking bubble, awaits the
+   *  T2 call, then emits either an inline confirm card (success) or an
+   *  inline halt card (409). Reused by both welcome submit and halt-resume. */
+  const runPillar1 = useCallback(async (
+    slug: string,
+    rawInput: string,
+    manualContext?: string,
+  ): Promise<void> => {
+    const thinkingId = `thinking-${Date.now().toString(36)}`;
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        id: thinkingId,
+        role: "assistant",
+        text: manualContext
+          ? "Working with what you described…"
+          : "Got it. Reading your site and figuring out the shape of this…",
+        slot: { kind: "thinking", phase: "pillar-1" },
+      },
+    });
+    try {
+      const result = await opOmegaOnboardingApi.pillar1({
+        companyId: slug,
+        org_name: slug,
+        raw_input: rawInput,
+        manual_context: manualContext,
+      });
+      dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
+      dispatch({ type: "PILLAR1_RESPONSE", response: result.response });
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Here's what I inferred — adjust if anything's off.",
+          slot: { kind: "pillar1-confirm", response: result.response },
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["status", slug] });
+    } catch (e) {
+      dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
+      if (e instanceof ApiError && e.halt) {
+        dispatch({ type: "PILLAR1_HALT", operatorMessage: e.halt.operator_message });
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: e.halt.operator_message,
+            slot: { kind: "pillar1-halt", operatorMessage: e.halt.operator_message },
+          },
+        });
+      } else {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: `That didn't go through: ${e instanceof Error ? e.message : String(e)}`,
+          },
+        });
+      }
+    }
+  }, [qc]);
+
   // ── Welcome → company slug + Pillar 1 ───────────────────────────────────
   const handleSubmit = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -73,74 +141,119 @@ export function OnboardingShell() {
 
     if (state.phase.kind === "welcome") {
       const slug = deriveSlug(trimmed);
-      // Add user message
       dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
-      // Add a thinking placeholder
-      const thinkingId = `thinking-${Date.now().toString(36)}`;
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          id: thinkingId,
-          role: "assistant",
-          text: "Got it. Reading your site and figuring out the shape of this…",
-          slot: { kind: "thinking", phase: "pillar-1" },
-        },
-      });
-      // Move to pillars stage 1, thinking
       dispatch({ type: "WELCOME_SUBMIT", rawInput: trimmed });
-      // Set companyId in URL so subsequent calls have it
       setCompanyId(slug);
+      await runPillar1(slug, trimmed);
+      return;
+    }
 
-      // Fire Pillar 1 in background
+    // Default: just echo. Subsequent phase handlers wire actual work.
+    dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
+  }, [state.phase, setCompanyId, runPillar1]);
+
+  /** Pillar 1 halt-recovery handler — passed into Pillar1HaltCard via the
+   *  slot context. The card calls this with the operator's free-text. */
+  const handlePillar1Recovery = useCallback((response: Pillar1Response) => {
+    dispatch({ type: "PILLAR1_RESPONSE", response });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Got it. Here's what I'll work with — adjust if anything's off.",
+        slot: { kind: "pillar1-confirm", response },
+      },
+    });
+  }, []);
+
+  /** Pillar 2 silent verify — fires when stage transitions to 2/thinking.
+   *  Default claude_plan=max_20x (dev demo path). Surfaces a verify-fail
+   *  slot only if the probe reports an installation/auth issue. */
+  const verifiedRef = useRef(false);
+  useEffect(() => {
+    if (state.phase.kind !== "pillars" || state.phase.stage !== 2 || !state.phase.thinking) return;
+    if (!companyId || verifiedRef.current) return;
+    verifiedRef.current = true;
+    void (async () => {
       try {
-        const result = await opOmegaOnboardingApi.pillar1({
-          companyId: slug,
-          org_name: slug,
-          raw_input: trimmed,
+        const outcome = await opOmegaOnboardingApi.pillar2({
+          companyId,
+          claude_plan: "max_20x",
         });
-        dispatch({ type: "PILLAR1_RESPONSE", response: result.response });
-        dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
-        // Step 5 will swap this for the inline confirm card. For the
-        // skeleton, surface the inferred industry as a text bubble + a
-        // continue affordance.
-        const r = result.response;
+        if (outcome.ok) {
+          // Silent advance to Pillar 3
+          dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
+          dispatch({
+            type: "ADD_MESSAGE",
+            message: {
+              role: "assistant",
+              text: "Where are you in the product journey?",
+              slot: { kind: "pillar3-prompt" },
+            },
+          });
+        } else {
+          const fixHint = (outcome as { fix_hint?: string }).fix_hint
+            ?? "Claude CLI isn't responding. Check `claude --version` works on your terminal.";
+          dispatch({ type: "VERIFY_FAILED", fixHint });
+          dispatch({
+            type: "ADD_MESSAGE",
+            message: {
+              role: "assistant",
+              text: "I can't reach your Claude setup.",
+              slot: { kind: "verify-fail", fixHint },
+            },
+          });
+        }
+      } catch (e) {
+        const fixHint = e instanceof Error ? e.message : String(e);
+        dispatch({ type: "VERIFY_FAILED", fixHint });
         dispatch({
           type: "ADD_MESSAGE",
           message: {
             role: "assistant",
-            text: `Inferred: ${r.industry_hint ?? "unknown industry"} · ${r.business_model_hint ?? "unknown model"} · ${r.has_product ? "has product" : "pre-product"}.\n\n${r.company_context ?? ""}`,
+            text: "Couldn't verify your Claude setup.",
+            slot: { kind: "verify-fail", fixHint },
           },
         });
-        qc.invalidateQueries({ queryKey: ["status", slug] });
-      } catch (e) {
-        const isHalt = e instanceof ApiError && e.halt;
-        if (isHalt) {
-          dispatch({ type: "PILLAR1_HALT", operatorMessage: e.halt!.operator_message });
-          dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
-          dispatch({
-            type: "ADD_MESSAGE",
-            message: {
-              role: "assistant",
-              text: `${e.halt!.operator_message}\n\nTell me about your product in your own words and I'll work with that.`,
-            },
-          });
-        } else {
-          dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
-          dispatch({
-            type: "ADD_MESSAGE",
-            message: {
-              role: "assistant",
-              text: `That didn't go through: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          });
-        }
       }
-      return;
-    }
+    })();
+  }, [state.phase, companyId]);
 
-    // Default: just echo for now. Subsequent phase handlers wire actual work.
-    dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
-  }, [state.phase, setCompanyId, qc]);
+  const handlePillar3Done = useCallback((response: Pillar3Response) => {
+    dispatch({ type: "PILLAR3_DONE", response });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "How do leads come in?",
+        slot: { kind: "pillar4-prompt" },
+      },
+    });
+  }, []);
+
+  const handlePillar4Done = useCallback((response: Pillar4Response) => {
+    dispatch({ type: "PILLAR4_DONE", response });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "How do you want your board to talk to you?",
+        slot: { kind: "pillar5-prompt" },
+      },
+    });
+  }, []);
+
+  const handlePillar5Done = useCallback((response: Pillar5Response) => {
+    dispatch({ type: "PILLAR5_DONE", response });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Got it. Let me figure out what to plug in…",
+      },
+    });
+    // Subsequent step wires the connector picker. For now the chat goes quiet.
+  }, []);
 
   return (
     <div style={{
@@ -154,7 +267,19 @@ export function OnboardingShell() {
         progressPct={phaseProgressPct(state.phase)}
         t0={t0}
       />
-      <ChatThread thread={state.thread} />
+      <ChatThread
+        thread={state.thread}
+        slotContext={{
+          companyId,
+          orgName: companyId ?? deriveSlug(state.draft.pillar1?.rawInput ?? ""),
+          rawInput: state.draft.pillar1?.rawInput ?? "",
+          onPillar1Confirmed: () => dispatch({ type: "PILLAR1_CONFIRMED" }),
+          onPillar1Recovered: handlePillar1Recovery,
+          onPillar3Done: handlePillar3Done,
+          onPillar4Done: handlePillar4Done,
+          onPillar5Done: handlePillar5Done,
+        }}
+      />
       <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
       {/* Phase-specific overlays mount here in later steps:
        *   - CredentialDrawer (Step 7)
@@ -225,7 +350,18 @@ function TopBar({
 
 // ── Chat thread ───────────────────────────────────────────────────────────
 
-function ChatThread({ thread }: { thread: ChatMessage[] }) {
+interface SlotContext {
+  companyId: string | null;
+  orgName: string;
+  rawInput: string;
+  onPillar1Confirmed: () => void;
+  onPillar1Recovered: (response: Pillar1Response) => void;
+  onPillar3Done: (response: Pillar3Response) => void;
+  onPillar4Done: (response: Pillar4Response) => void;
+  onPillar5Done: (response: Pillar5Response) => void;
+}
+
+function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContext: SlotContext }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -244,14 +380,14 @@ function ChatThread({ thread }: { thread: ChatMessage[] }) {
     >
       <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {thread.map((m) => (
-          <ChatBubble key={m.id} message={m} />
+          <ChatBubble key={m.id} message={m} slotContext={slotContext} />
         ))}
       </div>
     </div>
   );
 }
 
-function ChatBubble({ message }: { message: ChatMessage }) {
+function ChatBubble({ message, slotContext }: { message: ChatMessage; slotContext: SlotContext }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
@@ -272,7 +408,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   return (
     <div style={{
       alignSelf: isUser ? "flex-end" : "flex-start",
-      maxWidth: "85%",
+      maxWidth: message.slot ? "95%" : "85%",
       padding: "0.6rem 0.85rem",
       borderRadius: 10,
       background: isUser ? "var(--accent)" : isSystem ? "transparent" : "var(--surface)",
@@ -284,19 +420,56 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       lineHeight: 1.5,
     }}>
       {message.text}
-      {message.slot && <SlotRenderer slot={message.slot} />}
+      {message.slot && <SlotRenderer slot={message.slot} slotContext={slotContext} />}
     </div>
   );
 }
 
-/** Maps a chat slot tag to its inline-component implementation. Subsequent
- *  steps (5, 6, 7) wire the kinds that aren't yet implemented. */
-function SlotRenderer({ slot }: { slot: ChatSlot }) {
+/** Maps a chat slot tag to its inline-component implementation. */
+function SlotRenderer({ slot, slotContext }: { slot: ChatSlot; slotContext: SlotContext }) {
   switch (slot.kind) {
     case "thinking":
       return (
         <div style={{ marginTop: "0.5rem" }}>
           <T2ProgressIndicator active={true} phase={slot.phase} />
+        </div>
+      );
+    case "pillar1-confirm":
+      if (!slotContext.companyId) return null;
+      return (
+        <Pillar1ConfirmCard
+          companyId={slotContext.companyId}
+          response={slot.response}
+          onConfirmed={slotContext.onPillar1Confirmed}
+        />
+      );
+    case "pillar1-halt":
+      if (!slotContext.companyId) return null;
+      return (
+        <Pillar1HaltCard
+          companyId={slotContext.companyId}
+          orgName={slotContext.orgName}
+          rawInput={slotContext.rawInput}
+          onRecovered={slotContext.onPillar1Recovered}
+        />
+      );
+    case "pillar3-prompt":
+      if (!slotContext.companyId) return null;
+      return <Pillar3PromptCard companyId={slotContext.companyId} onDone={slotContext.onPillar3Done} />;
+    case "pillar4-prompt":
+      if (!slotContext.companyId) return null;
+      return <Pillar4PromptCard companyId={slotContext.companyId} onDone={slotContext.onPillar4Done} />;
+    case "pillar5-prompt":
+      if (!slotContext.companyId) return null;
+      return <Pillar5PromptCard companyId={slotContext.companyId} onDone={slotContext.onPillar5Done} />;
+    case "verify-fail":
+      return (
+        <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.75rem", background: "var(--bg)", border: "1px solid var(--warning)", borderRadius: 6, fontSize: 12 }}>
+          <div style={{ color: "var(--warning)", fontWeight: 600, marginBottom: "0.25rem" }}>Fix hint</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{slot.fixHint}</div>
+          <div className="text-dim" style={{ marginTop: "0.5rem", fontSize: 11 }}>
+            Once resolved, reload the page to retry verification.
+          </div>
         </div>
       );
     default:
