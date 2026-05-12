@@ -77,6 +77,26 @@ Once handed off, agents heartbeat every 5min via Paperclip's launchd timer, spaw
 
 After Phase H, **fleet burn dropped 96%** on the production deployment that produced this release. Single-agent burn dropped 95% on the heaviest agent. Spinner patterns became visible and auto-pauseable in one click.
 
+### What v0.3 added (V2 fresh-start, 2026-05-12)
+
+A clean-slate rebuild that backports five weeks of production-fleet learnings into the templates + adds the monetization + reliability layers. The full manifest is at [docs/V2_MANIFEST.md](docs/V2_MANIFEST.md).
+
+| Layer | What's new |
+|---|---|
+| **Universal kernel rule** ([_shared/SKILL_VERIFY_BEFORE_CLAIM](packages/onboarding-ui/public/agent-templates/_shared/SKILL_VERIFY_BEFORE_CLAIM.md)) | Every agent must include an independent verification probe in any "sent/deployed/applied/live" claim. Enforced by a 10min sweeper with auto-revert. Closes the SDK-returns-lie failure mode. |
+| **5 kernel lessons** ([_shared/SKILL_KERNEL_LESSONS](packages/onboarding-ui/public/agent-templates/_shared/SKILL_KERNEL_LESSONS.md)) | CEO + CoS read these every cycle: SDK returns aren't delivery, forecasted deltas are inflated (require N≥3), migrations are half the work, OVERRIDE prefixes trip prompt-injection defenses, internal traffic looks like organic until you split it. |
+| **WAV-6388 measurement contract** ([ceo/SKILL_KPI_OWNERSHIP](packages/onboarding-ui/public/agent-templates/ceo/SKILL_KPI_OWNERSHIP.md)) | Every issue needs target_kpi + estimated_delta + measurement_plan + baseline_snapshot. Missing any → auto-F grade. Plus the structural-zero vs measured-zero distinction. |
+| **Role collapse** ([_shared/SKILL_ROLE_COLLAPSE](packages/onboarding-ui/public/agent-templates/_shared/SKILL_ROLE_COLLAPSE.md)) | Wizard now picks roster shape by Pillar 3 stage: minimal_kernel (pre_product) → collapsed_6 → hybrid → formal_9. Solo founders get further-collapsed 5-agent kernel regardless of stage. |
+| **Ignition phase** ([docs/IGNITION.md](docs/IGNITION.md), [packages/op-omega-server/src/bridge/ignition.ts](packages/op-omega-server/src/bridge/ignition.ts)) | After activate, the fleet now boots itself: seeds first-task issues from workflow_manifest, creates the Goal, fires CEO + CoS kickoff probe, staggers heartbeat offsets. Idempotent re-run via `POST /api/instance/:id/ignite`. |
+| **System Reliability agent** ([system-reliability/SKILL](packages/onboarding-ui/public/agent-templates/system-reliability/SKILL.md)) | New role added to every V2 fleet. Owns disk + RAM + inference burn as KPIs. Calls `paperclipai worktree:cleanup` (never raw rm). Pages operator via Telegram on RED. |
+| **15min resource sweep** ([scripts/wrappers/resource-sweep.sh](scripts/wrappers/resource-sweep.sh)) | Platform-level launchd job, runs even when fleet is paused. Prunes reproducible artifacts at 70% disk, throttles spawns at 80%, pages operator at 90%. The disk-crash failure mode is now blocked at three layers. |
+| **Stripe + Supabase billing** ([docs/PHASE_F_SETUP.md](docs/PHASE_F_SETUP.md)) | `wavex_os` Postgres schema + Stripe products + `stripe-webhook` + `create-checkout-session` edge functions + `/pricing` route with inline Supabase magic-link sign-in. F.1 is end-to-end testable with a real Stripe test card. |
+| **Mac-as-inference-server scaffold** ([packages/inference-server/](packages/inference-server/)) | Fastify on :8787 + cloudflared tunnel to `api.wavex-os.com`. Pool A endpoints stubbed; real Anthropic wiring lands in G.3.b. Topology rationale: [docs/V2_CAPTURE_C_inference_server.md](docs/V2_CAPTURE_C_inference_server.md). |
+| **`wavex-os audit` CLI** | `node apps/installer/bin/init.js audit` checks disk, RAM, ports, launchd jobs, service health in one shot. Distinct from `doctor` which checks env prerequisites. |
+| **Operator-facing Meta Mission Control** ([admin/](admin/)) | Single-page Fastify+HTML dashboard the operator runs to see all customer subscriptions, optimizer runs, pending injections. Hand-rolled JWT auth, no SPA bundle. |
+
+Full launch runbook: [docs/V2_LAUNCH_RUNBOOK.md](docs/V2_LAUNCH_RUNBOOK.md).
+
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 ---
