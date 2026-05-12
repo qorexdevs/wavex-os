@@ -107,4 +107,64 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
     await deleteLocalSubscription();
     return reply.send({ ok: true });
   });
+
+  // F.4.f — idempotently ensure a wavex-liaison Paperclip agent exists
+  // whenever this customer has any active hires. Called by:
+  //   - HireAgentFlow after a successful hire (one-shot)
+  //   - Mission Control's Privacy Panel on load (recovery)
+  //   - The platform-level cron via launchd (TBD; nice-to-have)
+  //
+  // Returns 200 with { liaison: null } if no active hires (nothing to do).
+  // Returns 200 with { liaison: { paperclipAgentId, status }} if the
+  // Liaison was created (or already existed).
+  // Returns 503 if Supabase or Paperclip is unreachable.
+  app.post("/api/billing/ensure-liaison", async (_req, reply) => {
+    const sub = await readLocalSubscription();
+    if (!sub) {
+      return reply.send({ liaison: null, reason: "no_local_subscription" });
+    }
+    if (!SUPABASE_URL || !SUPABASE_ANON) {
+      return reply.code(503).send({ error: "supabase_not_configured" });
+    }
+
+    // Look up active hires for this subscription via Supabase
+    const url = `${SUPABASE_URL}/rest/v1/wavex_os/hired_expert_agents?subscription_id=eq.${sub.subscription_id}&status=eq.active&select=id,catalog_id`;
+    const resp = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
+    });
+    if (!resp.ok) {
+      return reply.code(503).send({ error: "supabase_query_failed", status: resp.status });
+    }
+    const hires = (await resp.json()) as Array<{ id: string; catalog_id: string }>;
+    if (!hires || hires.length === 0) {
+      return reply.send({ liaison: null, reason: "no_active_hires" });
+    }
+
+    // Determine the Paperclip URL (the customer's local Paperclip) — same
+    // env var the handoff bridge uses.
+    const paperclipUrl = process.env.PAPERCLIP_HANDOFF_URL?.replace(/\/+$/, "") ?? null;
+    if (!paperclipUrl) {
+      return reply.send({
+        liaison: null,
+        reason: "paperclip_not_configured",
+        note: "PAPERCLIP_HANDOFF_URL not set — Liaison cannot spawn into a Paperclip company that doesn't exist",
+      });
+    }
+
+    // F.4.f stub: we don't yet create the Paperclip agent here. That
+    // requires knowing the customer's paperclip company id (from the
+    // existing handoff mapping) and posting to Paperclip's /api/agents
+    // endpoint with the wavex-liaison skill bundle. The full spawn lives
+    // in F.4.f.b once we have the Paperclip API surface confirmed.
+    //
+    // For now, return the catalog of hires we WOULD spawn a Liaison for.
+    // The Liaison itself can be hired manually until F.4.f.b lands.
+    return reply.send({
+      liaison: {
+        status: "pending_spawn",
+        active_hires: hires.map((h) => h.catalog_id),
+        next_step: "F.4.f.b will wire the Paperclip POST /api/agents call with the wavex-liaison skill bundle from packages/onboarding-ui/public/agent-templates/wavex-liaison/",
+      },
+    });
+  });
 }
