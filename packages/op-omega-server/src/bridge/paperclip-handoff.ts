@@ -411,6 +411,18 @@ export async function handoffToPaperclip(
       await updateHandoffProgress(wavexCompanyId, slot, { status: "already_mapped", reason: "already-mapped" }, completed);
       continue;
     }
+    // Skip parked / disabled agents — operator's focused-scope choice
+    // (or the swarm generator's auto-demote) means they shouldn't run.
+    // No point creating them in Paperclip until the operator unparks
+    // from Mission Control, at which point a re-activate will hire them
+    // (the idempotent already-mapped path handles already-hired ones).
+    const status = (entry as { status?: string }).status;
+    if (status === "parked" || status === "disabled") {
+      report.skipped.push({ slot, reason: `${status}-on-wavex` });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: `${status}-on-wavex` }, completed);
+      continue;
+    }
     await updateHandoffProgress(wavexCompanyId, slot, { status: "hiring" }, completed);
     const role = (slot.split(".")[0]);
     const bundleMd = await readAgentBundle(role.replace(/_/g, "-"), repoRoot)
