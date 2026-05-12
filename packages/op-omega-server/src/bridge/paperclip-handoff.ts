@@ -95,6 +95,10 @@ function iconForSlot(slot: string): string {
 
 function humanNameForSlot(slot: string, displayName?: string): string {
   if (displayName) return displayName;
+  // CoS would otherwise render as "CEO / CHIEF-OF-STAFF" — visually a second
+  // CEO. Give it a clean identity so Paperclip's name + urlKey (chief-of-staff)
+  // surface a distinct node.
+  if (slot === "ceo.chief-of-staff") return "Chief of Staff";
   const parts = slot.split(".").map(s => s.toUpperCase());
   return parts.join(" / ");
 }
@@ -209,6 +213,24 @@ async function clearHandoffProgress(wavexCompanyId: string): Promise<void> {
   try { await unlink(handoffProgressPath(wavexCompanyId)); } catch { /* already gone */ }
 }
 
+/** Read scope.json so the bridge can honor the operator's sub-fleet
+ *  selection. Lives next to onboarding artifacts; null if unset (treat
+ *  as full-org, no filtering). */
+async function readScopeForBridge(wavexCompanyId: string): Promise<{ mode: "full" | "focused"; departments: string[] } | null> {
+  const { readFile } = await import("node:fs/promises");
+  const path = join(handoffStateDir(wavexCompanyId), "onboarding", "scope.json");
+  try {
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw) as { mode?: string; departments?: string[] };
+    if (parsed.mode === "focused") {
+      return { mode: "focused", departments: parsed.departments ?? [] };
+    }
+    return { mode: "full", departments: [] };
+  } catch {
+    return null;
+  }
+}
+
 async function ensurePaperclipCompany(
   paperclipUrl: string,
   wavexCompanyId: string,
@@ -221,7 +243,11 @@ async function ensurePaperclipCompany(
     if (r && r.ok) return { paperclipCompanyId: existing.paperclipCompanyId, created: false };
   }
   const name = `wavex-os/${wavexCompanyId}`;
-  const description = `Auto-provisioned from wavex-os onboarding finalize. Source manifest hash: ${manifest.signatures?.manifest_hash ?? "unknown"}.`;
+  // Encode the wavex slug into the description so the Paperclip UI can
+  // recover it even if the operator renames the company. The name prefix
+  // is the primary lookup; description is the fallback. See
+  // packages/core/ui/src/lib/wavex-link.ts deriveWavexCompanyId.
+  const description = `Auto-provisioned from wavex-os onboarding finalize. Source manifest hash: ${manifest.signatures?.manifest_hash ?? "unknown"}. wavexCompanyId=${wavexCompanyId}`;
   const r = await fetch(`${paperclipUrl}/api/companies`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -375,6 +401,21 @@ export async function handoffToPaperclip(
     (manifest as unknown as { template_mutes?: string[] }).template_mutes ?? [],
   );
 
+  // Sub-fleet scope filter — only honored when mode === "focused".
+  // In focused mode we skip agents whose department isn't in the
+  // operator's selected set (or, for custom-only scopes, anything
+  // outside "ops" — the same fallback the swarm-manifest route uses).
+  // In full mode we mirror every slot regardless of vendor-parked status,
+  // because the operator didn't ask to scope anything down — they want
+  // the whole intended org in Paperclip.
+  const scope = await readScopeForBridge(wavexCompanyId);
+  const scopeDepts = scope && scope.mode === "focused"
+    ? new Set<string>([
+        ...(scope.departments.length > 0 ? scope.departments : ["ops"]),
+        "ceo", // CEO + chief-of-staff are sacrosanct
+      ])
+    : null; // null = full org, no department filtering
+
   // Full handoff: every slot in the swarm, sorted topologically so parents
   // land before children. The original V1 scope was C-suite only — fine
   // for early dev, but the "wavex-os/<company>" record in Paperclip then
@@ -411,21 +452,32 @@ export async function handoffToPaperclip(
       await updateHandoffProgress(wavexCompanyId, slot, { status: "already_mapped", reason: "already-mapped" }, completed);
       continue;
     }
-    // Skip parked / disabled agents — operator's focused-scope choice
-    // (or the swarm generator's auto-demote) means they shouldn't run.
-    // No point creating them in Paperclip until the operator unparks
-    // from Mission Control, at which point a re-activate will hire them
-    // (the idempotent already-mapped path handles already-hired ones).
-    const status = (entry as { status?: string }).status;
-    if (status === "parked" || status === "disabled") {
-      report.skipped.push({ slot, reason: `${status}-on-wavex` });
-      completed += 1;
-      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: `${status}-on-wavex` }, completed);
-      continue;
+    // Sub-fleet scope filter — skip agents whose department isn't in
+    // the operator's selected set. Only applies when scope.mode is
+    // "focused". CEO + chief-of-staff (department "ceo") always go
+    // through. Vendor-generator-parked agents in scoped departments
+    // still mirror to Paperclip — the bridge defers to the operator's
+    // explicit scope choice, not vendor-parking heuristics.
+    if (scopeDepts) {
+      const dept = (entry as { department?: string }).department ?? "";
+      if (!scopeDepts.has(dept)) {
+        report.skipped.push({ slot, reason: `outside-scope` });
+        completed += 1;
+        await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: "outside-scope" }, completed);
+        continue;
+      }
     }
     await updateHandoffProgress(wavexCompanyId, slot, { status: "hiring" }, completed);
-    const role = (slot.split(".")[0]);
-    const bundleMd = await readAgentBundle(role.replace(/_/g, "-"), repoRoot)
+    // Bundle is normally keyed off slot.split(".")[0] (ceo/cmo/cro/etc.).
+    // CoS is special-cased because its slot starts with "ceo." — without
+    // this guard, the CoS would receive the CEO's AGENTS.md bundle (CEO
+    // operator-management + economic-self-awareness routines) instead of
+    // its own SKILL_FLEET_ALIGNMENT routine. That made the CoS effectively
+    // a duplicate CEO from Paperclip's runtime perspective.
+    const bundleRole = slot === "ceo.chief-of-staff"
+      ? "chief-of-staff"
+      : slot.split(".")[0].replace(/_/g, "-");
+    const bundleMd = await readAgentBundle(bundleRole, repoRoot)
       ?? await readAgentBundle("chief-of-staff", repoRoot)
       ?? `# ${slot}\n\nPlaceholder — bundle file missing.`;
     const reportsToSlot = entry.reports_to ?? null;

@@ -153,6 +153,14 @@ export const agentsApi = {
     ),
   pause: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/pause"), {}),
   resume: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/resume"), {}),
+  pauseFleet: (companyId: string) =>
+    api.post<{ ok: true; paused: string[]; failed: Array<{ agentId: string; error: string }> }>(
+      `/companies/${companyId}/pause-fleet`, {},
+    ),
+  resumeFleet: (companyId: string) =>
+    api.post<{ ok: true; resumed: string[]; failed: Array<{ agentId: string; error: string }> }>(
+      `/companies/${companyId}/resume-fleet`, {},
+    ),
   approve: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/approve"), {}),
   terminate: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/terminate"), {}),
   remove: (id: string, companyId?: string) => api.delete<{ ok: true }>(agentPath(id, companyId)),

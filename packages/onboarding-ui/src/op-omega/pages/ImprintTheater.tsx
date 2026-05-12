@@ -10,13 +10,15 @@
  *  sequence; the operator clicks "Let's launch" to advance to pricing. */
 
 import { useEffect, useRef, useState } from "react";
-import type { CompanyManifest } from "@op-omega/plugin-onboarding";
+import type { CompanyManifest, WorkflowManifest } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import { isT0FastMode } from "../lib/dev-flags";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 import { MonteCarloRace, type MonteCarloReportLike } from "../components/MonteCarloRace";
 import { StreamingText } from "../components/StreamingText";
 import { RefinementPanel } from "../components/RefinementPanel";
+import { WorkflowSummaryReveal } from "../components/WorkflowSummaryReveal";
+import { WorkflowDetails } from "../components/WorkflowDetails";
 
 interface Props {
   companyId: string;
@@ -36,6 +38,7 @@ const ACT2_MIN_MS = 3000;
 
 export function ImprintTheater({ companyId, onLaunch }: Props) {
   const [result, setResult] = useState<FinalizeResult | null>(null);
+  const [workflowManifest, setWorkflowManifest] = useState<WorkflowManifest | null>(null);
   const [mcReport, setMcReport] = useState<MonteCarloReportLike | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [act, setAct] = useState<Act>("preparing");
@@ -62,10 +65,15 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
         // gates still hold; only the upstream budget snapshot is bypassed.
         // Finalize will pick up the freshly-written manifest via its
         // 10-minute freshness check and skip its internal regen.
-        await opOmegaOnboardingApi.generateWorkflow(companyId, {
+        // Capture the workflow manifest as soon as Phase 4 resolves so
+        // the "Preparing your launch" screen can fade it in below the
+        // progress indicator. Finalize still runs serially after; the
+        // panel sits while it completes.
+        const wfRes = await opOmegaOnboardingApi.generateWorkflow(companyId, {
           skipInference,
           bypassBudgetCheck: true,
         });
+        setWorkflowManifest(wfRes.manifest);
         const r = await opOmegaOnboardingApi.finalize({
           companyId,
           skipInference,
@@ -119,6 +127,7 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
             Running Monte Carlo simulations + drafting your imprint. ~1-3 minutes.
           </div>
           <T2ProgressIndicator active phase="finalize" />
+          {workflowManifest && <WorkflowSummaryReveal manifest={workflowManifest} />}
         </div>
       )}
 
@@ -137,6 +146,7 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
         <ImprintAct
           companyId={companyId}
           manifest={result.manifest}
+          workflowManifest={workflowManifest}
           sha256={result.sha256}
           source={result.source}
           showFullManifest={showFullManifest}
@@ -185,6 +195,16 @@ function WinnerReveal({ manifest }: { manifest: CompanyManifest }) {
   );
 }
 
+const toggleButton: React.CSSProperties = {
+  padding: "0.3rem 0.7rem",
+  borderRadius: 4,
+  background: "transparent",
+  color: "var(--text-dim)",
+  border: "1px solid var(--border)",
+  fontSize: 11,
+  cursor: "pointer",
+};
+
 function StatTile({ label, value, accent = "neutral" }: { label: string; value: string; accent?: "good" | "warn" | "neutral" }) {
   const color = accent === "good" ? "var(--accent)" : accent === "warn" ? "var(--warning)" : "var(--text)";
   return (
@@ -204,6 +224,7 @@ function StatTile({ label, value, accent = "neutral" }: { label: string; value: 
 interface ImprintActProps {
   companyId: string;
   manifest: CompanyManifest;
+  workflowManifest: WorkflowManifest | null;
   sha256: string;
   source: "t2" | "fallback";
   showFullManifest: boolean;
@@ -212,10 +233,11 @@ interface ImprintActProps {
   onRefined: (manifest: CompanyManifest, sha256: string) => void;
 }
 
-function ImprintAct({ companyId, manifest, sha256, source, showFullManifest, onToggleManifest, onLaunch, onRefined }: ImprintActProps) {
+function ImprintAct({ companyId, manifest, workflowManifest, sha256, source, showFullManifest, onToggleManifest, onLaunch, onRefined }: ImprintActProps) {
   const imprint = manifest.imprint_summary ?? "";
   const [streamDone, setStreamDone] = useState(false);
   const [refineMode, setRefineMode] = useState(false);
+  const [showWorkflow, setShowWorkflow] = useState(false);
   return (
     <div style={{ maxWidth: 760, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem", alignItems: "center" }}>
       <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
@@ -235,22 +257,23 @@ function ImprintAct({ companyId, manifest, sha256, source, showFullManifest, onT
          *  re-starting the character-by-character reveal from the top. */}
         <StreamingText key={sha256} text={imprint} charsPerSec={60} onComplete={() => setStreamDone(true)} />
       </div>
-      <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
+      <div style={{ textAlign: "center", marginTop: "0.5rem", display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={onToggleManifest}
-          style={{
-            padding: "0.3rem 0.7rem",
-            borderRadius: 4,
-            background: "transparent",
-            color: "var(--text-dim)",
-            border: "1px solid var(--border)",
-            fontSize: 11,
-            cursor: "pointer",
-          }}
+          style={toggleButton}
         >
           {showFullManifest ? "Hide" : "Read"} the full signed manifest
         </button>
+        {workflowManifest && (
+          <button
+            type="button"
+            onClick={() => setShowWorkflow((v) => !v)}
+            style={toggleButton}
+          >
+            {showWorkflow ? "Hide" : "Read"} the workflow manifest
+          </button>
+        )}
       </div>
       {showFullManifest && (
         <pre style={{
@@ -266,6 +289,9 @@ function ImprintAct({ companyId, manifest, sha256, source, showFullManifest, onT
           <div style={{ marginBottom: "0.5rem", color: "var(--accent)" }}>sha256: {sha256}</div>
           {JSON.stringify(manifest, null, 2)}
         </pre>
+      )}
+      {showWorkflow && workflowManifest && (
+        <WorkflowDetails manifest={workflowManifest} />
       )}
       {refineMode && streamDone && (
         <RefinementPanel

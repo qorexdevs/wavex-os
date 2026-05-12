@@ -153,12 +153,22 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
   const totalCount = rows.length;
   const alreadyMappedAll = done && handoffEnabled && rows.every((r) => r.status === "already_mapped");
 
-  // Active vs parked breakdown from the SWARM manifest (independent of
-  // the Paperclip mirror status). Parked agents are mirrored too — they
-  // just don't run on the wavex side until the operator unparks them.
+  // Three buckets that need separate counts so the operator sees why
+  // "mirrored to Paperclip" can be larger than "active on wavex":
+  //   * activeOnWavex   — running locally (swarm status active/standby)
+  //   * parkedInScope   — vendor-parked but department IS in operator scope,
+  //                       so the bridge mirrored them to Paperclip too
+  //   * outOfScope      — department is outside the focused scope, skipped
+  //                       by the bridge entirely
+  //
+  // "Mirrored to Paperclip" = activeOnWavex + parkedInScope; outOfScope
+  // never lands in Paperclip. Surfacing this as one labeled line collapses
+  // the apparent contradiction the operator saw (9 active vs 12 mirrored).
   const activeOnWavex = rows.filter((r) => r.swarmStatus === "active" || r.swarmStatus === "standby").length;
   const parkedOnWavex = rows.filter((r) => r.swarmStatus === "parked" || r.swarmStatus === "disabled").length;
-  const hasFocusedScope = parkedOnWavex > 0;
+  const outOfScope = rows.filter((r) => r.status === "skipped" && r.reason === "outside-scope").length;
+  const parkedInScope = Math.max(0, parkedOnWavex - outOfScope);
+  const hasFocusedScope = outOfScope > 0 || parkedInScope > 0;
 
   return (
     <div style={{
@@ -173,21 +183,21 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
             {alreadyMappedAll ? "Already activated" : failedCount > 0 ? "Activation issues" : "Hiring your team"}
           </div>
           <div className="text-dim" style={{ fontSize: 12, lineHeight: 1.55 }}>
-            {/* Line 1: wavex-side active/parked breakdown — what the
-             *  operator's swarm actually runs locally. */}
-            {hasFocusedScope ? (
+            {/* Line 1: wavex swarm breakdown. In focused scope this is three
+             *  numbers — what the operator runs locally vs what was carved
+             *  off — and the gap explains the higher Paperclip mirror count
+             *  on line 2. */}
+            <span style={{ color: "var(--accent)" }}>{activeOnWavex} active</span>
+            {hasFocusedScope && parkedInScope > 0 && (
               <>
-                <span style={{ color: "var(--accent)" }}>{activeOnWavex} active</span>
                 {" · "}
-                <span>{parkedOnWavex} parked</span>
+                <span>{parkedInScope} parked</span>
               </>
-            ) : (
-              <span style={{ color: "var(--accent)" }}>{activeOnWavex} active</span>
             )}
-            {paperclipUrl && (
+            {hasFocusedScope && outOfScope > 0 && (
               <>
                 {" · "}
-                <span>{mirroredCount} of {totalCount} mirrored to Paperclip</span>
+                <span>{outOfScope} out of scope</span>
               </>
             )}
             {failedCount > 0 && (
@@ -197,6 +207,15 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
               </>
             )}
           </div>
+          {/* Line 2: Paperclip mirror count on its own line so the two
+           *  denominators (35 swarm slots vs 12 mirrored agents) don't
+           *  visually collide. */}
+          {paperclipUrl && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: "0.2rem", opacity: 0.85 }}>
+              {mirroredCount} mirrored to Paperclip
+              {hasFocusedScope && <> · {outOfScope} skipped (outside scope)</>}
+            </div>
+          )}
           {alreadyMappedAll && (
             <div className="text-dim" style={{ fontSize: 11, marginTop: "0.25rem", opacity: 0.7 }}>
               Already live in Paperclip from a prior activate

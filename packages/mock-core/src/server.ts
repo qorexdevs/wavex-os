@@ -121,6 +121,29 @@ function sleep(ms: number): Promise<void> {
 
 const app = Fastify({ logger: false });
 
+// CORS allowlist for cross-origin reads from the Paperclip UI (port 5174).
+// Mission Control on 5173 is same-origin (vite proxies /api to 3101), so it
+// doesn't need this — but Paperclip Dashboard at 5174 calls wavex directly
+// for the KPI panel + board chat dock + manifest reads. The allowlist is
+// explicit (no wildcard); add real origins here when deploying.
+const CORS_ALLOWED_ORIGINS = new Set(
+  (process.env.WAVEX_CORS_ORIGINS ?? "http://localhost:5174,http://127.0.0.1:5174")
+    .split(",").map((s) => s.trim()).filter(Boolean),
+);
+app.addHook("onRequest", async (req, reply) => {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && CORS_ALLOWED_ORIGINS.has(origin)) {
+    reply.header("access-control-allow-origin", origin);
+    reply.header("vary", "Origin");
+    reply.header("access-control-allow-credentials", "true");
+    reply.header("access-control-allow-headers", "content-type, authorization");
+    reply.header("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
+    if (req.method === "OPTIONS") {
+      reply.code(204).send();
+    }
+  }
+});
+
 // Wire op-omega onboarding routes (vendored plugin via @wavex-os/op-omega-server).
 // Importing dynamically would defer the plugin SDK build dependency; using
 // top-level await keeps the side-effect ordering deterministic at startup.

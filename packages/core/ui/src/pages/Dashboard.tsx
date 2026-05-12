@@ -26,6 +26,8 @@ import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRa
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { WavexKpiPanel } from "../components/WavexKpiPanel";
+import { FleetKillswitch } from "../components/FleetKillswitch";
 
 const DASHBOARD_ACTIVITY_LIMIT = 10;
 
@@ -36,6 +38,7 @@ function getRecentIssues(issues: Issue[]): Issue[] {
 
 export function Dashboard() {
   const { selectedCompanyId, companies } = useCompany();
+  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null;
   const { openOnboarding } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [animatedActivityIds, setAnimatedActivityIds] = useState<Set<string>>(new Set());
@@ -231,11 +234,32 @@ export function Dashboard() {
                   </p>
                 </div>
               </div>
-              <Link to="/costs" className="text-sm underline underline-offset-2 text-red-100">
-                Open budgets
-              </Link>
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedCompanyId && (
+                  <FleetKillswitch
+                    companyId={selectedCompanyId}
+                    activeAgents={data.agents.active + data.agents.running}
+                    pausedAgents={data.agents.paused}
+                  />
+                )}
+                <Link to="/costs" className="text-sm underline underline-offset-2 text-red-100">
+                  Open budgets
+                </Link>
+              </div>
             </div>
-          ) : null}
+          ) : (
+            // No incident — still surface the killswitch (folded into a quiet
+            // toolbar) so operators don't need to wait for a crisis to find it.
+            selectedCompanyId && (data.agents.active + data.agents.running + data.agents.paused) > 0 && (
+              <div className="flex items-center justify-end">
+                <FleetKillswitch
+                  companyId={selectedCompanyId}
+                  activeAgents={data.agents.active + data.agents.running}
+                  pausedAgents={data.agents.paused}
+                />
+              </div>
+            )
+          )}
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
             <MetricCard
@@ -305,6 +329,8 @@ export function Dashboard() {
               <SuccessRateChart activity={data.runActivity} />
             </ChartCard>
           </div>
+
+          <WavexKpiPanel paperclipCompany={selectedCompany} />
 
           <PluginSlotOutlet
             slotTypes={["dashboardWidget"]}
