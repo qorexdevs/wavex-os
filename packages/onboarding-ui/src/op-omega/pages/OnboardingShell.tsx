@@ -55,21 +55,131 @@ export function OnboardingShell() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const t0 = isT0FastMode();
 
-  // ── First mount: resume path only ───────────────────────────────────────
-  // Fresh state shows an EmptyState hero — no seeded welcome message needed.
+  // ── First mount: resume path ────────────────────────────────────────────
+  // Fresh state shows an EmptyState hero. When companyId is present in the
+  // URL, walk every persisted artifact (pillar responses, scope, manifests)
+  // and emit a collapsed breadcrumb per completed step, then transition the
+  // phase to whatever's next. Operators get a sense of "I'm picking up at
+  // the right place" instead of a wall of nothing.
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    if (companyId && state.thread.length === 0) {
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          role: "assistant",
-          text: `Welcome back to ${companyId}. Picking up where you left off.`,
-        },
-      });
-    }
+    if (!companyId || state.thread.length > 0) return;
+
+    void (async () => {
+      try {
+        const [status, scopeRes, connectorRes, swarmRes] = await Promise.all([
+          opOmegaOnboardingApi.status(companyId).catch(() => null),
+          opOmegaOnboardingApi.getScope(companyId).catch(() => null),
+          opOmegaOnboardingApi.loadConnector(companyId).catch(() => null),
+          opOmegaOnboardingApi.loadSwarm(companyId).catch(() => null),
+        ]);
+
+        if (!status) {
+          dispatch({
+            type: "ADD_MESSAGE",
+            message: { role: "assistant", text: `Welcome back to ${companyId}. Couldn't load prior state.` },
+          });
+          return;
+        }
+
+        const r = status.responses;
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: { role: "assistant", text: `Welcome back to ${companyId}. Here's what we had.` },
+        });
+
+        // Breadcrumb per completed step. Each lands as a collapsed ✓
+        // summary so the operator can scan their prior answers.
+        const breadcrumbs: string[] = [];
+        if (r?.pillar_1) {
+          breadcrumbs.push(`Pillar 1: ${r.pillar_1.industry_hint ?? "industry"} · ${r.pillar_1.business_model_hint ?? "model"} · ${r.pillar_1.has_product ? "live" : "pre-product"}`);
+        }
+        if (r?.pillar_2) breadcrumbs.push(`Pillar 2: Claude ${r.pillar_2.claude_plan}`);
+        if (scopeRes?.scope) {
+          const s = scopeRes.scope;
+          breadcrumbs.push(s.mode === "focused"
+            ? `Scope: ${s.departments.join(" + ") || "custom only"}`
+            : "Scope: full org");
+        }
+        if (r?.pillar_3) breadcrumbs.push(`Pillar 3: ${r.pillar_3.product_state} · ${r.pillar_3.stage}`);
+        if (r?.pillar_4) breadcrumbs.push(`Pillar 4: ${r.pillar_4.sales_motion} via ${r.pillar_4.lead_sources?.join(", ")}`);
+        if (r?.pillar_5) breadcrumbs.push(`Pillar 5: ${r.pillar_5.comm_channel}`);
+        if (connectorRes?.exists) breadcrumbs.push(`Connectors picked`);
+        if (swarmRes?.exists) breadcrumbs.push(`Swarm assembled (${Object.keys(swarmRes.manifest?.agents ?? {}).length} agents)`);
+
+        for (const text of breadcrumbs) {
+          dispatch({
+            type: "ADD_MESSAGE",
+            message: { role: "assistant", text: `✓ ${text}`, collapsed: true },
+          });
+        }
+
+        // Figure out what's next based on what's missing. status.next_pillar
+        // is the authoritative answer for pillars 1-5; after that we walk
+        // through scope → connector → credentials → swarm → studio → theater.
+        if (status.next_pillar) {
+          if (status.next_pillar === 1) {
+            // No Pillar 1 — let them type in the hero. Already in welcome state.
+            return;
+          }
+          // Pillar 1 done; need to pick up at one of 2-5. The cleanest re-entry
+          // is to re-fire from the appropriate prompt.
+          const stage = status.next_pillar;
+          dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage, thinking: stage === 2 } });
+          if (stage === 3) {
+            dispatch({
+              type: "ADD_MESSAGE",
+              message: { role: "assistant", text: "Where are you in the product journey?", slot: { kind: "pillar3-prompt" } },
+            });
+          } else if (stage === 4) {
+            dispatch({
+              type: "ADD_MESSAGE",
+              message: { role: "assistant", text: "How do leads come in?", slot: { kind: "pillar4-prompt" } },
+            });
+          } else if (stage === 5) {
+            dispatch({
+              type: "ADD_MESSAGE",
+              message: { role: "assistant", text: "How do you want your board to talk to you?", slot: { kind: "pillar5-prompt" } },
+            });
+          }
+          // stage 2 thinking re-fires the silent verify effect on mount
+          return;
+        }
+
+        // All pillars done — figure out where in the post-pillar pipeline.
+        if (!scopeRes?.scope) {
+          // Need scope. Show scope-prompt with whatever Pillar 1 detected.
+          const detected = r?.pillar_1?.industry_hint ? detectScope(r.pillar_1.industry_hint) : [];
+          dispatch({
+            type: "ADD_MESSAGE",
+            message: {
+              role: "assistant",
+              text: "Pick up: tell me how to scope your team.",
+              slot: { kind: "scope-prompt", detected },
+            },
+          });
+          return;
+        }
+        if (!connectorRes?.exists) {
+          dispatch({ type: "SET_PHASE", phase: { kind: "connectors", loading: true } });
+          return;
+        }
+        if (!swarmRes?.exists) {
+          // Connectors picked but no swarm yet — re-open credentials drawer.
+          dispatch({ type: "SET_PHASE", phase: { kind: "credentials", drawerOpen: true } });
+          return;
+        }
+        // Swarm exists — back into Studio so the operator can review + launch.
+        dispatch({ type: "SET_PHASE", phase: { kind: "swarm_studio", manifest: swarmRes.manifest! } });
+      } catch (e) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: { role: "assistant", text: `Welcome back to ${companyId}. Hydration failed: ${e instanceof Error ? e.message : String(e)}` },
+        });
+      }
+    })();
   }, [companyId, state.thread.length]);
 
   const showEmptyState = state.thread.length === 0 && state.phase.kind === "welcome";
