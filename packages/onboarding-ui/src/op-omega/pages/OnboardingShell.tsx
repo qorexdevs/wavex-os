@@ -419,6 +419,17 @@ export function OnboardingShell() {
     dispatch({ type: "SET_PHASE", phase: { kind: "swarm_studio", manifest: state.draft.swarmManifest } });
   }, [state.draft.swarmManifest]);
 
+  // Phases that take over the screen completely — chat thread + input
+  // shouldn't render underneath, and a persistent dark backdrop bridges
+  // the unmount-then-mount gap between consecutive overlays (Theater →
+  // Pricing → Activate) so the chat never flashes through between them.
+  const isFullScreenPhase =
+    state.phase.kind === "swarm_studio" ||
+    state.phase.kind === "imprint_theater" ||
+    state.phase.kind === "pricing" ||
+    state.phase.kind === "activate" ||
+    state.phase.kind === "handed_off";
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -426,7 +437,7 @@ export function OnboardingShell() {
       display: "flex",
       flexDirection: "column",
     }}>
-      {!showEmptyState && (
+      {!showEmptyState && !isFullScreenPhase && (
         <TopBar
           companyId={companyId}
           progressPct={phaseProgressPct(state.phase)}
@@ -435,7 +446,7 @@ export function OnboardingShell() {
       )}
       {showEmptyState ? (
         <EmptyState onSubmit={handleSubmit} t0={t0} />
-      ) : (
+      ) : !isFullScreenPhase ? (
       <ChatThread
         thread={state.thread}
         slotContext={{
@@ -455,9 +466,20 @@ export function OnboardingShell() {
           onScopeDone: handleScopeDone,
         }}
       />
-      )}
-      {!showEmptyState && (
+      ) : null}
+      {!showEmptyState && !isFullScreenPhase && (
         <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
+      )}
+      {/* Persistent dark backdrop for full-screen phases — bridges the
+       *  unmount-then-mount gap when transitioning Theater → Pricing →
+       *  Activate so the chat thread doesn't flash through underneath. */}
+      {isFullScreenPhase && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "#0a0a0c",
+          zIndex: 40,
+        }} />
       )}
       {state.phase.kind === "credentials" && companyId && (
         <CredentialDrawer
