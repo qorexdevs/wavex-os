@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WaveX OS — Wizard walkthrough</title>
+<meta name="description" content="Step-by-step walkthrough of the WaveX OS onboarding wizard: 5 pillars, 3 phases, finalize, and Mission Control." />
+<meta property="og:title" content="WaveX OS — Wizard walkthrough" />
+<meta property="og:description" content="See the full onboarding wizard, step by step." />
+<meta property="og:image" content="https://raw.githubusercontent.com/aimerdoux/wavex-os/main/docs/images/wizard/01-welcome.png" />
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-elev: #121214;
+    --border: #1f1f23;
+    --text: #e6e6e6;
+    --muted: #8a8a92;
+    --accent: #4ec9b0;
+    --accent-dim: #2a6b5e;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Inter", "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header .brand { font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.02em; }
+  header .brand a { color: var(--text); text-decoration: none; }
+  header .brand .accent { color: var(--accent); }
+  header .links { display: flex; gap: 14px; font-family: var(--font-mono); font-size: 13px; }
+  header .links a { color: var(--muted); text-decoration: none; }
+  header .links a:hover { color: var(--accent); }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 1280px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 24px 20px 0;
+  }
+
+  .step-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .step-counter { font-family: var(--font-mono); color: var(--muted); font-size: 13px; letter-spacing: 0.04em; }
+  .step-counter .current { color: var(--accent); }
+  .step-title { font-size: 22px; font-weight: 600; line-height: 1.3; margin: 0; }
+
+  .stage {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    position: relative;
+    min-height: 360px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .stage img {
+    max-width: 100%;
+    max-height: 78vh;
+    display: block;
+    border-radius: 8px;
+    transition: opacity 280ms ease;
+  }
+  .stage.is-loading img { opacity: 0; }
+  .stage .spinner {
+    position: absolute;
+    width: 28px; height: 28px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    opacity: 0;
+    transition: opacity 200ms;
+  }
+  .stage.is-loading .spinner { opacity: 1; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .caption {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 16px 0 8px;
+    max-width: 880px;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 0 28px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 150ms, color 150ms, background 150ms;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #0a0a0a; border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: #6fdcc6; }
+
+  .play-state { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .play-state.is-playing { color: var(--accent); }
+
+  .dots { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .dot {
+    width: 24px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+    transition: background 150ms;
+  }
+  .dot:hover { background: var(--accent-dim); }
+  .dot.is-active { background: var(--accent); }
+  .dot.is-past { background: var(--accent-dim); }
+
+  .progress {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 200ms ease;
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer .kbd {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 0 2px;
+    color: var(--text);
+    font-size: 11px;
+  }
+
+  @media (max-width: 640px) {
+    .step-title { font-size: 18px; }
+    .stage img { max-height: 60vh; }
+    .controls { gap: 8px; }
+    button { padding: 8px 12px; font-size: 12px; }
+    .dot { width: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <a href="https://github.com/aimerdoux/wavex-os">WaveX OS<span class="accent">/</span>walkthrough</a>
+  </div>
+  <nav class="links">
+    <a href="https://github.com/aimerdoux/wavex-os">Repo</a>
+    <a href="https://github.com/aimerdoux/wavex-os/blob/main/README.md">README</a>
+    <a href="https://github.com/aimerdoux/wavex-os/blob/main/docs/ROADMAP.md">Roadmap</a>
+  </nav>
+</header>
+
+<main>
+  <div class="step-meta">
+    <h1 id="title" class="step-title">Start — pick a company name</h1>
+    <div class="step-counter">
+      step <span class="current" id="current">1</span> / <span id="total">13</span>
+    </div>
+  </div>
+
+  <div class="progress"><div class="progress-bar" id="progress"></div></div>
+
+  <div id="stage" class="stage is-loading">
+    <div class="spinner" aria-hidden="true"></div>
+    <img id="screenshot" alt="" />
+  </div>
+
+  <p id="caption" class="caption">Pick a name, or resume a draft. Everything from this point is wired to a real Paperclip runtime once you activate.</p>
+
+  <div class="controls">
+    <button id="prev" type="button" aria-label="Previous step">← Back</button>
+    <button id="next" type="button" class="primary" aria-label="Next step">Next →</button>
+    <button id="play" type="button" aria-label="Toggle autoplay">▶ Play</button>
+    <span id="playState" class="play-state">paused · 4s per step</span>
+    <div id="dots" class="dots" role="tablist" aria-label="Jump to step"></div>
+  </div>
+</main>
+
+<footer>
+  MIT · v0.2.0 Phase H · keys: <span class="kbd">←</span><span class="kbd">→</span> nav, <span class="kbd">space</span> play, <span class="kbd">esc</span> stop · <a href="https://github.com/aimerdoux/wavex-os">github.com/aimerdoux/wavex-os</a>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  const STEPS = [
+    {
+      title: "Start — pick a company name",
+      img: "images/wizard/01-welcome.png",
+      caption: "Pick a name, or resume a draft. Everything from this point is wired to a real Paperclip runtime once you activate."
+    },
+    {
+      title: "Pillar 1 — Who you are",
+      img: "images/wizard/02-pillar-1-who.png",
+      caption: "Tell the wizard what you're building in plain text. A T2 enrichment pass infers the 10 fields you'd otherwise have to type yourself."
+    },
+    {
+      title: "Pillar 1 confirm — review what was inferred",
+      img: "images/wizard/03-pillar-1-confirm.png",
+      caption: "Review what was inferred and correct anything. The wizard signs the result and persists it so you can resume from this exact point."
+    },
+    {
+      title: "Pillar 2 — Setup verification",
+      img: "images/wizard/04-pillar-2-verify.png",
+      caption: "Probes your local Claude CLI + plan tier so the swarm planner knows the token budget. Defaults to Max 5×."
+    },
+    {
+      title: "Pillar 3 — Product state",
+      img: "images/wizard/05-pillar-3-product-state.png",
+      caption: "Pre-product / live customers / 10K-100K MRR / etc. Drives the matrix-based template selection — your stage determines which agents get hired."
+    },
+    {
+      title: "Pillar 4 — GTM motion",
+      img: "images/wizard/06-pillar-4-gtm.png",
+      caption: "Lead sources × sales motion → KPI tree shape. The wizard later instantiates the KPIs your CRO, CMO, and CFO will actually be measured on."
+    },
+    {
+      title: "Pillar 5 — Comms",
+      img: "images/wizard/07-pillar-5-comms.png",
+      caption: "Telegram, Slack, email — pick where board signals land. The agents will route urgent items here in production."
+    },
+    {
+      title: "Phase 2 — Connectors",
+      img: "images/wizard/08-phase-2-connectors.png",
+      caption: "Decision matrix recommends required + suggested integrations based on your pillar answers. You can defer any of them and add later."
+    },
+    {
+      title: "Credential Concierge",
+      img: "images/wizard/09-credential-concierge.png",
+      caption: "Paste OAuth tokens now, or click Skip per-connector. The vault encrypts everything before it hits disk — plaintext never persists."
+    },
+    {
+      title: "Phase 3 — Swarm",
+      img: "images/wizard/10-phase-3-swarm.png",
+      caption: "Reactflow org chart of your generated roster. Drag, swap templates per slot, add specialist agents under any chief. The kernel pair (CEO + Chief of Staff) is auto-injected."
+    },
+    {
+      title: "Phase 4 — Workflow",
+      img: "images/wizard/11-phase-4-workflow.png",
+      caption: "Each agent's initial workload + bundle allocation. The CEO + Chief of Staff loop adds new workflows on the fly once the company is live."
+    },
+    {
+      title: "Finalize — Imprint + Monte Carlo",
+      img: "images/wizard/12-finalize.png",
+      caption: "Click \"Finalize + sign\" — the simulator projects KPI movement against your goal over N cycles, then signs the company manifest and writes everything under ~/.wavex-os/instances/."
+    },
+    {
+      title: "Summary before inception",
+      img: "images/wizard/12b-finalize-after-sign.png",
+      caption: "Post-sign view: imprint review + signed manifest summary. The \"Activate fleet\" button enables once the signature lands. Last inspection point before agents go live on Paperclip."
+    },
+    {
+      title: "Mission Control — Paperclip live",
+      img: "images/wizard/13-mission-control.png",
+      caption: "Activate hands the 35-agent fleet off to the running Paperclip instance and lands you here: KPI scoreboard + live fleet graph (reactflow, polls every 8s). Click any agent to see runs, comments, budget."
+    }
+  ];
+
+  const PLAY_INTERVAL_MS = 4000;
+
+  const titleEl = document.getElementById("title");
+  const captionEl = document.getElementById("caption");
+  const currentEl = document.getElementById("current");
+  const totalEl = document.getElementById("total");
+  const stageEl = document.getElementById("stage");
+  const imgEl = document.getElementById("screenshot");
+  const prevBtn = document.getElementById("prev");
+  const nextBtn = document.getElementById("next");
+  const playBtn = document.getElementById("play");
+  const playStateEl = document.getElementById("playState");
+  const progressEl = document.getElementById("progress");
+  const dotsEl = document.getElementById("dots");
+
+  let index = 0;
+  let playing = false;
+  let timer = null;
+
+  totalEl.textContent = String(STEPS.length);
+
+  for (let i = 0; i < STEPS.length; i++) {
+    const b = document.createElement("button");
+    b.className = "dot";
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-label", `Go to step ${i + 1}`);
+    b.addEventListener("click", () => { goTo(i); });
+    dotsEl.appendChild(b);
+  }
+
+  function render() {
+    const s = STEPS[index];
+    titleEl.textContent = s.title;
+    captionEl.textContent = s.caption;
+    currentEl.textContent = String(index + 1);
+    progressEl.style.width = ((index + 1) / STEPS.length * 100).toFixed(1) + "%";
+
+    stageEl.classList.add("is-loading");
+    imgEl.alt = s.title;
+    imgEl.onload = () => stageEl.classList.remove("is-loading");
+    imgEl.onerror = () => stageEl.classList.remove("is-loading");
+    imgEl.src = s.img;
+
+    prevBtn.disabled = index === 0;
+    nextBtn.disabled = index === STEPS.length - 1 && !playing;
+    nextBtn.textContent = index === STEPS.length - 1 ? "Done" : "Next →";
+
+    const dots = dotsEl.querySelectorAll(".dot");
+    dots.forEach((d, i) => {
+      d.classList.toggle("is-active", i === index);
+      d.classList.toggle("is-past", i < index);
+    });
+
+    // Preload neighbors for snappy nav.
+    [index - 1, index + 1].forEach((n) => {
+      if (n >= 0 && n < STEPS.length) {
+        const p = new Image();
+        p.src = STEPS[n].img;
+      }
+    });
+
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, "", "#step-" + (index + 1));
+    }
+  }
+
+  function goTo(i) {
+    if (i < 0 || i >= STEPS.length) return;
+    index = i;
+    render();
+  }
+
+  function next() {
+    if (index < STEPS.length - 1) {
+      goTo(index + 1);
+    } else if (playing) {
+      stopPlay();
+    }
+  }
+
+  function prev() { goTo(index - 1); }
+
+  function startPlay() {
+    if (playing) return;
+    playing = true;
+    playBtn.textContent = "⏸ Pause";
+    playStateEl.textContent = "playing · 4s per step";
+    playStateEl.classList.add("is-playing");
+    timer = setInterval(() => {
+      if (index >= STEPS.length - 1) {
+        stopPlay();
+        return;
+      }
+      goTo(index + 1);
+    }, PLAY_INTERVAL_MS);
+  }
+
+  function stopPlay() {
+    if (!playing) return;
+    playing = false;
+    playBtn.textContent = "▶ Play";
+    playStateEl.textContent = "paused · 4s per step";
+    playStateEl.classList.remove("is-playing");
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  function togglePlay() { playing ? stopPlay() : startPlay(); }
+
+  prevBtn.addEventListener("click", () => { stopPlay(); prev(); });
+  nextBtn.addEventListener("click", () => { stopPlay(); next(); });
+  playBtn.addEventListener("click", togglePlay);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { stopPlay(); prev(); }
+    else if (e.key === "ArrowRight") { stopPlay(); next(); }
+    else if (e.key === " " || e.code === "Space") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "Escape") { stopPlay(); }
+  });
+
+  // Deep-link support: #step-5 jumps directly.
+  const m = /^#step-(\d+)$/.exec(window.location.hash || "");
+  if (m) {
+    const n = parseInt(m[1], 10) - 1;
+    if (n >= 0 && n < STEPS.length) index = n;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

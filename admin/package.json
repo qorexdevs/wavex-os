@@ -1,0 +1,26 @@
+{
+  "name": "@wavex-os/admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WaveX OS Meta Mission Control — operator-facing dashboard for monitoring customer subscriptions, optimizer runs, and the injection queue.",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9.3.1",
+    "@supabase/supabase-js": "^2.45.0",
+    "fastify": "^4.28.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -17,6 +17,7 @@ import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
 import { bridgeAgents } from "../bridge/finalize-bridge.js";
 import { handoffToPaperclip } from "../bridge/paperclip-handoff.js";
+import { ignite } from "../bridge/ignition.js";
 
 function authReq(req: FastifyRequest) {
   return { method: req.method, headers: req.headers as Record<string, string> };
@@ -106,12 +107,25 @@ export function registerActivateRoute(app: FastifyInstance): void {
         errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
       }));
 
+      // Phase G — Ignition. Best-effort; does not fail activate. See
+      // docs/IGNITION.md for the design.
+      const ignition = await ignite(manifest, companyId, handoff).catch((e) => ({
+        status: "deferred" as const,
+        agents_working: 0,
+        workflows_queued: 0,
+        goal_id: null,
+        errors: [{ step: "<bootstrap>", message: e instanceof Error ? e.message : String(e), ts: new Date().toISOString() }],
+        warnings: [],
+        ignition_state_path: "",
+      }));
+
       return {
         ok: true,
         inserted: { companies: result.companies, agents: result.agents },
         warnings: result.warnings,
         sha256: newHash,
         paperclipHandoff: handoff,
+        ignition,
       };
     } catch (e) {
       return reply.status(500).send({
@@ -119,5 +133,42 @@ export function registerActivateRoute(app: FastifyInstance): void {
         error: e instanceof Error ? e.message : String(e),
       });
     }
+  });
+
+  // Standalone re-ignite endpoint for partial-recovery: operator clicks
+  // "Ignite Fleet" in Mission Control when a prior activate's ignition
+  // step deferred/failed and they want to retry.
+  app.post("/api/instance/:companyId/ignite", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+
+    let manifest: CompanyManifest;
+    try {
+      const path = join(getOnboardingDir(companyId), "company.manifest.json");
+      const raw = await readFile(path, "utf8");
+      manifest = JSON.parse(raw) as CompanyManifest;
+    } catch {
+      return reply.status(404).send({ ok: false, error: "manifest not found" });
+    }
+
+    // Re-discover handoff state. The activate step persists it in the
+    // paperclip-handoff.json file; in a future commit we'll read it from
+    // there. For now we re-run handoff (idempotent).
+    const handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
+      enabled: true,
+      paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
+      paperclipCompanyId: null,
+      created: [],
+      skipped: [],
+      errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
+    }));
+
+    const ignition = await ignite(manifest, companyId, handoff);
+    return reply.send({ ok: true, ignition });
   });
 }

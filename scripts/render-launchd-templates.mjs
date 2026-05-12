@@ -42,6 +42,10 @@ async function loadConfig(configPath) {
   for (const k of ["companyId", "apiBase", "stateDir"]) {
     if (!cfg[k]) throw new Error(`config missing required key: ${k}`);
   }
+  // Phase G: optional new vars for inference-server + cloudflared + resource-sweep templates.
+  // Old templates do not reference these; new templates require them. We DON'T throw
+  // when missing — the substitution just leaves the literal `${VAR}` in the output,
+  // which the loader will surface as a permission/path error.
   return cfg;
 }
 
@@ -70,17 +74,38 @@ async function main() {
     throw new Error(`No .plist.tmpl files in ${templatesDir}`);
   }
 
+  // Phase G additions: WAVEX_OS_ROOT for inference-server + resource-sweep,
+  // and TUNNEL_HOSTNAME for cloudflared (optional).
+  const wavexOsRoot = (cfg.wavexOsRoot ?? REPO_ROOT).replace(/^~(?=$|\/)/, homedir());
+  const tunnelHostname = cfg.tunnelHostname ?? "api.wavex-os.com";
+
   const vars = {
     COMPANY_ID: cfg.companyId,
     API_BASE: cfg.apiBase.replace(/\/$/, ""),
     STATE_DIR: stateDir,
+    WAVEX_OS_ROOT: wavexOsRoot,
+    TUNNEL_HOSTNAME: tunnelHostname,
   };
 
+  // Warn if a template still has unsubstituted `${...}` placeholders after render.
+  const placeholderRe = /\$\{([A-Z_]+)\}/g;
+
+  let warnings = 0;
   for (const file of tmplFiles) {
     const tmpl = await fs.readFile(path.join(templatesDir, file), "utf8");
     const rendered = substitute(tmpl, vars);
     const outName = file.replace(/\.tmpl$/, "");
     const outPath = path.join(launchAgentsDir, outName);
+
+    // Detect unsubstituted vars and warn (not fatal — operator may have a
+    // template that intentionally uses a var we don't know about).
+    const leftover = new Set();
+    let m;
+    while ((m = placeholderRe.exec(rendered)) !== null) leftover.add(m[1]);
+    if (leftover.size > 0) {
+      console.warn(`  ! ${file}: unsubstituted vars: ${[...leftover].join(", ")}`);
+      warnings++;
+    }
 
     if (args.dryRun) {
       console.log(`[dry-run] would write ${outPath} (${rendered.length} bytes)`);
@@ -88,6 +113,9 @@ async function main() {
       await fs.writeFile(outPath, rendered, "utf8");
       console.log(`wrote ${outPath}`);
     }
+  }
+  if (warnings > 0) {
+    console.log(`\n${warnings} template(s) had unsubstituted vars. Check wavex-os.config.json.`);
   }
 
   if (!args.dryRun) {
