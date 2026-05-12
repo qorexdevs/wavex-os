@@ -589,6 +589,7 @@ export function OnboardingShell() {
       ) : !isFullScreenPhase ? (
       <ChatThread
         thread={state.thread}
+        onUncollapse={(id) => dispatch({ type: "UNCOLLAPSE_MESSAGE", id })}
         slotContext={{
           companyId,
           orgName: companyId ?? deriveSlug(state.draft.pillar1?.rawInput ?? ""),
@@ -864,7 +865,7 @@ interface SlotContext {
   onScopeDone: (mode: "full" | "focused", departments: Department[]) => void;
 }
 
-function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContext: SlotContext }) {
+function ChatThread({ thread, slotContext, onUncollapse }: { thread: ChatMessage[]; slotContext: SlotContext; onUncollapse: (id: string) => void }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -895,14 +896,14 @@ function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContex
     >
       <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {thread.map((m, i) => (
-          <ChatBubble key={m.id} message={m} slotContext={slotContext} active={i === activeIdx} />
+          <ChatBubble key={m.id} message={m} slotContext={slotContext} active={i === activeIdx} onUncollapse={onUncollapse} />
         ))}
       </div>
     </div>
   );
 }
 
-function ChatBubble({ message, slotContext, active }: { message: ChatMessage; slotContext: SlotContext; active: boolean }) {
+function ChatBubble({ message, slotContext, active, onUncollapse }: { message: ChatMessage; slotContext: SlotContext; active: boolean; onUncollapse: (id: string) => void }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
@@ -932,16 +933,32 @@ function ChatBubble({ message, slotContext, active }: { message: ChatMessage; sl
   }
 
   if (message.collapsed) {
+    // Card-bearing breadcrumbs (any slot that's editable) are clickable
+    // to re-expand. Pillar 1 confirm + Pillars 3/4/5 prompts. Other
+    // collapsed messages (text-only, thinking, transition-pill) stay
+    // static as visual history.
+    const editableKinds = new Set([
+      "pillar1-confirm", "pillar3-prompt", "pillar4-prompt", "pillar5-prompt", "scope-prompt", "connector-picker",
+    ]);
+    const editable = message.slot && editableKinds.has(message.slot.kind);
     return (
-      <div className="text-dim" style={{
-        fontSize: 11,
-        alignSelf: isUser ? "flex-end" : "flex-start",
-        padding: "0.2rem 0.6rem",
-        borderLeft: "2px solid var(--border)",
-        opacity: 0.55,
-        animation: "wavex-fade-in 250ms ease-out",
-      }}>
-        ✓ {message.text ? message.text.split("\n")[0].slice(0, 80) : "(handled)"}
+      <div
+        className="text-dim"
+        onClick={editable ? () => onUncollapse(message.id) : undefined}
+        title={editable ? "Click to redo this step (re-walks from here)" : undefined}
+        style={{
+          fontSize: 11,
+          alignSelf: isUser ? "flex-end" : "flex-start",
+          padding: "0.2rem 0.6rem",
+          borderLeft: "2px solid var(--border)",
+          opacity: 0.55,
+          animation: "wavex-fade-in 250ms ease-out",
+          cursor: editable ? "pointer" : "default",
+        }}
+        onMouseEnter={editable ? (e) => { e.currentTarget.style.opacity = "0.85"; } : undefined}
+        onMouseLeave={editable ? (e) => { e.currentTarget.style.opacity = "0.55"; } : undefined}
+      >
+        ✓ {message.text ? message.text.split("\n")[0].slice(0, 80) : "(handled)"}{editable ? " · redo" : ""}
       </div>
     );
   }

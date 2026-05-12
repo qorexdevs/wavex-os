@@ -82,6 +82,7 @@ export type Action =
   | { type: "ADD_MESSAGE"; message: Omit<ChatMessage, "id" | "ts"> & Partial<Pick<ChatMessage, "id" | "ts">> }
   | { type: "REPLACE_MESSAGE"; id: string; patch: Partial<ChatMessage> }
   | { type: "COLLAPSE_MESSAGE"; id: string }
+  | { type: "UNCOLLAPSE_MESSAGE"; id: string }
   | { type: "COLLAPSE_LAST_SLOT"; kind: ChatSlot["kind"] }
   | { type: "SET_PHASE"; phase: OnboardingPhase }
   | { type: "SET_DRAFT"; draft: Partial<OnboardingState["draft"]> }
@@ -142,6 +143,12 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
       return {
         ...state,
         thread: state.thread.map((m) => (m.id === action.id ? { ...m, collapsed: true } : m)),
+      };
+
+    case "UNCOLLAPSE_MESSAGE":
+      return {
+        ...state,
+        thread: state.thread.map((m) => (m.id === action.id ? { ...m, collapsed: false } : m)),
       };
 
     case "COLLAPSE_LAST_SLOT": {
