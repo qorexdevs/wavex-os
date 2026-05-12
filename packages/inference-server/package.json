@@ -1,0 +1,25 @@
+{
+  "name": "@wavex-os/inference-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mac-hosted Fastify inference proxy for Pool A (onboarding T2) + Pool C (Optimizer). Bound to 127.0.0.1; public surface via Cloudflare Tunnel.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.0",
+    "@supabase/supabase-js": "^2.46.1",
+    "fastify": "^4.29.0",
+    "ioredis": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.2"
+  }
+}

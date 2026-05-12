@@ -8,10 +8,12 @@ Consolidated from three knowledge-extraction captures done 2026-05-12 before wip
 - [`V2_CAPTURE_C_inference_server.md`](./V2_CAPTURE_C_inference_server.md) — Mac-as-server topology with concrete recommendations
 
 **Status (as of 2026-05-12):**
-- Sections A + B + C + D: **shipped to main** in commits `05765562` + the commit this doc is part of
+- Sections A + B + C + D: **shipped to main** in commits `05765562` + `e3fd7778`
 - Sections E1 + E2 decisions: **made** — formal C-Suite + collapse skill (E1), ship from Mac (E2)
+- **Phase G.1 + G.2 + G.3:** scaffold of inference server + System Reliability agent + 15-min resource sweep — shipped to main
 - Section F sequence (wipe + re-onboard): **pending operator authorization**
-- Section G (Liaison, F.3 slider, pricing wiring, Meta MC deploy): **deferred until after V2 fleet stabilizes**
+- Phase G.3.b (real Pool A wiring): pending
+- Phase F.4 (Liaison agent) + F.5 (Pool C generation): pending
 
 ---
 

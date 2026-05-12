@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wavex-os.inference-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-dimsu</string>
+    <string>/usr/local/bin/node</string>
+    <string>${WAVEX_OS_ROOT}/packages/inference-server/dist/index.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>WAVEX_INFERENCE_PORT</key>
+    <string>8787</string>
+    <key>WAVEX_INFERENCE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>WAVEX_OS_ROOT</key>
+    <string>${WAVEX_OS_ROOT}</string>
+    <key>STATE_DIR</key>
+    <string>${STATE_DIR}</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>LOG_LEVEL</key>
+    <string>info</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>${WAVEX_OS_ROOT}/packages/inference-server</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${STATE_DIR}/inference-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>${STATE_DIR}/inference-server.log</string>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>65536</integer>
+  </dict>
+</dict>
+</plist>
