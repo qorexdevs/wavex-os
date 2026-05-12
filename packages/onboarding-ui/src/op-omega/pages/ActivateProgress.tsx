@@ -14,10 +14,17 @@ import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 
 type SlotStatus = "pending" | "hiring" | "hired" | "already_mapped" | "skipped" | "failed";
+type SwarmStatus = "active" | "standby" | "parked" | "disabled" | "pending";
 
 interface SlotRow {
   slot: string;
   status: SlotStatus;
+  /** Status from the wavex swarm manifest — distinguishes operator-active
+   *  agents from the ones parked by the sub-fleet scope filter (or by the
+   *  swarm generator's own demote logic). All slots get mirrored to Paperclip
+   *  regardless, but the activate screen should reflect what's actually
+   *  running on the wavex side. */
+  swarmStatus: SwarmStatus;
   reason?: string;
   error?: string;
 }
@@ -42,7 +49,11 @@ function paperclipUiUrl(apiUrl: string | null): string {
 export function ActivateProgress({ companyId, swarmManifest }: Props) {
   const navigate = useNavigate();
   const [rows, setRows] = useState<SlotRow[]>(() =>
-    Object.keys(swarmManifest.agents).map((slot) => ({ slot, status: "pending" as const })),
+    Object.entries(swarmManifest.agents).map(([slot, agent]) => ({
+      slot,
+      status: "pending" as const,
+      swarmStatus: ((agent as { status?: string }).status ?? "pending") as SwarmStatus,
+    })),
   );
   const [error, setError] = useState<string | null>(null);
   const [globalErrors, setGlobalErrors] = useState<GlobalError[]>([]);
@@ -66,9 +77,12 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
           const r = await opOmegaOnboardingApi.getHandoffStatus(companyId);
           if (r.progress) {
             if (r.progress.paperclipUrl) setPaperclipUrl(r.progress.paperclipUrl);
-            setRows(r.progress.slots.map((s) => ({
-              slot: s.slot,
-              status: s.status as SlotStatus,
+            const progressMap = new Map(r.progress.slots.map((s) => [s.slot, s.status as SlotStatus]));
+            // Functional update: keep swarmStatus (set from manifest at
+            // mount), only update the Paperclip mirror status.
+            setRows((prev) => prev.map((row) => ({
+              ...row,
+              status: progressMap.get(row.slot) ?? row.status,
             })));
           }
         } catch { /* polling error — silent retry */ }
@@ -139,6 +153,13 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
   const totalCount = rows.length;
   const alreadyMappedAll = done && handoffEnabled && rows.every((r) => r.status === "already_mapped");
 
+  // Active vs parked breakdown from the SWARM manifest (independent of
+  // the Paperclip mirror status). Parked agents are mirrored too — they
+  // just don't run on the wavex side until the operator unparks them.
+  const activeOnWavex = rows.filter((r) => r.swarmStatus === "active" || r.swarmStatus === "standby").length;
+  const parkedOnWavex = rows.filter((r) => r.swarmStatus === "parked" || r.swarmStatus === "disabled").length;
+  const hasFocusedScope = parkedOnWavex > 0;
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 90,
@@ -151,12 +172,36 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: "0.35rem" }}>
             {alreadyMappedAll ? "Already activated" : failedCount > 0 ? "Activation issues" : "Hiring your team"}
           </div>
-          <div className="text-dim" style={{ fontSize: 12 }}>
-            {alreadyMappedAll
-              ? `All ${totalCount} agents already live in Paperclip from a prior activate`
-              : `${mirroredCount} of ${totalCount} ${paperclipUrl ? "mirrored to Paperclip" : "activated"}`}
-            {failedCount > 0 && ` · ${failedCount} failed`}
+          <div className="text-dim" style={{ fontSize: 12, lineHeight: 1.55 }}>
+            {/* Line 1: wavex-side active/parked breakdown — what the
+             *  operator's swarm actually runs locally. */}
+            {hasFocusedScope ? (
+              <>
+                <span style={{ color: "var(--accent)" }}>{activeOnWavex} active</span>
+                {" · "}
+                <span>{parkedOnWavex} parked</span>
+              </>
+            ) : (
+              <span style={{ color: "var(--accent)" }}>{activeOnWavex} active</span>
+            )}
+            {paperclipUrl && (
+              <>
+                {" · "}
+                <span>{mirroredCount} of {totalCount} mirrored to Paperclip</span>
+              </>
+            )}
+            {failedCount > 0 && (
+              <>
+                {" · "}
+                <span style={{ color: "var(--warning)" }}>{failedCount} failed</span>
+              </>
+            )}
           </div>
+          {alreadyMappedAll && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: "0.25rem", opacity: 0.7 }}>
+              Already live in Paperclip from a prior activate
+            </div>
+          )}
         </div>
 
         {/* Surface global handoff errors (e.g. <bootstrap> from the
@@ -197,7 +242,9 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
           gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: "0.35rem 0.85rem",
         }}>
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const isParked = r.swarmStatus === "parked" || r.swarmStatus === "disabled";
+            return (
             <div
               key={r.slot}
               style={{
@@ -206,13 +253,16 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
                 gap: "0.4rem",
                 fontSize: 11,
                 color: r.status === "pending" ? "var(--text-dim)" : "var(--text)",
+                opacity: isParked ? 0.45 : 1,
               }}
-              title={r.error}
+              title={isParked ? `${r.slot} — parked (outside scope or auto-demoted)` : r.error}
             >
-              <SlotIcon status={r.status} />
+              <SlotIcon status={r.status} swarmStatus={r.swarmStatus} />
               <code style={{ fontSize: 10 }}>{r.slot}</code>
+              {isParked && <span style={{ fontSize: 9, color: "var(--text-dim)", marginLeft: "auto" }}>parked</span>}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {error && (
@@ -245,7 +295,13 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
   );
 }
 
-function SlotIcon({ status }: { status: SlotStatus }) {
+function SlotIcon({ status, swarmStatus }: { status: SlotStatus; swarmStatus?: SwarmStatus }) {
+  // Parked / disabled on wavex side → ↷ regardless of mirror status.
+  // Paperclip got the agent but it won't run on the operator's swarm
+  // until they unpark it from Mission Control.
+  if (swarmStatus === "parked" || swarmStatus === "disabled") {
+    return <span style={{ color: "var(--text-dim)" }}>↷</span>;
+  }
   if (status === "pending") return <span style={{ color: "var(--text-dim)" }}>○</span>;
   if (status === "hiring") return <span className="wavex-pulse-dot" style={{ color: "var(--warning)" }}>●</span>;
   if (status === "hired") return <span style={{ color: "var(--accent)" }}>✓</span>;
