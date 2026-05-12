@@ -26,8 +26,10 @@ import { Pillar4PromptCard } from "../components/inline-cards/Pillar4PromptCard"
 import { Pillar5PromptCard } from "../components/inline-cards/Pillar5PromptCard";
 import { ConnectorPickerCard } from "../components/inline-cards/ConnectorPickerCard";
 import { CredentialDrawer } from "../components/CredentialDrawer";
+import { SwarmStudio } from "./SwarmStudio";
+import { startWorkflowPrefetch } from "../state/workflow-prefetch";
 import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
-import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response } from "@op-omega/plugin-onboarding";
+import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
  *  If yes we'll use the hostname as the slug seed; otherwise first 3 words. */
@@ -329,6 +331,56 @@ export function OnboardingShell() {
     });
   }, []);
 
+  /** Phase 3 swarm generation — fires when state transitions to
+   *  swarm_transition. On completion, dispatches SWARM_LOADED which moves
+   *  the phase to swarm_studio (full-screen reveal). */
+  const swarmRanRef = useRef(false);
+  useEffect(() => {
+    if (state.phase.kind !== "swarm_transition") return;
+    if (!companyId || swarmRanRef.current) return;
+    swarmRanRef.current = true;
+    void (async () => {
+      try {
+        const loaded = await opOmegaOnboardingApi.loadSwarm(companyId);
+        let manifest: SwarmManifest | null = loaded.exists ? (loaded.manifest as SwarmManifest) : null;
+        if (!manifest) {
+          const generated = await opOmegaOnboardingApi.generateSwarm(companyId, t0);
+          manifest = generated.manifest;
+        }
+        dispatch({ type: "SWARM_LOADED", manifest });
+      } catch (e) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: `Couldn't generate swarm manifest: ${e instanceof Error ? e.message : String(e)}`,
+          },
+        });
+      }
+    })();
+  }, [state.phase, companyId, t0]);
+
+  const handleSwarmConfirmed = useCallback((manifest: SwarmManifest) => {
+    dispatch({ type: "SWARM_CONFIRMED", manifest });
+    if (companyId) {
+      // Fire the workflow prefetch in the background — by the time the
+      // Imprint Theater finishes Act 3, this should be on disk and the
+      // patched finalize route reuses it instead of regenerating.
+      startWorkflowPrefetch(companyId, t0).catch(() => { /* errors surface in finalize */ });
+    }
+  }, [companyId, t0]);
+
+  const handleSwarmBackToChat = useCallback(() => {
+    if (!state.draft.swarmManifest) {
+      dispatch({ type: "SET_PHASE", phase: { kind: "credentials", drawerOpen: false } });
+      return;
+    }
+    // Stash the studio behind the chat — operator can re-open by sending
+    // any message. For simplicity, just nudge them back into the studio
+    // state if they had a manifest loaded.
+    dispatch({ type: "SET_PHASE", phase: { kind: "swarm_studio", manifest: state.draft.swarmManifest } });
+  }, [state.draft.swarmManifest]);
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -362,6 +414,14 @@ export function OnboardingShell() {
           companyId={companyId}
           onDone={handleCredentialsDone}
           onCancel={() => dispatch({ type: "SET_PHASE", phase: { kind: "connectors", loading: false, manifest: state.draft.connectorManifest } })}
+        />
+      )}
+      {state.phase.kind === "swarm_studio" && companyId && (
+        <SwarmStudio
+          companyId={companyId}
+          manifest={state.phase.manifest}
+          onConfirmed={() => handleSwarmConfirmed(state.phase.kind === "swarm_studio" ? state.phase.manifest : state.draft.swarmManifest!)}
+          onBackToChat={handleSwarmBackToChat}
         />
       )}
     </div>

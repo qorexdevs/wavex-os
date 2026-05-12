@@ -33,6 +33,22 @@ async function persistSwarmManifest(companyId: string, swarm: unknown): Promise<
   await writeFile(join(dir, "swarm_manifest.yaml"), yaml.dump(swarm), "utf8");
 }
 
+/** Load workflow_manifest.json if it exists AND was written within
+ *  freshnessMs ago. Used by finalize to consume the chat-first shell's
+ *  prefetched T2 workflow instead of regenerating deterministically. */
+async function loadFreshWorkflowManifest(companyId: string, freshnessMs: number): Promise<WorkflowManifest | null> {
+  const { readFile, stat } = await import("node:fs/promises");
+  const path = join(getOnboardingDir(companyId), "workflow_manifest.json");
+  try {
+    const s = await stat(path);
+    if (Date.now() - s.mtimeMs > freshnessMs) return null;
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw) as WorkflowManifest;
+  } catch {
+    return null;
+  }
+}
+
 const generateConnectorSchema = z.object({
   companyId: z.string().min(1),
   skipInference: z.boolean().optional(),
@@ -243,17 +259,25 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
       return reply.status(409).send({ error: "connector and swarm manifests required before finalize" });
     }
 
-    // Workflow manifest is required by assembleCompanyManifest; regenerate
-    // deterministically from current responses + manifests so finalize is
-    // single-call from the UI's perspective.
+    // Workflow manifest is required by assembleCompanyManifest. If the chat-
+    // first shell prefetched a T2-enriched workflow during the Swarm Studio
+    // interaction window, reuse it instead of running the deterministic
+    // regen — saves the operator 1-3 min of waiting during the Imprint
+    // Theater. Freshness window: 10 minutes. Stale or missing → fall through
+    // to the existing deterministic regeneration path.
     let workflow: WorkflowManifest;
     try {
-      const wf = await generateWorkflowManifest({
-        companyId: parsed.data.companyId,
-        responses, connectorManifest: connector, swarmManifest: swarm,
-        skipInference: true, bypassBudgetCheck: true,
-      });
-      workflow = wf.manifest;
+      const fresh = await loadFreshWorkflowManifest(parsed.data.companyId, 10 * 60 * 1000);
+      if (fresh) {
+        workflow = fresh;
+      } else {
+        const wf = await generateWorkflowManifest({
+          companyId: parsed.data.companyId,
+          responses, connectorManifest: connector, swarmManifest: swarm,
+          skipInference: true, bypassBudgetCheck: true,
+        });
+        workflow = wf.manifest;
+      }
     } catch (e) {
       return bodyError(reply, e);
     }
