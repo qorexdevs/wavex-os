@@ -2,7 +2,7 @@
  * Pool A — onboarding T2 enrichment.
  *
  * Anonymous, rate-limited. Per V2_CAPTURE_C §4:
- *   - 20 T2 calls per install_id, lifetime
+ *   - 20 T2 calls per install_id, lifetime (sliding 30-day window)
  *   - 5 per hour per install_id
  *   - 200 T2 calls / hour per IP /24
  *   - 3 install_ids per email per 30 days
@@ -11,15 +11,29 @@
  *
  * Endpoints:
  *   POST /v1/onboarding/session
- *     body: { email, install_id }
- *     returns: { token } (HS256, 30min)
+ *     body: { email, install_id? }
+ *     returns: { token, install_id, expires_in }
  *
  *   POST /v1/onboarding/t2
  *     headers: Authorization: Bearer <session token>
- *     body: { prompt, max_output_tokens? }
+ *     body: { prompt, max_output_tokens?, model? }
  *     returns: { content, model, usage }
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
+import { incrementCounter, getCounter } from "../lib/rate-limit.js";
+import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
+
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const POOL_A_DAILY_CAP_CENTS = parseInt(process.env.POOL_A_DAILY_CAP_CENTS ?? "1000", 10);
+const DEFAULT_MODEL = process.env.WAVEX_POOL_A_MODEL ?? "claude-sonnet-4-6";
+const MAX_OUTPUT_TOKENS_HARD = 8000;
+
+const anthropic = ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null;
+const supabase = SUPABASE_URL && SUPABASE_SVC ? createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } }) : null;
 
 interface SessionBody {
   email?: string;
@@ -29,49 +43,221 @@ interface SessionBody {
 interface T2Body {
   prompt?: string;
   max_output_tokens?: number;
+  model?: string;
+}
+
+function ip24(req: FastifyRequest): string {
+  const ip = req.ip ?? "0.0.0.0";
+  // IPv4 only — IPv6 gets the whole address as the key (good enough for V2)
+  const m = ip.match(/^(\d+\.\d+\.\d+)\./);
+  return m ? `${m[1]}.0/24` : ip;
+}
+
+/** Per-token cost calculation, blended. Pulled from V2_CAPTURE_C §6. */
+function calcCostCents(model: string, usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }): number {
+  // Sonnet 4.6 rates: $3/M input, $15/M output, $0.30/M cache-read, $3.75/M cache-create
+  if (model.includes("haiku")) {
+    return Math.round(
+      (usage.input_tokens * 0.001 + usage.output_tokens * 0.005) / 10
+    ); // cents = $/100; very rough
+  }
+  // Sonnet default
+  return Math.round(
+    (usage.input_tokens * 0.0003 + usage.output_tokens * 0.0015 +
+     (usage.cache_read_input_tokens ?? 0) * 0.00003 +
+     (usage.cache_creation_input_tokens ?? 0) * 0.000375) * 100
+  );
+}
+
+async function writeLedger(row: {
+  pool: "A";
+  install_id: string;
+  email: string;
+  ip_24: string;
+  request_id: string | null;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  cost_cents: number;
+  status: "ok" | "rate_limited" | "error" | "cap_hit";
+  error_class?: string;
+}): Promise<void> {
+  if (!supabase) return;
+  // Fire-and-forget; we don't block the response.
+  void supabase
+    .schema("wavex_os")
+    .from("usage_ledger")
+    .insert(row)
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error("usage_ledger insert failed", r.error);
+    });
+}
+
+async function poolABurnTodayCents(): Promise<number> {
+  if (!supabase) return 0;
+  const { data } = await supabase.rpc("wavex_os_pool_a_burn_today");
+  return typeof data === "number" ? data : 0;
 }
 
 export async function registerOnboarding(app: FastifyInstance): Promise<void> {
+  // ── POST /v1/onboarding/session ──────────────────────────────────────
   app.post<{ Body: SessionBody }>(
     "/v1/onboarding/session",
-    async (req: FastifyRequest<{ Body: SessionBody }>, reply: FastifyReply) => {
+    async (req, reply: FastifyReply) => {
       const { email, install_id } = req.body ?? {};
-      if (!email || !install_id) {
-        return reply.code(400).send({ error: "missing_fields", required: ["email", "install_id"] });
+      if (!email) return reply.code(400).send({ error: "missing_fields", required: ["email"] });
+      // Basic email shape check
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return reply.code(400).send({ error: "invalid_email" });
       }
-      // TODO Phase G.3.b — issue actual HS256 token, enforce per-email rate limit.
-      // Stub: return placeholder token so the wizard's plumbing can be exercised.
-      return reply.send({
-        token: `stub_${install_id}_${Date.now()}`,
-        expires_in: 1800,
-        note: "Phase G.3 stub — real JWT issuance lands in G.3.b",
-      });
+
+      const finalInstallId = install_id ?? randomInstallId();
+
+      // Per-email throttle: 3 install_ids per email per 30 days
+      const emailKey = `pool-a:email-installs:${email.toLowerCase()}`;
+      const emailCount = await incrementCounter(emailKey, 30 * 24 * 3600);
+      if (emailCount > 3) {
+        return reply.code(429).send({
+          error: "email_rate_limit",
+          message: "More than 3 install_ids per email per 30 days. If this is a mistake, email support.",
+        });
+      }
+
+      try {
+        const token = issueSessionToken(finalInstallId, email);
+        return reply.send({ token, install_id: finalInstallId, expires_in: 30 * 60 });
+      } catch (e) {
+        return reply.code(503).send({ error: "session_signing_unavailable", message: (e as Error).message });
+      }
     },
   );
 
+  // ── POST /v1/onboarding/t2 ───────────────────────────────────────────
   app.post<{ Body: T2Body }>(
     "/v1/onboarding/t2",
-    async (req: FastifyRequest<{ Body: T2Body }>, reply: FastifyReply) => {
+    async (req, reply) => {
       const auth = req.headers.authorization;
       if (!auth || !auth.startsWith("Bearer ")) {
         return reply.code(401).send({ error: "missing_bearer" });
       }
+      const token = auth.slice(7);
+      const session = verifySessionToken(token);
+      if (!session) {
+        return reply.code(401).send({ error: "invalid_or_expired_token" });
+      }
 
-      // TODO Phase G.3.b:
-      //   1. Verify JWT signature + exp
-      //   2. Check Redis: per-install-id lifetime + hourly caps
-      //   3. Check Redis: per-IP/24 hourly cap
-      //   4. Check global ledger for $10/day Pool A cap
-      //   5. Call Anthropic with operator's OAuth token
-      //   6. Stream response
-      //   7. Async: write to wavex_os.usage_ledger
-      //
-      // For now, return 503 so callers exercise the T1 deterministic fallback path.
-      return reply.code(503).send({
-        error: "pool_a_not_yet_wired",
-        message: "Pool A inference will be wired in Phase G.3.b. Wizard should fall back to T1 deterministic mode per V2_CAPTURE_C §5.",
-        retry_after: 0,
-      });
+      const { prompt, max_output_tokens, model } = req.body ?? {};
+      if (!prompt || typeof prompt !== "string") {
+        return reply.code(400).send({ error: "missing_prompt" });
+      }
+      if (prompt.length > 30000) {
+        return reply.code(413).send({ error: "prompt_too_long", limit: 30000 });
+      }
+
+      // Rate limits
+      const installLifetimeKey = `pool-a:install-lifetime:${session.install_id}`;
+      const installHourKey = `pool-a:install-hour:${session.install_id}:${Math.floor(Date.now() / 3600000)}`;
+      const ipKey = `pool-a:ip-hour:${ip24(req)}:${Math.floor(Date.now() / 3600000)}`;
+
+      const lifetimeCount = await getCounter(installLifetimeKey);
+      if (lifetimeCount >= 20) {
+        await writeLedger({
+          pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
+          request_id: null, model: model ?? DEFAULT_MODEL,
+          prompt_tokens: 0, completion_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0,
+          cost_cents: 0, status: "rate_limited", error_class: "install_lifetime",
+        });
+        return reply.code(429).send({ error: "install_lifetime_cap", limit: 20 });
+      }
+      const hourCount = await getCounter(installHourKey);
+      if (hourCount >= 5) {
+        return reply.code(429).send({ error: "install_hour_cap", limit: 5, retry_after_sec: 3600 });
+      }
+      const ipCount = await getCounter(ipKey);
+      if (ipCount >= 200) {
+        return reply.code(429).send({ error: "ip_hour_cap", limit: 200 });
+      }
+
+      // Daily $10 cap
+      const burn = await poolABurnTodayCents();
+      if (burn >= POOL_A_DAILY_CAP_CENTS) {
+        await writeLedger({
+          pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
+          request_id: null, model: model ?? DEFAULT_MODEL,
+          prompt_tokens: 0, completion_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0,
+          cost_cents: 0, status: "cap_hit", error_class: "daily_cap",
+        });
+        return reply.code(503).send({
+          error: "pool_a_daily_cap_hit",
+          message: "Pool A has reached its daily cap. Wizard should fall back to T1 deterministic mode.",
+          retry_after_sec: 3600,
+        });
+      }
+
+      // Anthropic call
+      if (!anthropic) {
+        return reply.code(503).send({
+          error: "anthropic_not_configured",
+          message: "ANTHROPIC_API_KEY not set on the inference server.",
+        });
+      }
+
+      // Counter increments BEFORE the call (so a stuck call still counts)
+      await incrementCounter(installLifetimeKey, 30 * 24 * 3600);
+      await incrementCounter(installHourKey, 3600);
+      await incrementCounter(ipKey, 3600);
+
+      const chosenModel = model ?? DEFAULT_MODEL;
+      const maxOut = Math.min(max_output_tokens ?? 4000, MAX_OUTPUT_TOKENS_HARD);
+
+      try {
+        const resp = await anthropic.messages.create({
+          model: chosenModel,
+          max_tokens: maxOut,
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        const content = resp.content.map((c) => c.type === "text" ? c.text : "").join("");
+        const cost = calcCostCents(chosenModel, {
+          input_tokens: resp.usage.input_tokens,
+          output_tokens: resp.usage.output_tokens,
+          cache_read_input_tokens: (resp.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens,
+          cache_creation_input_tokens: (resp.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens,
+        });
+
+        await writeLedger({
+          pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
+          request_id: resp.id, model: chosenModel,
+          prompt_tokens: resp.usage.input_tokens,
+          completion_tokens: resp.usage.output_tokens,
+          cache_read_tokens: (resp.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0,
+          cache_creation_tokens: (resp.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0,
+          cost_cents: cost,
+          status: "ok",
+        });
+
+        return reply.send({
+          content,
+          model: chosenModel,
+          usage: resp.usage,
+          request_id: resp.id,
+        });
+      } catch (e) {
+        const err = e as { status?: number; message?: string };
+        await writeLedger({
+          pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
+          request_id: null, model: chosenModel,
+          prompt_tokens: 0, completion_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0,
+          cost_cents: 0, status: "error", error_class: err.status ? `http_${err.status}` : "unknown",
+        });
+        return reply.code(err.status ?? 502).send({
+          error: "anthropic_call_failed",
+          message: err.message ?? "unknown",
+          status: err.status,
+        });
+      }
     },
   );
 }
