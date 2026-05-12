@@ -32,7 +32,6 @@ import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
 import { Pricing } from "../pricing/Pricing";
-import { startWorkflowPrefetch } from "../state/workflow-prefetch";
 import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
 
@@ -307,6 +306,10 @@ export function OnboardingShell() {
           const generated = await opOmegaOnboardingApi.generateConnector(companyId, t0);
           manifest = generated.manifest;
         }
+        // Collapse the Phase 2 thinking bubble so we don't end up with
+        // two T2 progress indicators racing for the global inference
+        // status (the T2ProgressIndicator polls one endpoint).
+        dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
         dispatch({ type: "CONNECTORS_LOADED", manifest });
         dispatch({
           type: "ADD_MESSAGE",
@@ -380,6 +383,10 @@ export function OnboardingShell() {
           const generated = await opOmegaOnboardingApi.generateSwarm(companyId, t0);
           manifest = generated.manifest;
         }
+        // Collapse the Phase 3 thinking bubble before transitioning to
+        // the Swarm Studio full-screen reveal. Same reason as Phase 2:
+        // avoids two T2 progress indicators racing.
+        dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
         dispatch({ type: "SWARM_LOADED", manifest });
       } catch (e) {
         dispatch({
@@ -395,13 +402,11 @@ export function OnboardingShell() {
 
   const handleSwarmConfirmed = useCallback((manifest: SwarmManifest) => {
     dispatch({ type: "SWARM_CONFIRMED", manifest });
-    if (companyId) {
-      // Fire the workflow prefetch in the background — by the time the
-      // Imprint Theater finishes Act 3, this should be on disk and the
-      // patched finalize route reuses it instead of regenerating.
-      startWorkflowPrefetch(companyId, t0).catch(() => { /* errors surface in finalize */ });
-    }
-  }, [companyId, t0]);
+    // Workflow generation now runs inside ImprintTheater so it has the
+    // exact swarm manifest in scope and isn't racing the Studio→Theater
+    // transition. See packages/.../pages/ImprintTheater.tsx for the
+    // serial workflow → finalize → imprint pipeline.
+  }, []);
 
   const handleSwarmBackToChat = useCallback(() => {
     if (!state.draft.swarmManifest) {

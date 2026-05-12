@@ -41,16 +41,33 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
   const [showFullManifest, setShowFullManifest] = useState(false);
   const finalizeRanRef = useRef(false);
 
-  // Fire finalize on mount. The route consumes the prefetched workflow
-  // manifest if it's fresh (see packages/op-omega-server/src/routes/phases.ts).
+  // Fire workflow + finalize serially on mount. Workflow generation has
+  // to happen with real T2 BEFORE finalize so the workflow manifest
+  // reflects operator-specific tuning (t2_patches). Doing it here in the
+  // Theater (rather than relying on a prefetch race from SwarmStudio's
+  // confirm) makes the behavior deterministic: real T2 every time skip-
+  // inference isn't set. The "Preparing your launch" screen stays up for
+  // workflow + imprint combined.
   useEffect(() => {
     if (finalizeRanRef.current) return;
     finalizeRanRef.current = true;
     void (async () => {
       try {
+        const skipInference = isT0FastMode();
+        // Phase 4 — real T2 workflow generation (operator-specific patches).
+        // bypassBudgetCheck:true skips the vendored generator's pre-flight
+        // probe against Paperclip's budget plugin (port 3102), which isn't
+        // running in the standalone wavex demo. The manifest's dry_run
+        // gates still hold; only the upstream budget snapshot is bypassed.
+        // Finalize will pick up the freshly-written manifest via its
+        // 10-minute freshness check and skip its internal regen.
+        await opOmegaOnboardingApi.generateWorkflow(companyId, {
+          skipInference,
+          bypassBudgetCheck: true,
+        });
         const r = await opOmegaOnboardingApi.finalize({
           companyId,
-          skipInference: isT0FastMode(),
+          skipInference,
         });
         setResult({ manifest: r.manifest, sha256: r.sha256, source: r.source });
         // Fetch the full MC report from disk (written by finalize) for the
