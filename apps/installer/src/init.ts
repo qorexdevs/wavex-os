@@ -52,6 +52,17 @@ interface DoctorResult {
   checks: { name: string; ok: boolean; detail?: string }[];
 }
 
+interface RuntimeCheck {
+  name: string;
+  state: "green" | "yellow" | "red" | "info";
+  detail?: string;
+}
+
+interface RuntimeResult {
+  ok: boolean;
+  checks: RuntimeCheck[];
+}
+
 async function checkBinary(name: string): Promise<{ ok: boolean; version?: string }> {
   try {
     const { stdout } = await execAsync(`${name} --version`);
@@ -97,6 +108,124 @@ function printDoctor(result: DoctorResult): void {
   console.log();
   if (!result.ok) {
     console.log(`${c.red}Some prerequisites are missing. Fix the items above and re-run.${c.reset}\n`);
+  }
+}
+
+/** Runtime audit — probes the currently-running stack (Paperclip, mock-core,
+ *  inference-server, disk, RAM). Distinct from `doctor` which checks env. */
+async function audit(): Promise<RuntimeResult> {
+  const checks: RuntimeCheck[] = [];
+
+  // Disk
+  try {
+    const { stdout } = await execAsync(`df -h / | tail -1`);
+    const pct = parseInt(stdout.split(/\s+/).find((s) => s.endsWith("%"))?.replace("%", "") ?? "0", 10);
+    const state: RuntimeCheck["state"] = pct >= 90 ? "red" : pct >= 80 ? "yellow" : "green";
+    checks.push({ name: "disk usage", state, detail: `${pct}% of root volume` });
+  } catch {
+    checks.push({ name: "disk usage", state: "info", detail: "could not read df" });
+  }
+
+  // RAM pressure (macOS-specific)
+  if (platform() === "darwin") {
+    try {
+      const { stdout } = await execAsync(`sysctl -n vm.swapusage`);
+      // "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)"
+      const m = stdout.match(/used\s*=\s*([\d.]+)M/);
+      const used = m ? parseFloat(m[1]!) : 0;
+      const state: RuntimeCheck["state"] = used > 1000 ? "red" : used > 200 ? "yellow" : "green";
+      checks.push({ name: "swap usage", state, detail: `${used.toFixed(1)} MB used` });
+    } catch {
+      checks.push({ name: "swap usage", state: "info", detail: "sysctl unavailable" });
+    }
+  }
+
+  // Ports
+  const ports = [
+    { port: 3100, name: "Paperclip server (3100)" },
+    { port: 3101, name: "wavex mock-core (3101)" },
+    { port: 5173, name: "wavex onboarding UI (5173)" },
+    { port: 8787, name: "wavex inference-server (8787)" },
+  ];
+  for (const { port, name } of ports) {
+    try {
+      const { stdout } = await execAsync(`lsof -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -1`);
+      if (stdout.trim()) {
+        checks.push({ name, state: "green", detail: "listening" });
+      } else {
+        checks.push({ name, state: "info", detail: "not listening (expected if you haven't started this service)" });
+      }
+    } catch {
+      checks.push({ name, state: "info", detail: "probe failed" });
+    }
+  }
+
+  // launchd jobs
+  try {
+    const { stdout } = await execAsync(`launchctl list 2>/dev/null | grep wavex-os || true`);
+    const lines = stdout.trim().split("\n").filter(Boolean);
+    if (lines.length > 0) {
+      checks.push({ name: "wavex-os launchd jobs", state: "green", detail: `${lines.length} loaded` });
+    } else {
+      checks.push({ name: "wavex-os launchd jobs", state: "info", detail: "none loaded — run `node scripts/render-launchd-templates.mjs` to install" });
+    }
+  } catch {
+    checks.push({ name: "wavex-os launchd jobs", state: "info", detail: "launchctl unavailable" });
+  }
+
+  // Paperclip reachability
+  try {
+    const { stdout } = await execAsync(`curl -sf -o /dev/null -w "%{http_code}" -m 3 http://127.0.0.1:3100/api/health`);
+    const code = parseInt(stdout, 10);
+    checks.push({ name: "Paperclip /api/health", state: code === 200 ? "green" : "red", detail: `HTTP ${code}` });
+  } catch {
+    checks.push({ name: "Paperclip /api/health", state: "info", detail: "unreachable" });
+  }
+
+  // Inference server reachability (G.3)
+  try {
+    const { stdout } = await execAsync(`curl -sf -o /dev/null -w "%{http_code}" -m 3 http://127.0.0.1:8787/v1/health`);
+    const code = parseInt(stdout, 10);
+    checks.push({ name: "wavex-inference-server /v1/health", state: code === 200 ? "green" : "red", detail: `HTTP ${code}` });
+  } catch {
+    checks.push({ name: "wavex-inference-server /v1/health", state: "info", detail: "unreachable (expected before G.3 deploy)" });
+  }
+
+  // Recent log errors (best-effort)
+  try {
+    const logPath = join(HOME_DIR, "state", "resource-sweep.log");
+    if (existsSync(logPath)) {
+      const { stdout } = await execAsync(`tail -50 "${logPath}" | grep -E "(RED|ORANGE|error|failed)" | tail -5 || true`);
+      if (stdout.trim()) {
+        checks.push({ name: "recent resource-sweep alerts", state: "yellow", detail: stdout.trim().split("\n").length + " lines (run `tail -50 ~/.wavex-os/state/resource-sweep.log`)" });
+      } else {
+        checks.push({ name: "recent resource-sweep alerts", state: "green", detail: "clean window" });
+      }
+    } else {
+      checks.push({ name: "recent resource-sweep alerts", state: "info", detail: "log not found (resource-sweep launchd may not be loaded yet)" });
+    }
+  } catch {
+    checks.push({ name: "recent resource-sweep alerts", state: "info", detail: "log probe failed" });
+  }
+
+  const ok = checks.every((c) => c.state !== "red");
+  return { ok, checks };
+}
+
+function printAudit(result: RuntimeResult): void {
+  console.log(`\n${c.bold}Runtime audit${c.reset}\n`);
+  for (const check of result.checks) {
+    const mark =
+      check.state === "green"  ? `${c.green}●${c.reset}` :
+      check.state === "yellow" ? `${c.yellow}●${c.reset}` :
+      check.state === "red"    ? `${c.red}●${c.reset}` :
+                                 `${c.dim}○${c.reset}`;
+    const detail = check.detail ? `${c.dim}${check.detail}${c.reset}` : "";
+    console.log(`  ${mark} ${check.name.padEnd(40)} ${detail}`);
+  }
+  console.log();
+  if (!result.ok) {
+    console.log(`${c.red}One or more checks are RED. See details above.${c.reset}\n`);
   }
 }
 
@@ -193,6 +322,7 @@ function help(): void {
   console.log(`${c.bold}Usage:${c.reset}
   ${c.cyan}npx wavex-os init [company-name]${c.reset}    Bootstrap a new WaveX OS company
   ${c.cyan}npx wavex-os doctor${c.reset}                 Check environment prerequisites
+  ${c.cyan}npx wavex-os audit${c.reset}                  Probe the running stack (disk, RAM, ports, services)
   ${c.cyan}npx wavex-os reset${c.reset}                  Remove ${c.dim}~/.wavex-os${c.reset} (destructive)
   ${c.cyan}npx wavex-os --help${c.reset}                 Show this message
 
@@ -216,6 +346,10 @@ async function main(): Promise<void> {
     case "doctor":
       console.log(BANNER);
       printDoctor(await doctor());
+      break;
+    case "audit":
+      console.log(BANNER);
+      printAudit(await audit());
       break;
     case "reset":
       await reset();

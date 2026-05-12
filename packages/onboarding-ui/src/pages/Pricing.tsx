@@ -18,6 +18,8 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { Session } from "@supabase/supabase-js";
+import { SignInWidget } from "../components/SignInWidget";
 
 type Tier = {
   key: "founder" | "growth" | "custom";
@@ -172,6 +174,7 @@ export default function Pricing(): JSX.Element {
   const [params] = useSearchParams();
   const [pendingTier, setPendingTier] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   // Handle success callback from Stripe Checkout
   const sessionId = params.get("session_id");
@@ -204,6 +207,10 @@ export default function Pricing(): JSX.Element {
 
   async function startCheckout(tier: Tier): Promise<void> {
     setError(null);
+    if (!session) {
+      setError("Please sign in first — see the box above.");
+      return;
+    }
     setPendingTier(tier.key);
     try {
       const priceId =
@@ -216,7 +223,10 @@ export default function Pricing(): JSX.Element {
 
       const resp = await fetch(CREATE_CHECKOUT_FUNCTION_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           priceId,
           tier: tier.key,
@@ -224,8 +234,15 @@ export default function Pricing(): JSX.Element {
           cancelUrl: `${window.location.origin}/pricing?canceled=1`,
         }),
       });
+      if (resp.status === 409) {
+        // Already subscribed — redirect to Customer Portal
+        const body = (await resp.json()) as { url: string };
+        window.location.assign(body.url);
+        return;
+      }
       if (!resp.ok) {
-        throw new Error(`checkout failed: HTTP ${resp.status}`);
+        const body = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `checkout failed: HTTP ${resp.status}`);
       }
       const { url } = (await resp.json()) as { url: string };
       window.location.assign(url);
@@ -260,6 +277,8 @@ export default function Pricing(): JSX.Element {
             via a Liaison agent. Cancel anytime.
           </p>
         </header>
+
+        <SignInWidget onSessionChange={setSession} />
 
         {params.get("canceled") === "1" && (
           <div

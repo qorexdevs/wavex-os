@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@op-omega/plugin-onboarding": "workspace:*",
+    "@supabase/supabase-js": "^2.46.1",
     "@tanstack/react-query": "^5.59.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
