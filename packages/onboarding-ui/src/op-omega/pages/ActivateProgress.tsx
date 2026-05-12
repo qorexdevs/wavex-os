@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 
-type SlotStatus = "pending" | "hired" | "skipped" | "failed";
+type SlotStatus = "pending" | "hiring" | "hired" | "skipped" | "failed";
 
 interface SlotRow {
   slot: string;
@@ -26,7 +26,7 @@ interface Props {
   swarmManifest: SwarmManifest;
 }
 
-const STAGGER_MS = 80;
+const POLL_MS = 500;
 
 function paperclipUiUrl(apiUrl: string | null): string {
   if (!apiUrl) return "#";
@@ -46,33 +46,53 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
+    let stillPolling = true;
+
+    // Poll handoff-progress.json every 500ms while activate is in flight.
+    // The bridge writes per-slot status as it hires each agent, so the
+    // UI paints real progression instead of waiting for the single-shot
+    // POST response.
+    void (async () => {
+      while (stillPolling) {
+        try {
+          const r = await opOmegaOnboardingApi.getHandoffStatus(companyId);
+          if (r.progress) {
+            if (r.progress.paperclipUrl) setPaperclipUrl(r.progress.paperclipUrl);
+            setRows(r.progress.slots.map((s) => ({
+              slot: s.slot,
+              status: s.status as SlotStatus,
+            })));
+          }
+        } catch { /* polling error — silent retry */ }
+        await new Promise((res) => setTimeout(res, POLL_MS));
+      }
+    })();
+
     void (async () => {
       try {
         const r = await opOmegaOnboardingApi.activate(companyId);
         const createdSet = new Set(r.paperclipHandoff.created.map((c) => c.slot));
         const skippedSet = new Set(r.paperclipHandoff.skipped.map((s) => s.slot));
         const errorMap = new Map(r.paperclipHandoff.errors.map((e) => [e.slot, e.message]));
-        setPaperclipUrl(r.paperclipHandoff.paperclipUrl);
+        if (r.paperclipHandoff.paperclipUrl) setPaperclipUrl(r.paperclipHandoff.paperclipUrl);
 
-        // Cosmetic stagger — flip each row sequentially so the operator
-        // sees an animation rather than an instant green wall.
-        const slots = Object.keys(swarmManifest.agents);
-        for (let i = 0; i < slots.length; i++) {
-          const slot = slots[i];
-          await new Promise((res) => setTimeout(res, STAGGER_MS));
-          setRows((prev) => prev.map((row) => {
-            if (row.slot !== slot) return row;
-            if (errorMap.has(slot)) return { ...row, status: "failed", error: errorMap.get(slot) };
-            if (skippedSet.has(slot)) return { ...row, status: "skipped" };
-            if (createdSet.has(slot) || !r.paperclipHandoff.enabled) return { ...row, status: "hired" };
-            return { ...row, status: "hired" };
-          }));
-        }
+        // Activate returned. Stop polling + reconcile against the final
+        // report so any in-flight rows flip to their terminal state.
+        stillPolling = false;
+        setRows((prev) => prev.map((row) => {
+          if (errorMap.has(row.slot)) return { ...row, status: "failed", error: errorMap.get(row.slot) };
+          if (skippedSet.has(row.slot)) return { ...row, status: "skipped" };
+          if (createdSet.has(row.slot) || !r.paperclipHandoff.enabled) return { ...row, status: "hired" };
+          return row;
+        }));
         setDone(true);
       } catch (e) {
+        stillPolling = false;
         setError(e instanceof ApiError ? e.message : (e as Error).message);
       }
     })();
+
+    return () => { stillPolling = false; };
   }, [companyId, swarmManifest]);
 
   function handleLaunch(): void {
@@ -163,6 +183,7 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
 
 function SlotIcon({ status }: { status: SlotStatus }) {
   if (status === "pending") return <span style={{ color: "var(--text-dim)" }}>○</span>;
+  if (status === "hiring") return <span className="wavex-pulse-dot" style={{ color: "var(--warning)" }}>●</span>;
   if (status === "hired") return <span style={{ color: "var(--accent)" }}>✓</span>;
   if (status === "skipped") return <span style={{ color: "var(--text-dim)" }}>↷</span>;
   return <span style={{ color: "var(--warning)" }}>✗</span>;

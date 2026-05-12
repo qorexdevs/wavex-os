@@ -159,6 +159,55 @@ async function saveMapping(wavexCompanyId: string, m: PaperclipMapping): Promise
   await writeFile(join(dir, "paperclip-handoff.json"), JSON.stringify(m, null, 2), "utf8");
 }
 
+/** Per-slot live handoff progress. Written after each hire so the UI can
+ *  poll it for a real slot-by-slot reveal during activate, then cleared
+ *  when handoff completes. Lives next to paperclip-handoff.json. */
+interface HandoffProgressSlot {
+  slot: string;
+  status: "pending" | "hiring" | "hired" | "skipped" | "failed";
+  agentId?: string;
+}
+interface HandoffProgress {
+  paperclipUrl: string;
+  paperclipCompanyId: string;
+  total: number;
+  completed: number;
+  inFlight: string | null;
+  slots: HandoffProgressSlot[];
+}
+
+function handoffProgressPath(wavexCompanyId: string): string {
+  return join(handoffStateDir(wavexCompanyId), "handoff-progress.json");
+}
+
+async function writeHandoffProgress(wavexCompanyId: string, p: HandoffProgress): Promise<void> {
+  const dir = handoffStateDir(wavexCompanyId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(handoffProgressPath(wavexCompanyId), JSON.stringify(p, null, 2), "utf8");
+}
+
+async function updateHandoffProgress(
+  wavexCompanyId: string,
+  slot: string,
+  patch: Partial<HandoffProgressSlot>,
+  completed: number,
+): Promise<void> {
+  const { readFile } = await import("node:fs/promises");
+  try {
+    const raw = await readFile(handoffProgressPath(wavexCompanyId), "utf8");
+    const p = JSON.parse(raw) as HandoffProgress;
+    p.completed = completed;
+    p.inFlight = patch.status === "hiring" ? slot : null;
+    p.slots = p.slots.map((s) => (s.slot === slot ? { ...s, ...patch } : s));
+    await writeFile(handoffProgressPath(wavexCompanyId), JSON.stringify(p, null, 2), "utf8");
+  } catch { /* file racing or removed — non-fatal */ }
+}
+
+async function clearHandoffProgress(wavexCompanyId: string): Promise<void> {
+  const { unlink } = await import("node:fs/promises");
+  try { await unlink(handoffProgressPath(wavexCompanyId)); } catch { /* already gone */ }
+}
+
 async function ensurePaperclipCompany(
   paperclipUrl: string,
   wavexCompanyId: string,
@@ -330,15 +379,36 @@ export async function handoffToPaperclip(
   // for early dev, but the "wavex-os/<company>" record in Paperclip then
   // hid 27 of 35 agents (every L·IV specialist) which made the dashboard
   // misleading. Now the manifest in Paperclip matches wavex 1:1.
-  for (const [slot, entry] of topoSortSlots(swarm)) {
+  //
+  // Per-slot progress is written to <onboarding-dir>/handoff-progress.json
+  // after each hire so the UI can poll it for a real slot-by-slot reveal
+  // (ActivateProgress component). The file is overwritten on every step
+  // and removed when this function returns.
+  const allSlots = topoSortSlots(swarm);
+  await writeHandoffProgress(wavexCompanyId, {
+    paperclipCompanyId,
+    paperclipUrl,
+    total: allSlots.length,
+    completed: 0,
+    inFlight: null,
+    slots: allSlots.map(([slot]) => ({ slot, status: "pending" as const })),
+  });
+
+  let completed = 0;
+  for (const [slot, entry] of allSlots) {
     if (mutes.has(slot)) {
       report.skipped.push({ slot, reason: "muted-by-operator" });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped" }, completed);
       continue;
     }
     if (slotToPaperclipId[slot]) {
       report.skipped.push({ slot, reason: "already-mapped" });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped" }, completed);
       continue;
     }
+    await updateHandoffProgress(wavexCompanyId, slot, { status: "hiring" }, completed);
     const role = (slot.split(".")[0]);
     const bundleMd = await readAgentBundle(role.replace(/_/g, "-"), repoRoot)
       ?? await readAgentBundle("chief-of-staff", repoRoot)
@@ -349,10 +419,15 @@ export async function handoffToPaperclip(
       const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd);
       slotToPaperclipId[slot] = out.agentId;
       report.created.push({ slot, agentId: out.agentId, status: out.status });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "hired", agentId: out.agentId }, completed);
     } catch (e) {
       report.errors.push({ slot, message: e instanceof Error ? e.message : String(e) });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "failed" }, completed);
     }
   }
+  await clearHandoffProgress(wavexCompanyId);
 
   // Persist mapping for idempotency
   await saveMapping(wavexCompanyId, {

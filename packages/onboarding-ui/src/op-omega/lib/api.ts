@@ -338,6 +338,22 @@ export const opOmegaOnboardingApi = {
   listCompanies: () =>
     call<CompaniesResponse>("GET", "/api/companies"),
 
+  // Real-time Paperclip handoff progress — polled by ActivateProgress
+  // while /activate is in flight so the UI can paint per-slot hires
+  // as the bridge actually fires them, not just at the final response.
+  getHandoffStatus: (companyId: string) =>
+    call<{
+      ok: true;
+      progress: null | {
+        paperclipUrl: string;
+        paperclipCompanyId: string;
+        total: number;
+        completed: number;
+        inFlight: string | null;
+        slots: Array<{ slot: string; status: "pending" | "hiring" | "hired" | "skipped" | "failed"; agentId?: string }>;
+      };
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/handoff-status`),
+
   // Activate — bridge the signed manifest into runtime DB state. Idempotent.
   activate: (companyId: string) =>
     call<{
