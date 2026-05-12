@@ -30,10 +30,13 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
   test("welcome → pillars (T2) → connectors → swarm → theater → activate → mission control", async ({ page }) => {
     test.setTimeout(20 * 60 * 1000); // 20 min ceiling
 
-    // ── Welcome ───────────────────────────────────────────────────────
+    // ── Welcome (centered empty-state hero) ───────────────────────────
     await page.goto("/onboarding-chat");
-    await expect(page.getByText(/Tell me about what you're building/i)).toBeVisible();
-    await sendChat(page, RAW_INPUT);
+    await expect(page.getByRole("heading", { name: /What do you want to build/i })).toBeVisible();
+    // The hero input has placeholder "Ask anything…"
+    const heroInput = page.getByPlaceholder(/Ask anything/i);
+    await heroInput.fill(RAW_INPUT);
+    await heroInput.press("Enter");
 
     // URL should now include ?companyId=
     await expect(page).toHaveURL(new RegExp(`companyId=${EXPECTED_SLUG}`));
@@ -44,12 +47,20 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
       .toBeVisible({ timeout: 300_000 });
     await page.getByRole("button", { name: /Looks right.*keep going|Update.*continue/i }).click();
 
+    // ── Scope picker (after silent Pillar 2 verify) ───────────────────
+    await expect(page.getByText(/How big should this team be|Tell me how to scope/i))
+      .toBeVisible({ timeout: 60_000 });
+    // Default the smoke walk to full company — focused-mode coverage is in
+    // a separate spec.
+    await page.getByRole("button", { name: /Full company/i }).click();
+    await page.getByRole("button", { name: /^Continue/ }).first().click();
+
     // ── Pillar 3 prompt card ──────────────────────────────────────────
     await expect(page.getByText(/Where are you in the product journey/i))
       .toBeVisible({ timeout: 60_000 });
     await page.getByRole("button", { name: /Live with paying customers/i }).click();
     await page.getByRole("button", { name: /\$10k.*100k/i }).click();
-    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^Continue/ }).last().click();
 
     // ── Pillar 4 prompt card ──────────────────────────────────────────
     await expect(page.getByText(/How do leads come in/i)).toBeVisible({ timeout: 30_000 });
@@ -57,14 +68,14 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
     await page.getByRole("button", { name: /Referral/i }).click();
     await page.getByRole("button", { name: /Assisted.*demo required/i }).click();
     await page.getByRole("button", { name: /Mostly phone/i }).click();
-    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^Continue/ }).last().click();
 
     // ── Pillar 5 prompt card ──────────────────────────────────────────
     await expect(page.getByText(/How do you want your board to talk to you/i))
       .toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /^Slack$/i }).click();
     await page.getByRole("button", { name: /Daily digest/i }).click();
-    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^Continue/ }).last().click();
 
     // ── Connector picker card (post-T2) ───────────────────────────────
     await expect(page.getByRole("button", { name: /These look right.*plug them in/i }))

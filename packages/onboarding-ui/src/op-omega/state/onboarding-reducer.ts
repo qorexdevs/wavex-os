@@ -81,6 +81,7 @@ export type Action =
   | { type: "ADD_MESSAGE"; message: Omit<ChatMessage, "id" | "ts"> & Partial<Pick<ChatMessage, "id" | "ts">> }
   | { type: "REPLACE_MESSAGE"; id: string; patch: Partial<ChatMessage> }
   | { type: "COLLAPSE_MESSAGE"; id: string }
+  | { type: "COLLAPSE_LAST_SLOT"; kind: ChatSlot["kind"] }
   | { type: "SET_PHASE"; phase: OnboardingPhase }
   | { type: "SET_DRAFT"; draft: Partial<OnboardingState["draft"]> }
   | { type: "WELCOME_SUBMIT"; rawInput: string }
@@ -141,6 +142,24 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
         ...state,
         thread: state.thread.map((m) => (m.id === action.id ? { ...m, collapsed: true } : m)),
       };
+
+    case "COLLAPSE_LAST_SLOT": {
+      // Walk back to find the last message carrying this slot kind and
+      // mark only that one collapsed. Lets handlers say "the card I just
+      // resolved" without threading message ids through props.
+      let collapsedIdx = -1;
+      for (let i = state.thread.length - 1; i >= 0; i--) {
+        if (state.thread[i].slot?.kind === action.kind && !state.thread[i].collapsed) {
+          collapsedIdx = i;
+          break;
+        }
+      }
+      if (collapsedIdx === -1) return state;
+      return {
+        ...state,
+        thread: state.thread.map((m, i) => (i === collapsedIdx ? { ...m, collapsed: true } : m)),
+      };
+    }
 
     case "SET_PHASE":
       return { ...state, phase: action.phase };

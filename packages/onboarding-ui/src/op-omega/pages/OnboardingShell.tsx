@@ -95,12 +95,22 @@ export function OnboardingShell() {
         slot: { kind: "thinking", phase: "pillar-1" },
       },
     });
+    // Fast-mode (?t0=1) short-circuits Pillar 1's T2 enrichment by passing
+    // the raw input as manual_context. Real T2 enrichment is gated on the
+    // operator NOT being in fast mode.
+    const effectiveManualContext = manualContext
+      ?? (t0 && rawInput.trim().length >= 40
+        ? rawInput
+        : t0
+          ? `${rawInput} (fast-mode placeholder context; switch off ?t0=1 for real enrichment).`
+          : undefined);
+
     try {
       const result = await opOmegaOnboardingApi.pillar1({
         companyId: slug,
         org_name: slug,
         raw_input: rawInput,
-        manual_context: manualContext,
+        manual_context: effectiveManualContext,
       });
       dispatch({ type: "COLLAPSE_MESSAGE", id: thinkingId });
       dispatch({ type: "PILLAR1_RESPONSE", response: result.response });
@@ -135,7 +145,7 @@ export function OnboardingShell() {
         });
       }
     }
-  }, [qc]);
+  }, [qc, t0]);
 
   // ── Welcome → company slug + Pillar 1 ───────────────────────────────────
   const handleSubmit = useCallback(async (text: string) => {
@@ -227,6 +237,7 @@ export function OnboardingShell() {
   }, [state.phase, companyId]);
 
   const handleScopeDone = useCallback((mode: "full" | "focused", departments: Department[]) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "scope-prompt" });
     dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
     const summary = mode === "full"
       ? "Full org — got it."
@@ -242,6 +253,7 @@ export function OnboardingShell() {
   }, []);
 
   const handlePillar3Done = useCallback((response: Pillar3Response) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar3-prompt" });
     dispatch({ type: "PILLAR3_DONE", response });
     dispatch({
       type: "ADD_MESSAGE",
@@ -254,6 +266,7 @@ export function OnboardingShell() {
   }, []);
 
   const handlePillar4Done = useCallback((response: Pillar4Response) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar4-prompt" });
     dispatch({ type: "PILLAR4_DONE", response });
     dispatch({
       type: "ADD_MESSAGE",
@@ -266,6 +279,7 @@ export function OnboardingShell() {
   }, []);
 
   const handlePillar5Done = useCallback((response: Pillar5Response) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar5-prompt" });
     dispatch({ type: "PILLAR5_DONE", response });
     dispatch({
       type: "ADD_MESSAGE",
@@ -327,6 +341,7 @@ export function OnboardingShell() {
   }, []);
 
   const handleConnectorConfirmed = useCallback(() => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "connector-picker" });
     dispatch({ type: "CONNECTORS_CONFIRMED" });
     dispatch({
       type: "ADD_MESSAGE",
@@ -422,7 +437,10 @@ export function OnboardingShell() {
           companyId,
           orgName: companyId ?? deriveSlug(state.draft.pillar1?.rawInput ?? ""),
           rawInput: state.draft.pillar1?.rawInput ?? "",
-          onPillar1Confirmed: () => dispatch({ type: "PILLAR1_CONFIRMED" }),
+          onPillar1Confirmed: () => {
+            dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar1-confirm" });
+            dispatch({ type: "PILLAR1_CONFIRMED" });
+          },
           onPillar1Recovered: handlePillar1Recovery,
           onPillar3Done: handlePillar3Done,
           onPillar4Done: handlePillar4Done,

@@ -253,7 +253,7 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
             <button
               type="button"
               onClick={() => void handleSkip()}
-              disabled={skipping || (skipCanon.length === 0 && skipCustom.length === 0)}
+              disabled={skipping}
               style={miniBtn(true)}
             >
               {skipping ? "Skipping…" : "Confirm skip"}
