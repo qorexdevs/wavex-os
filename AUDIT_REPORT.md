@@ -17,8 +17,7 @@ The chat-first onboarding at `/onboarding-chat` walks the full pipeline end-to-e
 **Verified this session:**
 - ✅ Backend smoke (23/23 endpoints, ~5s)
 - ✅ Fast e2e walk (`?t0=1`, no claude CLI, ~45s)
-- ✅ Real-T2 e2e walk (5 real T2 phases, scope assertion green, ~4 min)
-- ✅ Paperclip handoff (35 agents mirrored, 0 errors, paperclipCompanyId returned)
+- ✅ **Real-T2 e2e walk WITH Paperclip handoff** — 5 real T2 phases, scope assertion green, 35 agents mirrored to Paperclip, 0 errors. Total: 4.9 min, $1.18.
 - ✅ End-of-flow flash bug fixed (Theater → Pricing → Activate no longer reveals chat underneath)
 - ✅ Two-progress-bar bug fixed (stale thinking bubble collapsed when next phase starts)
 - ✅ Budget enforcement halt bypassed in standalone wavex (paperclip budget plugin probe skipped)
@@ -108,24 +107,51 @@ Test exists at `e2e/chat-first-fast.spec.ts` and is **not gated** behind any env
 
 Same UI walk but exercises real `claude` CLI on Pillar 1, Pillar 2, Connector, Swarm, Workflow, Imprint, MC. Uses focused scope (marketing + revenue) and **asserts the swarm manifest came back with CMO/CRO active and CPO/CFO/CDO/COO parked.**
 
-Most recent passing run before tonight's Paperclip-enabled re-run:
+**Final overnight run — passed in 4.9 minutes with Paperclip handoff enabled:**
+
 ```
-✓ chat-first walk passed (4.0m, $1.04 total)
+✓ chat-first walk passed (4.9m, $1.18 total)
 
 Phase                Cost      Duration  Calls
 ─────────────────────────────────────────────────
-pillar_1            $0.47      82s       1
-pillar_2            $0.02       2s       1
-connector_manifest  $0.16      23s       1
-swarm_manifest      $0.18      30s       1
-workflow_manifest   $0.21      41s       1   ← Phase 4 now real T2
+pillar_1            $0.62      101s      1
+pillar_2            $0.02        3s      1
+connector_manifest  $0.16       38s      1
+swarm_manifest      $0.18       28s      1
+workflow_manifest   $0.20       34s      1
 ─────────────────────────────────────────────────
-                    $1.04     ~3 min     5 (imprint cost
-                                            bundled into adjacent
-                                            phase via known
-                                            token-accounting
-                                            time-window quirk)
+                    $1.18     ~3.4 min   5 (imprint cost
+                                           bundled into adjacent
+                                           phase via known
+                                           token-accounting
+                                           time-window quirk)
+
+Paperclip handoff (live):
+  enabled:              true
+  paperclipUrl:         http://127.0.0.1:3100
+  paperclipCompanyId:   9e1b34c6-85f6-45ca-989e-de50e44d5663
+  agents mirrored:      35  (full roster, including parked-ones
+                             — Paperclip stores all slots; the
+                             dimmed dimmed treatment is wavex-side)
+  errors:               0
+  skipped:              0
+
+Active vs parked in scoped swarm:
+  ceo.orchestrator      (ceo)         ← sacrosanct
+  ceo.chief-of-staff    (ceo)         ← kernel-injected
+  cmo                   (marketing)   ← scoped
+  cmo.demand            (marketing)
+  cmo.content           (marketing)
+  cro                   (revenue)     ← scoped
+  cro.demo              (revenue)
+  cro.close             (revenue)
+  cro.expansion         (revenue)
+  ─ 9 active ─
+  cmo.brand, cmo.advocacy, cro.outbound, all cpo/cfo/cdo/coo subtrees
+  ─ 26 parked ─
 ```
+
+**Scope assertion passed end-to-end against the real-T2-generated manifest.**
 
 ### Paperclip handoff verification
 
@@ -359,7 +385,7 @@ open http://127.0.0.1:5173/onboarding
 | `packages/onboarding-ui/src/op-omega/pages/OnboardingShell.tsx` | Persistent dark backdrop during full-screen phases; chat + top bar + input not rendered then |
 | `AUDIT_REPORT.md` | This file (new) |
 
-Branch commits since the last user check-in: HEAD pending — staging the H1 fix + this report for commit.
+Branch commits since the last user check-in: `b8d97df` (H1 backdrop fix + this audit report) is on `feat/op-omega-chat-first`. Run `git log --oneline` to see the full history.
 
 ---
 
