@@ -273,7 +273,11 @@ function ImprintAct({ companyId, manifest, sha256, source, showFullManifest, onT
           onApplied={(m, s) => {
             onRefined(m, s);
             setRefineMode(false);
-            setStreamDone(false); // streaming restarts with new imprint
+            // StreamingText is keyed on sha256 — if the manifest actually
+            // changed, it remounts and re-runs the stream from scratch.
+            // We don't force streamDone=false here because empty-changes
+            // applies don't alter the imprint, and forcing it would lock
+            // the Launch button when nothing's actually re-streaming.
           }}
           onSkip={() => setRefineMode(false)}
         />

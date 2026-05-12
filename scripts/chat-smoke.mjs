@@ -177,6 +177,23 @@ async function main() {
   await step("GET /mc-report", () =>
     get(`/op-omega/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`));
 
+  // ── Refinement loop (post-finalize T2 guidance) ────────────────────
+  const analyze = await step("POST /analyze-refinement", () =>
+    post("/op-omega/onboarding/analyze-refinement", {
+      companyId,
+      operatorGuidance: "Emphasize international distribution and add observability for the dealer channel.",
+    }));
+  const changeIds = (analyze?.changes ?? []).slice(0, 2).map((c) => c.id);
+  await step(`POST /apply-refinement (${changeIds.length} change(s))`, () =>
+    post("/op-omega/onboarding/apply-refinement", {
+      companyId,
+      operatorGuidance: "Emphasize international distribution and add observability for the dealer channel.",
+      changes: (analyze?.changes ?? []).filter((c) => changeIds.includes(c.id)),
+      regenerateImprint: false,
+    }));
+  await step("POST /revert-refinement", () =>
+    post("/op-omega/onboarding/revert-refinement", { companyId }));
+
   // ── Tiers + dummy subscription (Pricing) ───────────────────────────
   await step("GET /api/tiers", () => get("/api/tiers"));
 

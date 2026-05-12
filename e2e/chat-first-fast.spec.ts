@@ -105,6 +105,40 @@ test.describe("chat-first fast walk @ /onboarding-chat?t0=1", () => {
     // finishes; wait for enabled state.
     const launch = page.getByRole("button", { name: /Let's launch/i });
     await expect(launch).toBeEnabled({ timeout: 90_000 });
+
+    // ── Refinement Panel ──────────────────────────────────────────────
+    // Click "Refine before launch", type guidance, analyze, apply, then
+    // launch. Even in fast mode the analyze call returns proposed changes
+    // (fallback path produces empty changes but the loop completes).
+    const refine = page.getByRole("button", { name: /Refine before launch/i });
+    await expect(refine).toBeEnabled();
+    await refine.click();
+    const guidanceInput = page.getByPlaceholder(/What would you tune/i);
+    await expect(guidanceInput).toBeVisible({ timeout: 10_000 });
+    await guidanceInput.fill("Emphasize the dealer channel and add observability.");
+    await page.getByRole("button", { name: /Analyze impact/i }).click();
+    // Analyze may return zero changes in fast mode; either path completes.
+    // Wait for either the proposed-change checkboxes to appear OR the
+    // "no actionable changes detected" message.
+    await expect(
+      page.getByText(/Apply.*regenerate imprint|No actionable changes detected|Imprint-only refinement/i),
+    ).toBeVisible({ timeout: 60_000 });
+    // Use "Apply only" (not "Apply + regenerate imprint") so we don't
+    // pay for real T2 in fast mode — the apply-refinement route doesn't
+    // honor a skipInference flag for imprint regeneration, so regen
+    // always fires real T2 even when ?t0=1 is set.
+    const applyOnly = page.getByRole("button", { name: /^Apply only$/i });
+    if (await applyOnly.isVisible().catch(() => false)) {
+      await applyOnly.click();
+      await expect(refine).toBeVisible({ timeout: 30_000 });
+    } else {
+      // Zero proposed changes — back out via Skip.
+      const skipRefine = page.getByRole("button", { name: /Skip.*looks good as-is/i });
+      if (await skipRefine.isVisible().catch(() => false)) await skipRefine.click();
+    }
+    // Apply-only path keeps existing imprint, so launch should still be
+    // enabled. Skip path also keeps it enabled.
+    await expect(launch).toBeEnabled({ timeout: 10_000 });
     await launch.click();
 
     // ── Pricing dialog → Skip ─────────────────────────────────────────
