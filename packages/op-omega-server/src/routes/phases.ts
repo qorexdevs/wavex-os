@@ -67,24 +67,40 @@ async function writeScope(companyId: string, scope: ScopeRecord): Promise<void> 
 
 /** Apply scope filter to a swarm manifest in-place. Non-scoped chiefs +
  *  their reports become `parked` with an unpark_condition the operator
- *  can flip from Mission Control. CEO + chief-of-staff are sacrosanct. */
-function applyScopeFilter(swarm: { agents: Record<string, { department?: string; status?: string; unpark_condition?: string | null; reason?: string | null; reports_to?: string | null }> }, scope: ScopeRecord): { parked: number } {
-  if (scope.mode === "full") return { parked: 0 };
-  const allowed = new Set([...scope.departments, "ceo"]); // CEO always
+ *  can flip from Mission Control. CEO + chief-of-staff are sacrosanct.
+ *
+ *  Custom-only fallback: when scope.mode === "focused" with no canonical
+ *  departments selected (operator only typed custom labels like "Legal"
+ *  or "HR"), we map the request to Operations — so they get COO + ops
+ *  sub-agents active rather than a hollow CEO-only fleet. The custom
+ *  labels stay persisted for future template provisioning. */
+function applyScopeFilter(
+  swarm: { agents: Record<string, { department?: string; status?: string; unpark_condition?: string | null; reason?: string | null; reports_to?: string | null }> },
+  scope: ScopeRecord,
+): { parked: number; mappedCustomToOps: boolean } {
+  if (scope.mode === "full") return { parked: 0, mappedCustomToOps: false };
+
+  const customOnly = scope.departments.length === 0 && (scope.custom_labels?.length ?? 0) > 0;
+  const effectiveDepartments = customOnly ? ["ops"] : scope.departments;
+  const allowed = new Set([...effectiveDepartments, "ceo"]); // CEO always
+
+  const reasonSuffix = customOnly
+    ? `custom-only scope mapped to Operations (custom labels: ${scope.custom_labels?.join(", ") ?? ""})`
+    : `outside requested scope (${effectiveDepartments.join(", ") || "focused team"})`;
+
   let parked = 0;
-  // First pass: park chiefs whose department isn't in scope.
   for (const [slot, a] of Object.entries(swarm.agents)) {
     if (slot === "ceo.orchestrator" || slot === "ceo.chief-of-staff") continue;
     if (a.department && !allowed.has(a.department)) {
       if (a.status === "active" || a.status === "standby") {
         a.status = "parked";
         a.unpark_condition = "operator_unpark_from_mission_control";
-        a.reason = `outside requested scope (${scope.departments.join(", ") || "focused team"})`;
+        a.reason = reasonSuffix;
         parked += 1;
       }
     }
   }
-  return { parked };
+  return { parked, mappedCustomToOps: customOnly };
 }
 
 /** Load workflow_manifest.json if it exists AND was written within
@@ -302,8 +318,12 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         // reports. CEO + chief-of-staff stay active regardless.
         const scope = await readScope(parsed.data.companyId);
         let parked = 0;
+        let mappedCustomToOps = false;
         if (scope && scope.mode === "focused") {
-          ({ parked } = applyScopeFilter(result.manifest as unknown as Parameters<typeof applyScopeFilter>[0], scope));
+          ({ parked, mappedCustomToOps } = applyScopeFilter(
+            result.manifest as unknown as Parameters<typeof applyScopeFilter>[0],
+            scope,
+          ));
           if (parked > 0) mutated = true;
         }
 
@@ -311,7 +331,9 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
           await persistSwarmManifest(parsed.data.companyId, result.manifest);
         }
         const warnings = [...result.warnings];
-        if (parked > 0) {
+        if (mappedCustomToOps) {
+          warnings.push(`scope=focused with only custom labels [${scope?.custom_labels?.join(", ") ?? ""}] — mapped to Operations (COO + sub-agents active). ${parked} non-ops agents parked.`);
+        } else if (parked > 0) {
           warnings.push(`scope=focused: parked ${parked} agents outside [${scope?.departments.join(", ")}]`);
         }
         return { ok: true, manifest: result.manifest, source: result.source, warnings };

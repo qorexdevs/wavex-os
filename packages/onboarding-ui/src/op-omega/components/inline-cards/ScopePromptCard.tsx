@@ -91,7 +91,8 @@ export function ScopePromptCard({ companyId, detected, onDone }: Props) {
           />
           <div className="text-dim" style={{ fontSize: 10, marginTop: "0.45rem", lineHeight: 1.5 }}>
             Non-selected divisions get parked and can be activated later from Mission Control.
-            CEO + Chief of Staff always stay active.
+            CEO + Chief of Staff always stay active. Custom divisions without a canonical
+            chip default to Operations until dedicated templates ship.
           </div>
         </div>
       )}
