@@ -13,12 +13,18 @@ import { useNavigate } from "react-router-dom";
 import type { SwarmManifest } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 
-type SlotStatus = "pending" | "hiring" | "hired" | "skipped" | "failed";
+type SlotStatus = "pending" | "hiring" | "hired" | "already_mapped" | "skipped" | "failed";
 
 interface SlotRow {
   slot: string;
   status: SlotStatus;
+  reason?: string;
   error?: string;
+}
+
+interface GlobalError {
+  slot: string;
+  message: string;
 }
 
 interface Props {
@@ -39,7 +45,9 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
     Object.keys(swarmManifest.agents).map((slot) => ({ slot, status: "pending" as const })),
   );
   const [error, setError] = useState<string | null>(null);
+  const [globalErrors, setGlobalErrors] = useState<GlobalError[]>([]);
   const [paperclipUrl, setPaperclipUrl] = useState<string | null>(null);
+  const [handoffEnabled, setHandoffEnabled] = useState<boolean>(true);
   const [done, setDone] = useState(false);
   const ranRef = useRef(false);
 
@@ -72,8 +80,28 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
       try {
         const r = await opOmegaOnboardingApi.activate(companyId);
         const createdSet = new Set(r.paperclipHandoff.created.map((c) => c.slot));
-        const skippedSet = new Set(r.paperclipHandoff.skipped.map((s) => s.slot));
-        const errorMap = new Map(r.paperclipHandoff.errors.map((e) => [e.slot, e.message]));
+        // Split skipped into already-mapped (success — agents are live in
+        // Paperclip from a prior activate) vs muted-by-operator + other.
+        // The reason field distinguishes them.
+        const alreadyMappedSet = new Set<string>();
+        const otherSkippedMap = new Map<string, string>();
+        for (const s of r.paperclipHandoff.skipped) {
+          if (s.reason === "already-mapped") alreadyMappedSet.add(s.slot);
+          else otherSkippedMap.set(s.slot, s.reason);
+        }
+        // Errors. Bootstrap errors (slot="<bootstrap>") are global — they
+        // don't match any real row, so surface separately.
+        const errorMap = new Map<string, string>();
+        const globals: GlobalError[] = [];
+        for (const e of r.paperclipHandoff.errors) {
+          if (e.slot === "<bootstrap>" || !rows.some((row) => row.slot === e.slot)) {
+            globals.push({ slot: e.slot, message: e.message });
+          } else {
+            errorMap.set(e.slot, e.message);
+          }
+        }
+        setGlobalErrors(globals);
+        setHandoffEnabled(r.paperclipHandoff.enabled);
         if (r.paperclipHandoff.paperclipUrl) setPaperclipUrl(r.paperclipHandoff.paperclipUrl);
 
         // Activate returned. Stop polling + reconcile against the final
@@ -81,7 +109,8 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
         stillPolling = false;
         setRows((prev) => prev.map((row) => {
           if (errorMap.has(row.slot)) return { ...row, status: "failed", error: errorMap.get(row.slot) };
-          if (skippedSet.has(row.slot)) return { ...row, status: "skipped" };
+          if (alreadyMappedSet.has(row.slot)) return { ...row, status: "already_mapped", reason: "already-mapped" };
+          if (otherSkippedMap.has(row.slot)) return { ...row, status: "skipped", reason: otherSkippedMap.get(row.slot) };
           if (createdSet.has(row.slot) || !r.paperclipHandoff.enabled) return { ...row, status: "hired" };
           return row;
         }));
@@ -102,8 +131,13 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
     navigate(`/?companyId=${encodeURIComponent(companyId)}`);
   }
 
-  const hiredCount = rows.filter((r) => r.status === "hired").length;
+  // "Mirrored" = anything that successfully landed in Paperclip for this
+  // company. Counts hired (just created) + already_mapped (created in a
+  // prior activate, still live in Paperclip). Excludes failed + pending.
+  const mirroredCount = rows.filter((r) => r.status === "hired" || r.status === "already_mapped").length;
+  const failedCount = rows.filter((r) => r.status === "failed").length;
   const totalCount = rows.length;
+  const alreadyMappedAll = done && handoffEnabled && rows.every((r) => r.status === "already_mapped");
 
   return (
     <div style={{
@@ -115,12 +149,42 @@ export function ActivateProgress({ companyId, swarmManifest }: Props) {
       <div style={{ maxWidth: 640, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem", margin: "auto 0" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: "0.35rem" }}>
-            Hiring your team
+            {alreadyMappedAll ? "Already activated" : failedCount > 0 ? "Activation issues" : "Hiring your team"}
           </div>
           <div className="text-dim" style={{ fontSize: 12 }}>
-            {hiredCount} of {totalCount} {paperclipUrl ? "mirrored to Paperclip" : "activated"}
+            {alreadyMappedAll
+              ? `All ${totalCount} agents already live in Paperclip from a prior activate`
+              : `${mirroredCount} of ${totalCount} ${paperclipUrl ? "mirrored to Paperclip" : "activated"}`}
+            {failedCount > 0 && ` · ${failedCount} failed`}
           </div>
         </div>
+
+        {/* Surface global handoff errors (e.g. <bootstrap> from the
+         *  activate-route catch handler when handoffToPaperclip throws). */}
+        {globalErrors.length > 0 && (
+          <div style={{
+            background: "color-mix(in srgb, var(--warning) 14%, transparent)",
+            border: "1px solid var(--warning)",
+            borderRadius: 6,
+            padding: "0.6rem 0.75rem",
+            fontSize: 11,
+            color: "var(--warning)",
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: "0.25rem" }}>
+              ✗ Paperclip handoff failed
+            </div>
+            {globalErrors.map((e, i) => (
+              <div key={i} style={{ marginTop: i > 0 ? "0.3rem" : 0, color: "var(--text)", opacity: 0.85 }}>
+                {e.message}
+              </div>
+            ))}
+            <div style={{ marginTop: "0.35rem", color: "var(--text-dim)", fontSize: 10 }}>
+              Your manifest is signed + agents are in the wavex DB. Mission
+              Control will work. Restart Paperclip on :3100 and re-activate
+              when ready.
+            </div>
+          </div>
+        )}
 
         <div style={{
           background: "#13131a",
@@ -185,6 +249,10 @@ function SlotIcon({ status }: { status: SlotStatus }) {
   if (status === "pending") return <span style={{ color: "var(--text-dim)" }}>○</span>;
   if (status === "hiring") return <span className="wavex-pulse-dot" style={{ color: "var(--warning)" }}>●</span>;
   if (status === "hired") return <span style={{ color: "var(--accent)" }}>✓</span>;
+  // Already-mapped from a prior activate → still live in Paperclip → render
+  // as success but with a subtle ↻ overlay so the operator can see it
+  // wasn't freshly created in this activate.
+  if (status === "already_mapped") return <span style={{ color: "var(--accent)", opacity: 0.7 }}>✓</span>;
   if (status === "skipped") return <span style={{ color: "var(--text-dim)" }}>↷</span>;
   return <span style={{ color: "var(--warning)" }}>✗</span>;
 }

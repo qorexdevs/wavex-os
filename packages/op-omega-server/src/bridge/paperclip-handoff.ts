@@ -164,8 +164,9 @@ async function saveMapping(wavexCompanyId: string, m: PaperclipMapping): Promise
  *  when handoff completes. Lives next to paperclip-handoff.json. */
 interface HandoffProgressSlot {
   slot: string;
-  status: "pending" | "hiring" | "hired" | "skipped" | "failed";
+  status: "pending" | "hiring" | "hired" | "already_mapped" | "skipped" | "failed";
   agentId?: string;
+  reason?: string;
 }
 interface HandoffProgress {
   paperclipUrl: string;
@@ -399,13 +400,15 @@ export async function handoffToPaperclip(
     if (mutes.has(slot)) {
       report.skipped.push({ slot, reason: "muted-by-operator" });
       completed += 1;
-      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped" }, completed);
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: "muted-by-operator" }, completed);
       continue;
     }
     if (slotToPaperclipId[slot]) {
       report.skipped.push({ slot, reason: "already-mapped" });
       completed += 1;
-      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped" }, completed);
+      // Already-mapped slots are still live in Paperclip from a prior
+      // activate — render them as success in the UI, not as "skipped".
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "already_mapped", reason: "already-mapped" }, completed);
       continue;
     }
     await updateHandoffProgress(wavexCompanyId, slot, { status: "hiring" }, completed);
