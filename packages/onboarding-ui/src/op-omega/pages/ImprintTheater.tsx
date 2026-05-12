@@ -16,6 +16,7 @@ import { isT0FastMode } from "../lib/dev-flags";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 import { MonteCarloRace, type MonteCarloReportLike } from "../components/MonteCarloRace";
 import { StreamingText } from "../components/StreamingText";
+import { RefinementPanel } from "../components/RefinementPanel";
 
 interface Props {
   companyId: string;
@@ -134,12 +135,14 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
 
       {!error && act === 3 && result && (
         <ImprintAct
+          companyId={companyId}
           manifest={result.manifest}
           sha256={result.sha256}
           source={result.source}
           showFullManifest={showFullManifest}
           onToggleManifest={() => setShowFullManifest((v) => !v)}
           onLaunch={onLaunch}
+          onRefined={(manifest, sha256) => setResult({ manifest, sha256, source: "t2" })}
         />
       )}
     </div>
@@ -199,19 +202,22 @@ function StatTile({ label, value, accent = "neutral" }: { label: string; value: 
 }
 
 interface ImprintActProps {
+  companyId: string;
   manifest: CompanyManifest;
   sha256: string;
   source: "t2" | "fallback";
   showFullManifest: boolean;
   onToggleManifest: () => void;
   onLaunch: () => void;
+  onRefined: (manifest: CompanyManifest, sha256: string) => void;
 }
 
-function ImprintAct({ manifest, sha256, source, showFullManifest, onToggleManifest, onLaunch }: ImprintActProps) {
+function ImprintAct({ companyId, manifest, sha256, source, showFullManifest, onToggleManifest, onLaunch, onRefined }: ImprintActProps) {
   const imprint = manifest.imprint_summary ?? "";
   const [streamDone, setStreamDone] = useState(false);
+  const [refineMode, setRefineMode] = useState(false);
   return (
-    <div style={{ maxWidth: 760, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+    <div style={{ maxWidth: 760, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem", alignItems: "center" }}>
       <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
         Your imprint {source === "fallback" && <span style={{ color: "var(--warning)" }}>(quick draft)</span>}
       </div>
@@ -222,8 +228,12 @@ function ImprintAct({ manifest, sha256, source, showFullManifest, onToggleManife
         padding: "0 0.5rem",
         wordBreak: "break-word",
         overflowWrap: "anywhere",
+        width: "100%",
       }}>
-        <StreamingText text={imprint} charsPerSec={60} onComplete={() => setStreamDone(true)} />
+        {/* key forces StreamingText to remount when the imprint changes
+         *  (e.g. operator applied a refinement that regenerated the imprint),
+         *  re-starting the character-by-character reveal from the top. */}
+        <StreamingText key={sha256} text={imprint} charsPerSec={60} onComplete={() => setStreamDone(true)} />
       </div>
       <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
         <button
@@ -257,26 +267,57 @@ function ImprintAct({ manifest, sha256, source, showFullManifest, onToggleManife
           {JSON.stringify(manifest, null, 2)}
         </pre>
       )}
-      <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
-        <button
-          type="button"
-          onClick={onLaunch}
-          disabled={!streamDone}
-          style={{
-            padding: "0.7rem 1.4rem",
-            borderRadius: 8,
-            background: "var(--accent)",
-            color: "var(--bg)",
-            border: "none",
-            fontWeight: 700,
-            fontSize: 14,
-            cursor: streamDone ? "pointer" : "wait",
-            opacity: streamDone ? 1 : 0.5,
+      {refineMode && streamDone && (
+        <RefinementPanel
+          companyId={companyId}
+          onApplied={(m, s) => {
+            onRefined(m, s);
+            setRefineMode(false);
+            setStreamDone(false); // streaming restarts with new imprint
           }}
-        >
-          Let's launch →
-        </button>
-      </div>
+          onSkip={() => setRefineMode(false)}
+        />
+      )}
+
+      {!refineMode && (
+        <div style={{ textAlign: "center", marginTop: "0.5rem", display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+          <button
+            type="button"
+            onClick={() => setRefineMode(true)}
+            disabled={!streamDone}
+            style={{
+              padding: "0.55rem 1rem",
+              borderRadius: 8,
+              background: "transparent",
+              color: "var(--text-dim)",
+              border: "1px solid var(--border)",
+              fontSize: 13,
+              cursor: streamDone ? "pointer" : "wait",
+              opacity: streamDone ? 1 : 0.5,
+            }}
+          >
+            Refine before launch
+          </button>
+          <button
+            type="button"
+            onClick={onLaunch}
+            disabled={!streamDone}
+            style={{
+              padding: "0.7rem 1.4rem",
+              borderRadius: 8,
+              background: "var(--accent)",
+              color: "var(--bg)",
+              border: "none",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: streamDone ? "pointer" : "wait",
+              opacity: streamDone ? 1 : 0.5,
+            }}
+          >
+            Let's launch →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
