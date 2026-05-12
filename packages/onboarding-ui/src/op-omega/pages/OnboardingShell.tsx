@@ -24,8 +24,10 @@ import { Pillar1HaltCard } from "../components/inline-cards/Pillar1HaltCard";
 import { Pillar3PromptCard } from "../components/inline-cards/Pillar3PromptCard";
 import { Pillar4PromptCard } from "../components/inline-cards/Pillar4PromptCard";
 import { Pillar5PromptCard } from "../components/inline-cards/Pillar5PromptCard";
+import { ConnectorPickerCard } from "../components/inline-cards/ConnectorPickerCard";
+import { CredentialDrawer } from "../components/CredentialDrawer";
 import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
-import type { Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response } from "@op-omega/plugin-onboarding";
+import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
  *  If yes we'll use the hostname as the slug seed; otherwise first 3 words. */
@@ -250,9 +252,81 @@ export function OnboardingShell() {
       message: {
         role: "assistant",
         text: "Got it. Let me figure out what to plug in…",
+        slot: { kind: "thinking", phase: "phase-2" },
       },
     });
-    // Subsequent step wires the connector picker. For now the chat goes quiet.
+  }, []);
+
+  /** Phase 2 connector generation — fires when state.phase transitions to
+   *  connectors/loading. Tries loadConnector first (no-cost) and falls back
+   *  to generateConnector with skipInference=t0. */
+  const connectorRanRef = useRef(false);
+  useEffect(() => {
+    if (state.phase.kind !== "connectors" || !state.phase.loading) return;
+    if (!companyId || connectorRanRef.current) return;
+    connectorRanRef.current = true;
+    void (async () => {
+      try {
+        const loaded = await opOmegaOnboardingApi.loadConnector(companyId);
+        let manifest: ConnectorManifest | null = loaded.exists ? (loaded.manifest as ConnectorManifest) : null;
+        if (!manifest) {
+          const generated = await opOmegaOnboardingApi.generateConnector(companyId, t0);
+          manifest = generated.manifest;
+        }
+        dispatch({ type: "CONNECTORS_LOADED", manifest });
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: "Here's the connector roster — adjust if needed, then we'll vault credentials.",
+            slot: { kind: "connector-picker", manifest },
+          },
+        });
+      } catch (e) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: `Couldn't generate connector manifest: ${e instanceof Error ? e.message : String(e)}`,
+          },
+        });
+      }
+    })();
+  }, [state.phase, companyId, t0]);
+
+  const handleConnectorRefined = useCallback((manifest: ConnectorManifest) => {
+    dispatch({ type: "CONNECTORS_LOADED", manifest });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Re-refined. Here's the new roster.",
+        slot: { kind: "connector-picker", manifest },
+      },
+    });
+  }, []);
+
+  const handleConnectorConfirmed = useCallback(() => {
+    dispatch({ type: "CONNECTORS_CONFIRMED" });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Vault your credentials below, then we'll build your team.",
+      },
+    });
+  }, []);
+
+  const handleCredentialsDone = useCallback(() => {
+    dispatch({ type: "CREDENTIALS_DONE" });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Connections vaulted. Assembling your AI team…",
+        slot: { kind: "thinking", phase: "phase-3" },
+      },
+    });
   }, []);
 
   return (
@@ -278,14 +352,18 @@ export function OnboardingShell() {
           onPillar3Done: handlePillar3Done,
           onPillar4Done: handlePillar4Done,
           onPillar5Done: handlePillar5Done,
+          onConnectorRefined: handleConnectorRefined,
+          onConnectorConfirmed: handleConnectorConfirmed,
         }}
       />
       <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
-      {/* Phase-specific overlays mount here in later steps:
-       *   - CredentialDrawer (Step 7)
-       *   - SwarmStudio (Step 8)
-       *   - ImprintTheater (Step 10)
-       *   - Pricing dialog + ActivateProgress (Step 11) */}
+      {state.phase.kind === "credentials" && companyId && (
+        <CredentialDrawer
+          companyId={companyId}
+          onDone={handleCredentialsDone}
+          onCancel={() => dispatch({ type: "SET_PHASE", phase: { kind: "connectors", loading: false, manifest: state.draft.connectorManifest } })}
+        />
+      )}
     </div>
   );
 }
@@ -359,6 +437,8 @@ interface SlotContext {
   onPillar3Done: (response: Pillar3Response) => void;
   onPillar4Done: (response: Pillar4Response) => void;
   onPillar5Done: (response: Pillar5Response) => void;
+  onConnectorRefined: (manifest: ConnectorManifest) => void;
+  onConnectorConfirmed: () => void;
 }
 
 function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContext: SlotContext }) {
@@ -471,6 +551,16 @@ function SlotRenderer({ slot, slotContext }: { slot: ChatSlot; slotContext: Slot
             Once resolved, reload the page to retry verification.
           </div>
         </div>
+      );
+    case "connector-picker":
+      if (!slotContext.companyId) return null;
+      return (
+        <ConnectorPickerCard
+          companyId={slotContext.companyId}
+          manifest={slot.manifest}
+          onConfirmed={slotContext.onConnectorConfirmed}
+          onReRefined={slotContext.onConnectorRefined}
+        />
       );
     default:
       return null;
