@@ -10,6 +10,7 @@ import type { Pillar3Response } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
 import { ResponseChips } from "../ResponseChips";
 import { PRODUCT_STATES, STAGE_PRE, STAGE_REVENUE } from "../../lib/options";
+import { previewBaseline, formatBaselinePreview } from "../../lib/stage-baselines";
 
 const PRODUCT_OPTS = PRODUCT_STATES.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
 const STAGE_PRE_OPTS = STAGE_PRE.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
@@ -97,6 +98,31 @@ export function Pillar3PromptCard({ companyId, onDone }: Props) {
           />
         </div>
       )}
+
+      {/* Baseline preview — shows the KPI defaults we'll seed for the
+       *  selected (product_state, stage) combo. Display-only. */}
+      {productValue && stageValue && (() => {
+        const ps = productIsCustom ? "other" : productValue;
+        const st = stageIsCustom ? "other" : stageValue;
+        const b = previewBaseline(ps, st);
+        if (!b) return null;
+        return (
+          <div style={{
+            padding: "0.5rem 0.75rem",
+            background: "var(--bg)",
+            border: "1px solid var(--accent)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--text-dim)",
+            lineHeight: 1.55,
+          }}>
+            <div style={{ fontWeight: 600, color: "var(--accent)", marginBottom: "0.2rem" }}>
+              Baseline KPIs we'll seed
+            </div>
+            {formatBaselinePreview(b)}
+          </div>
+        );
+      })()}
 
       {error && (
         <div style={{ color: "var(--warning)", fontSize: 12 }}>✗ {error}</div>

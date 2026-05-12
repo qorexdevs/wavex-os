@@ -6,6 +6,7 @@ import type { Pillar4Response, LeadSource, SalesMotion, CloseChannel } from "@op
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
 import { ResponseChips } from "../ResponseChips";
 import { LEAD_SOURCES, SALES_MOTIONS, CLOSE_CHANNELS } from "../../lib/options";
+import { deriveGtmProfile, displayGtmProfile } from "../../lib/gtm-profile";
 
 const LEAD_OPTS = LEAD_SOURCES.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
 const MOTION_OPTS = SALES_MOTIONS.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
@@ -122,6 +123,30 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
           />
         </div>
       )}
+
+      {/* Live GTM profile preview — derives the operator's go-to-market
+       *  shape from lead_sources + sales_motion and names the primary
+       *  agents that will activate. Display-only. */}
+      {leadsCanon.length > 0 && motionValue && !motionIsCustom && (() => {
+        const profile = deriveGtmProfile({ lead_sources: leadsCanon, sales_motion: motionValue });
+        const display = displayGtmProfile(profile);
+        return (
+          <div style={{
+            padding: "0.5rem 0.75rem",
+            background: "var(--bg)",
+            border: "1px solid var(--accent)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--text-dim)",
+            lineHeight: 1.55,
+          }}>
+            <div style={{ fontWeight: 600, color: "var(--accent)", marginBottom: "0.2rem" }}>
+              GTM profile · {display.name}
+            </div>
+            <div>Primary agents that activate: <span style={{ color: "var(--text)" }}>{display.primary_agents}</span></div>
+          </div>
+        );
+      })()}
 
       {error && (
         <div style={{ color: "var(--warning)", fontSize: 12 }}>✗ {error}</div>

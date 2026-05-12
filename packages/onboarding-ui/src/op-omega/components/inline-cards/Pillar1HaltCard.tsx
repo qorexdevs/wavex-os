@@ -22,12 +22,12 @@ interface Props {
 
 export function Pillar1HaltCard({ companyId, orgName, rawInput, onRecovered }: Props) {
   const [text, setText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<"none" | "retry" | "manual">("none");
   const [error, setError] = useState<string | null>(null);
   const tooShort = text.trim().length < MIN_CHARS;
 
   async function handleResubmit(): Promise<void> {
-    setSubmitting(true);
+    setSubmitting("manual");
     setError(null);
     try {
       const result = await opOmegaOnboardingApi.pillar1({
@@ -40,17 +40,55 @@ export function Pillar1HaltCard({ companyId, orgName, rawInput, onRecovered }: P
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
-      setSubmitting(false);
+      setSubmitting("none");
+    }
+  }
+
+  async function handleRetry(): Promise<void> {
+    setSubmitting("retry");
+    setError(null);
+    try {
+      const result = await opOmegaOnboardingApi.pillar1({
+        companyId,
+        org_name: orgName,
+        raw_input: rawInput,
+      });
+      onRecovered(result.response);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setSubmitting("none");
     }
   }
 
   return (
     <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+        <button
+          type="button"
+          onClick={() => void handleRetry()}
+          disabled={submitting !== "none"}
+          style={{
+            padding: "0.35rem 0.7rem",
+            borderRadius: 6,
+            background: "transparent",
+            color: "var(--text-dim)",
+            border: "1px solid var(--border)",
+            fontSize: 11,
+            cursor: submitting !== "none" ? "not-allowed" : "pointer",
+          }}
+        >
+          {submitting === "retry" ? "Retrying…" : "↻ Retry with same input"}
+        </button>
+        <span className="text-dim" style={{ fontSize: 11 }}>
+          or describe it below ↓
+        </span>
+      </div>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={4}
-        disabled={submitting}
+        disabled={submitting !== "none"}
         placeholder={`Tell me what you're building (≥${MIN_CHARS} characters). Mention the customer, the product, and what's working / not yet working.`}
         style={{
           width: "100%",
@@ -72,7 +110,7 @@ export function Pillar1HaltCard({ companyId, orgName, rawInput, onRecovered }: P
         <button
           type="button"
           onClick={() => void handleResubmit()}
-          disabled={submitting || tooShort}
+          disabled={submitting !== "none" || tooShort}
           style={{
             padding: "0.4rem 0.85rem",
             borderRadius: 6,
@@ -81,11 +119,11 @@ export function Pillar1HaltCard({ companyId, orgName, rawInput, onRecovered }: P
             border: "none",
             fontWeight: 600,
             fontSize: 12,
-            cursor: submitting || tooShort ? "not-allowed" : "pointer",
-            opacity: submitting || tooShort ? 0.6 : 1,
+            cursor: submitting !== "none" || tooShort ? "not-allowed" : "pointer",
+            opacity: submitting !== "none" || tooShort ? 0.6 : 1,
           }}
         >
-          {submitting ? "Working…" : "Continue with this →"}
+          {submitting === "manual" ? "Working…" : "Continue with this →"}
         </button>
       </div>
       {error && (

@@ -24,6 +24,26 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
   const [tgChatId, setTgChatId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
+
+  async function handleTestSend(): Promise<void> {
+    if (!tgBotToken || !tgChatId) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await opOmegaOnboardingApi.pillar5TestSend({
+        companyId,
+        channel: "telegram",
+        config: { telegram_bot_token: tgBotToken, telegram_chat_id: tgChatId },
+      });
+      setTestResult({ ok: r.ok, detail: r.detail });
+    } catch (e) {
+      setTestResult({ ok: false, detail: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   const commValue = commCustom[0] ?? commCanon[0] ?? "";
   const commIsCustom = commCustom.length > 0;
@@ -102,6 +122,29 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
             disabled={submitting}
             style={inputStyle}
           />
+          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => void handleTestSend()}
+              disabled={submitting || testing || !tgBotToken || !tgChatId}
+              style={{
+                padding: "0.3rem 0.65rem",
+                borderRadius: 4,
+                background: "transparent",
+                color: "var(--text-dim)",
+                border: "1px solid var(--border)",
+                fontSize: 11,
+                cursor: testing || !tgBotToken || !tgChatId ? "not-allowed" : "pointer",
+              }}
+            >
+              {testing ? "Sending…" : "Send test message"}
+            </button>
+            {testResult && (
+              <span style={{ fontSize: 11, color: testResult.ok ? "var(--accent)" : "var(--warning)" }}>
+                {testResult.ok ? "✓" : "✗"} {testResult.detail}
+              </span>
+            )}
+          </div>
           <div className="text-dim" style={{ fontSize: 10 }}>
             Vaulted locally — never sent off your machine in dev.
           </div>

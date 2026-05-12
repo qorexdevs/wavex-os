@@ -133,6 +133,49 @@ export function Pillar1ConfirmCard({ companyId, response, onConfirmed }: Props) 
         </div>
       )}
 
+      {/* Inferred signals preview — shows the deeper Pillar 1 fields so the
+       *  operator sees what T2 picked up beyond just industry / business model.
+       *  Read-only, no input required. */}
+      {(response.ideal_customer_profile || response.competitive_position || response.tone_signal || response.primary_acquisition_channel) && (
+        <div style={{
+          padding: "0.5rem 0.75rem",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          fontSize: 11,
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          columnGap: "0.85rem",
+          rowGap: "0.35rem",
+          color: "var(--text-dim)",
+        }}>
+          {response.ideal_customer_profile && (
+            <>
+              <div style={{ fontWeight: 600 }}>ICP</div>
+              <div style={{ color: "var(--text)" }}>{response.ideal_customer_profile}</div>
+            </>
+          )}
+          {response.competitive_position && (
+            <>
+              <div style={{ fontWeight: 600 }}>Position</div>
+              <div style={{ color: "var(--text)" }}>{response.competitive_position}</div>
+            </>
+          )}
+          {response.tone_signal && (
+            <>
+              <div style={{ fontWeight: 600 }}>Tone</div>
+              <div style={{ color: "var(--text)" }}>{response.tone_signal}</div>
+            </>
+          )}
+          {response.primary_acquisition_channel && (
+            <>
+              <div style={{ fontWeight: 600 }}>Primary acq.</div>
+              <div style={{ color: "var(--text)" }}>{response.primary_acquisition_channel}</div>
+            </>
+          )}
+        </div>
+      )}
+
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: "0.35rem", color: "var(--text-dim)" }}>
           Industry
