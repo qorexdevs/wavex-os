@@ -227,6 +227,21 @@ export const opOmegaOnboardingApi = {
     call<{ ok: true; manifest: ConnectorManifest; source: "t2" | "fallback"; warnings: string[] }>(
       "GET", `/op-omega/onboarding/connector-recommendations?companyId=${encodeURIComponent(companyId)}`),
 
+  // Sub-fleet scope — written before swarm-manifest so the route can park
+  // non-selected divisions. mode="full" keeps everything active.
+  setScope: (input: {
+    companyId: string;
+    mode: "full" | "focused";
+    departments: string[];
+    custom_labels?: string[];
+  }) => call<{ ok: true; scope: { mode: string; departments: string[]; custom_labels?: string[]; set_at: string } }>(
+    "POST", "/op-omega/onboarding/scope", input,
+  ),
+
+  getScope: (companyId: string) =>
+    call<{ ok: true; scope: { mode: "full" | "focused"; departments: string[]; custom_labels?: string[]; set_at: string } | null }>(
+      "GET", `/op-omega/onboarding/scope?companyId=${encodeURIComponent(companyId)}`),
+
   // Monte Carlo report (full per-strategy breakdown, written by finalize)
   getMcReport: (companyId: string) =>
     call<{

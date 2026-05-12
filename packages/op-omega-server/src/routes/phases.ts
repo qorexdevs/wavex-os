@@ -33,6 +33,60 @@ async function persistSwarmManifest(companyId: string, swarm: unknown): Promise<
   await writeFile(join(dir, "swarm_manifest.yaml"), yaml.dump(swarm), "utf8");
 }
 
+/** Sub-fleet scope record. When the operator chooses a focused team (e.g.
+ *  marketing + sales only), we persist their selected departments and the
+ *  swarm-manifest route parks every chief + L·IV sub-agent that lives
+ *  outside that set. CEO + CoS always remain active. */
+interface ScopeRecord {
+  /** Canonical departments to keep active. */
+  departments: string[];
+  /** Free-text divisions the operator entered (used for the parked-reason
+   *  message). */
+  custom_labels?: string[];
+  mode: "full" | "focused";
+  set_at: string;
+}
+
+async function readScope(companyId: string): Promise<ScopeRecord | null> {
+  const { readFile } = await import("node:fs/promises");
+  const path = join(getOnboardingDir(companyId), "scope.json");
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw) as ScopeRecord;
+  } catch {
+    return null;
+  }
+}
+
+async function writeScope(companyId: string, scope: ScopeRecord): Promise<void> {
+  const { mkdir } = await import("node:fs/promises");
+  const dir = getOnboardingDir(companyId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "scope.json"), JSON.stringify(scope, null, 2), "utf8");
+}
+
+/** Apply scope filter to a swarm manifest in-place. Non-scoped chiefs +
+ *  their reports become `parked` with an unpark_condition the operator
+ *  can flip from Mission Control. CEO + chief-of-staff are sacrosanct. */
+function applyScopeFilter(swarm: { agents: Record<string, { department?: string; status?: string; unpark_condition?: string | null; reason?: string | null; reports_to?: string | null }> }, scope: ScopeRecord): { parked: number } {
+  if (scope.mode === "full") return { parked: 0 };
+  const allowed = new Set([...scope.departments, "ceo"]); // CEO always
+  let parked = 0;
+  // First pass: park chiefs whose department isn't in scope.
+  for (const [slot, a] of Object.entries(swarm.agents)) {
+    if (slot === "ceo.orchestrator" || slot === "ceo.chief-of-staff") continue;
+    if (a.department && !allowed.has(a.department)) {
+      if (a.status === "active" || a.status === "standby") {
+        a.status = "parked";
+        a.unpark_condition = "operator_unpark_from_mission_control";
+        a.reason = `outside requested scope (${scope.departments.join(", ") || "focused team"})`;
+        parked += 1;
+      }
+    }
+  }
+  return { parked };
+}
+
 /** Load workflow_manifest.json if it exists AND was written within
  *  freshnessMs ago. Used by finalize to consume the chat-first shell's
  *  prefetched T2 workflow instead of regenerating deterministically. */
@@ -189,6 +243,38 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Persist sub-fleet scope. Body: { companyId, mode: "full"|"focused",
+  // departments: string[], custom_labels?: string[] }. Read by the swarm-
+  // manifest POST handler to park non-scoped chiefs.
+  const scopeSchema = z.object({
+    companyId: z.string().min(1),
+    mode: z.enum(["full", "focused"]),
+    departments: z.array(z.string()),
+    custom_labels: z.array(z.string()).optional(),
+  });
+  app.post("/op-omega/onboarding/scope", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const parsed = scopeSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    assertCompanyAccess(authReq(req), parsed.data.companyId);
+    const scope: ScopeRecord = {
+      mode: parsed.data.mode,
+      departments: parsed.data.departments,
+      custom_labels: parsed.data.custom_labels,
+      set_at: new Date().toISOString(),
+    };
+    await writeScope(parsed.data.companyId, scope);
+    return { ok: true, scope };
+  });
+  app.get("/op-omega/onboarding/scope", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const { companyId } = (req.query ?? {}) as { companyId?: string };
+    if (!companyId) return reply.status(400).send({ error: "companyId required" });
+    assertCompanyAccess(authReq(req), companyId);
+    const scope = await readScope(companyId);
+    return { ok: true, scope };
+  });
+
   app.post("/op-omega/onboarding/swarm-manifest", async (req, reply) => {
     if (!gateBoard(req, reply)) return;
     const parsed = generateSwarmSchema.safeParse(req.body);
@@ -209,10 +295,26 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         // Phase 3 org chart AND get bridged to DB on activate. The vendored
         // generator persists swarm_manifest.{json,yaml} internally; we
         // re-write after mutation so the on-disk file matches.
-        if (injectKernelSlots(result.manifest)) {
+        let mutated = injectKernelSlots(result.manifest);
+
+        // Sub-fleet scope filter — if the operator chose a focused team
+        // (marketing+sales only, etc.), park non-scoped chiefs + their
+        // reports. CEO + chief-of-staff stay active regardless.
+        const scope = await readScope(parsed.data.companyId);
+        let parked = 0;
+        if (scope && scope.mode === "focused") {
+          ({ parked } = applyScopeFilter(result.manifest as unknown as Parameters<typeof applyScopeFilter>[0], scope));
+          if (parked > 0) mutated = true;
+        }
+
+        if (mutated) {
           await persistSwarmManifest(parsed.data.companyId, result.manifest);
         }
-        return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };
+        const warnings = [...result.warnings];
+        if (parked > 0) {
+          warnings.push(`scope=focused: parked ${parked} agents outside [${scope?.departments.join(", ")}]`);
+        }
+        return { ok: true, manifest: result.manifest, source: result.source, warnings };
       });
     } catch (e) {
       return bodyError(reply, e);

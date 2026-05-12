@@ -25,7 +25,9 @@ import { Pillar3PromptCard } from "../components/inline-cards/Pillar3PromptCard"
 import { Pillar4PromptCard } from "../components/inline-cards/Pillar4PromptCard";
 import { Pillar5PromptCard } from "../components/inline-cards/Pillar5PromptCard";
 import { ConnectorPickerCard } from "../components/inline-cards/ConnectorPickerCard";
+import { ScopePromptCard } from "../components/inline-cards/ScopePromptCard";
 import { CredentialDrawer } from "../components/CredentialDrawer";
+import { detectScope, type Department } from "../lib/scope-detect";
 import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
@@ -54,21 +56,13 @@ export function OnboardingShell() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const t0 = isT0FastMode();
 
-  // ── First mount: seed welcome message ───────────────────────────────────
+  // ── First mount: resume path only ───────────────────────────────────────
+  // Fresh state shows an EmptyState hero — no seeded welcome message needed.
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    if (!companyId) {
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          role: "assistant",
-          text: "Tell me about what you're building. Drop a URL, a GitHub repo, or just describe it — I'll take it from there.",
-        },
-      });
-    } else {
-      // Resume path: just acknowledge. Hydration logic will drive next steps.
+    if (companyId && state.thread.length === 0) {
       dispatch({
         type: "ADD_MESSAGE",
         message: {
@@ -77,7 +71,9 @@ export function OnboardingShell() {
         },
       });
     }
-  }, [companyId]);
+  }, [companyId, state.thread.length]);
+
+  const showEmptyState = state.thread.length === 0 && state.phase.kind === "welcome";
 
   /** Run Pillar 1 inference end-to-end. Emits a thinking bubble, awaits the
    *  T2 call, then emits either an inline confirm card (success) or an
@@ -175,7 +171,8 @@ export function OnboardingShell() {
 
   /** Pillar 2 silent verify — fires when stage transitions to 2/thinking.
    *  Default claude_plan=max_20x (dev demo path). Surfaces a verify-fail
-   *  slot only if the probe reports an installation/auth issue. */
+   *  slot only if the probe reports an installation/auth issue. On success
+   *  emits the scope picker (which routes to Pillar 3 on confirm). */
   const verifiedRef = useRef(false);
   useEffect(() => {
     if (state.phase.kind !== "pillars" || state.phase.stage !== 2 || !state.phase.thinking) return;
@@ -188,14 +185,17 @@ export function OnboardingShell() {
           claude_plan: "max_20x",
         });
         if (outcome.ok) {
-          // Silent advance to Pillar 3
-          dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
+          // Silent → scope picker (Pillar 3 follows the scope confirm)
+          dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 2, thinking: false } });
+          const detected = detectScope(state.draft.pillar1?.rawInput ?? "");
           dispatch({
             type: "ADD_MESSAGE",
             message: {
               role: "assistant",
-              text: "Where are you in the product journey?",
-              slot: { kind: "pillar3-prompt" },
+              text: detected.length > 0
+                ? `Sounds like you want to focus on ${detected.length === 1 ? "one division" : `${detected.length} divisions`}. Tell me how to scope your team.`
+                : "How big should this team be? You can run the full org or focus on specific divisions.",
+              slot: { kind: "scope-prompt", detected },
             },
           });
         } else {
@@ -225,6 +225,21 @@ export function OnboardingShell() {
       }
     })();
   }, [state.phase, companyId]);
+
+  const handleScopeDone = useCallback((mode: "full" | "focused", departments: Department[]) => {
+    dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
+    const summary = mode === "full"
+      ? "Full org — got it."
+      : `Focused team: ${departments.length > 0 ? departments.join(" + ") : "custom only"}.`;
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: `${summary} Where are you in the product journey?`,
+        slot: { kind: "pillar3-prompt" },
+      },
+    });
+  }, []);
 
   const handlePillar3Done = useCallback((response: Pillar3Response) => {
     dispatch({ type: "PILLAR3_DONE", response });
@@ -391,11 +406,16 @@ export function OnboardingShell() {
       display: "flex",
       flexDirection: "column",
     }}>
-      <TopBar
-        companyId={companyId}
-        progressPct={phaseProgressPct(state.phase)}
-        t0={t0}
-      />
+      {!showEmptyState && (
+        <TopBar
+          companyId={companyId}
+          progressPct={phaseProgressPct(state.phase)}
+          t0={t0}
+        />
+      )}
+      {showEmptyState ? (
+        <EmptyState onSubmit={handleSubmit} t0={t0} />
+      ) : (
       <ChatThread
         thread={state.thread}
         slotContext={{
@@ -409,9 +429,13 @@ export function OnboardingShell() {
           onPillar5Done: handlePillar5Done,
           onConnectorRefined: handleConnectorRefined,
           onConnectorConfirmed: handleConnectorConfirmed,
+          onScopeDone: handleScopeDone,
         }}
       />
-      <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
+      )}
+      {!showEmptyState && (
+        <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
+      )}
       {state.phase.kind === "credentials" && companyId && (
         <CredentialDrawer
           companyId={companyId}
@@ -450,6 +474,157 @@ export function OnboardingShell() {
   );
 }
 
+// ── Empty state (hero) ────────────────────────────────────────────────────
+
+const SUGGESTIONS = [
+  { label: "ricoma.com", value: "ricoma.com" },
+  { label: "Marketing and sales for my SaaS", value: "I'm a founder of a B2B SaaS at $50K MRR. I need a marketing and sales AI team to supplement my two-person GTM crew." },
+  { label: "AI ops team for a small startup", value: "We're a 5-person dev tools startup, pre-revenue. I want an AI operations team to handle the back office while we ship product." },
+];
+
+function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: boolean }) {
+  const [draft, setDraft] = useState("");
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => { ref.current?.focus(); }, []);
+
+  function send(text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    setDraft("");
+    onSubmit(t);
+  }
+
+  function handleKey(e: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send(draft);
+    }
+  }
+
+  return (
+    <div style={{
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "1.5rem",
+      gap: "2rem",
+    }}>
+      <div style={{ position: "absolute", top: "1rem", left: "1rem", display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.02em" }}>WaveX OS</span>
+        {t0 && (
+          <span style={{
+            fontSize: 10, padding: "0.1rem 0.45rem",
+            border: "1px solid var(--warning)",
+            color: "var(--warning)",
+            borderRadius: 999,
+          }}>
+            Fast mode
+          </span>
+        )}
+      </div>
+
+      <div style={{ maxWidth: 720, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: "2rem" }}>
+        <div style={{ textAlign: "center" }}>
+          <h1 style={{ fontSize: 30, fontWeight: 700, margin: 0, marginBottom: "0.6rem", letterSpacing: "-0.01em" }}>
+            What do you want to build?
+          </h1>
+          <p className="text-dim" style={{ fontSize: 14, margin: 0, lineHeight: 1.55 }}>
+            Drop a URL, describe your company, or tell me what kind of AI team you need.
+            <br />
+            I'll infer your stack, propose a fleet, and walk you to launch.
+          </p>
+        </div>
+
+        <div style={{
+          width: "100%",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: "0.85rem 1rem 0.85rem 1.1rem",
+          display: "flex",
+          alignItems: "flex-end",
+          gap: "0.75rem",
+          boxShadow: "0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.25)",
+        }}>
+          <textarea
+            ref={ref}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Ask anything…"
+            rows={1}
+            style={{
+              flex: 1,
+              resize: "none",
+              padding: "0.55rem 0",
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "var(--text)",
+              fontSize: 15,
+              fontFamily: "inherit",
+              lineHeight: 1.5,
+              minHeight: 28,
+              maxHeight: 200,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => send(draft)}
+            disabled={!draft.trim()}
+            style={{
+              padding: "0.55rem 0.8rem",
+              borderRadius: 10,
+              background: draft.trim() ? "var(--accent)" : "var(--surface-2)",
+              color: draft.trim() ? "var(--bg)" : "var(--text-dim)",
+              border: "none",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: draft.trim() ? "pointer" : "not-allowed",
+              transition: "background 0.15s, color 0.15s",
+            }}
+          >
+            ↑
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", justifyContent: "center" }}>
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => send(s.value)}
+              style={{
+                padding: "0.5rem 0.85rem",
+                fontSize: 12,
+                borderRadius: 999,
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+                transition: "color 0.15s, border-color 0.15s, background 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+                e.currentTarget.style.color = "var(--text)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.color = "var(--text-dim)";
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Top bar ───────────────────────────────────────────────────────────────
 
 function TopBar({
@@ -462,23 +637,21 @@ function TopBar({
   return (
     <header style={{
       position: "sticky", top: 0, zIndex: 10,
-      background: "var(--surface)",
-      borderBottom: "1px solid var(--border)",
-      padding: "0.5rem 1rem",
+      background: "color-mix(in srgb, var(--bg) 85%, transparent)",
+      backdropFilter: "blur(8px)",
+      padding: "0.6rem 1.25rem",
       display: "flex", alignItems: "center", gap: "1rem",
     }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
-        <span style={{ fontWeight: 700, fontSize: 13 }}>WaveX OS</span>
-        {companyId ? (
-          <span className="text-dim" style={{ fontSize: 11 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", minWidth: 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.02em" }}>WaveX OS</span>
+        {companyId && (
+          <span className="text-dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             · <code>{companyId}</code>
           </span>
-        ) : (
-          <span className="text-dim" style={{ fontSize: 11 }}>· new onboarding</span>
         )}
         {t0 && (
           <span style={{
-            fontSize: 10, padding: "0.1rem 0.4rem",
+            fontSize: 10, padding: "0.1rem 0.45rem",
             border: "1px solid var(--warning)",
             color: "var(--warning)",
             borderRadius: 999,
@@ -489,7 +662,7 @@ function TopBar({
         )}
       </div>
 
-      <div style={{ flex: 1, height: 3, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 2, background: "var(--border)", borderRadius: 2, overflow: "hidden", opacity: 0.6 }}>
         <div style={{
           height: "100%",
           width: `${progressPct}%`,
@@ -521,6 +694,7 @@ interface SlotContext {
   onPillar5Done: (response: Pillar5Response) => void;
   onConnectorRefined: (manifest: ConnectorManifest) => void;
   onConnectorConfirmed: () => void;
+  onScopeDone: (mode: "full" | "focused", departments: Department[]) => void;
 }
 
 function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContext: SlotContext }) {
@@ -615,6 +789,15 @@ function SlotRenderer({ slot, slotContext }: { slot: ChatSlot; slotContext: Slot
           onRecovered={slotContext.onPillar1Recovered}
         />
       );
+    case "scope-prompt":
+      if (!slotContext.companyId) return null;
+      return (
+        <ScopePromptCard
+          companyId={slotContext.companyId}
+          detected={slot.detected as Department[]}
+          onDone={slotContext.onScopeDone}
+        />
+      );
     case "pillar3-prompt":
       if (!slotContext.companyId) return null;
       return <Pillar3PromptCard companyId={slotContext.companyId} onDone={slotContext.onPillar3Done} />;
@@ -676,35 +859,43 @@ function ChatInput({
   return (
     <div style={{
       position: "fixed", bottom: 0, left: 0, right: 0,
-      background: "color-mix(in srgb, var(--surface) 92%, transparent)",
-      borderTop: "1px solid var(--border)",
-      backdropFilter: "blur(6px)",
-      padding: "0.6rem 1rem",
+      background: "linear-gradient(to top, var(--bg) 60%, transparent)",
+      padding: "1rem 1rem 1.25rem",
       zIndex: 20,
     }}>
-      <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+      <div style={{
+        maxWidth: 720,
+        margin: "0 auto",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 14,
+        padding: "0.7rem 0.85rem 0.7rem 1.05rem",
+        display: "flex",
+        alignItems: "flex-end",
+        gap: "0.65rem",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)",
+      }}>
         <textarea
           ref={ref}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={disabled ? "Working…" : "Type a message…"}
+          placeholder={disabled ? "Working…" : "Ask anything…"}
           disabled={disabled}
           rows={1}
           style={{
             flex: 1,
             resize: "none",
-            padding: "0.6rem 0.8rem",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontSize: 13,
-            fontFamily: "inherit",
-            lineHeight: 1.4,
-            minHeight: 38,
-            maxHeight: 160,
+            padding: "0.4rem 0",
+            background: "transparent",
+            border: "none",
             outline: "none",
+            color: "var(--text)",
+            fontSize: 14,
+            fontFamily: "inherit",
+            lineHeight: 1.5,
+            minHeight: 24,
+            maxHeight: 200,
           }}
         />
         <button
@@ -712,17 +903,19 @@ function ChatInput({
           onClick={() => { const text = draft; setDraft(""); onSubmit(text); }}
           disabled={disabled || !draft.trim()}
           style={{
-            padding: "0.55rem 1rem",
-            borderRadius: 8,
-            background: "var(--accent)",
-            color: "var(--bg)",
+            padding: "0.45rem 0.7rem",
+            borderRadius: 10,
+            background: draft.trim() && !disabled ? "var(--accent)" : "var(--surface-2)",
+            color: draft.trim() && !disabled ? "var(--bg)" : "var(--text-dim)",
             border: "none",
-            fontWeight: 600,
+            fontWeight: 700,
+            fontSize: 13,
             cursor: disabled || !draft.trim() ? "not-allowed" : "pointer",
-            opacity: disabled || !draft.trim() ? 0.5 : 1,
+            transition: "background 0.15s, color 0.15s",
+            minWidth: 36,
           }}
         >
-          Send
+          ↑
         </button>
       </div>
     </div>

@@ -32,6 +32,7 @@ export type ChatSlot =
   | { kind: "thinking"; phase: "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize" }
   | { kind: "pillar1-confirm"; response: Pillar1Response }
   | { kind: "pillar1-halt"; operatorMessage: string }
+  | { kind: "scope-prompt"; detected: string[] }
   | { kind: "pillar3-prompt" }
   | { kind: "pillar4-prompt" }
   | { kind: "pillar5-prompt" }
