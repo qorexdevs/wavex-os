@@ -54,14 +54,44 @@ export function CredentialDrawer({ companyId, onDone, onCancel }: Props) {
   const required = list.data.connectors.filter((c) => c.bucket === "required");
   const progress = list.data.progress;
   const ready = progress.allRequiredAddressed;
+  const pendingRequired = required.filter((c) => c.status === "pending");
+
+  async function skipAllPending(): Promise<void> {
+    const reason = "Deferred to post-onboarding (operator skip-all)";
+    for (const c of pendingRequired) {
+      try { await opOmegaOnboardingApi.skipCredential({ companyId, connectorId: c.connectorId, reason }); }
+      catch { /* surface in row card on next refresh */ }
+    }
+    refresh();
+  }
 
   return (
     <DrawerShell onCancel={onCancel}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", gap: "0.75rem" }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Credentials</h3>
-        <span className="text-dim" style={{ fontSize: 12 }}>
-          {progress.requiredReady} of {progress.requiredCount} ready
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          {pendingRequired.length > 1 && (
+            <button
+              type="button"
+              onClick={() => void skipAllPending()}
+              style={{
+                fontSize: 11,
+                padding: "0.25rem 0.55rem",
+                borderRadius: 4,
+                background: "transparent",
+                color: "var(--text-dim)",
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+              }}
+              title={`Skip all ${pendingRequired.length} pending required connectors`}
+            >
+              Skip all ({pendingRequired.length})
+            </button>
+          )}
+          <span className="text-dim" style={{ fontSize: 12 }}>
+            {progress.requiredReady} of {progress.requiredCount} ready
+          </span>
+        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem", maxHeight: "65vh", overflowY: "auto", paddingRight: "0.5rem" }}>
         {required.length === 0 && (

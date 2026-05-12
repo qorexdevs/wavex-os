@@ -721,7 +721,18 @@ function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContex
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [thread.length, thread[thread.length - 1]?.text]);
+  }, [thread.length, thread[thread.length - 1]?.text, thread[thread.length - 1]?.collapsed]);
+
+  // The most recent bubble that carries an interactive slot AND isn't yet
+  // collapsed is the "active" card — gets a subtle accent border + glow so
+  // the operator's eye knows where to act.
+  const activeIdx = (() => {
+    for (let i = thread.length - 1; i >= 0; i--) {
+      const m = thread[i];
+      if (!m.collapsed && m.slot && m.slot.kind !== "thinking") return i;
+    }
+    return -1;
+  })();
 
   return (
     <div
@@ -733,15 +744,15 @@ function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContex
       }}
     >
       <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {thread.map((m) => (
-          <ChatBubble key={m.id} message={m} slotContext={slotContext} />
+        {thread.map((m, i) => (
+          <ChatBubble key={m.id} message={m} slotContext={slotContext} active={i === activeIdx} />
         ))}
       </div>
     </div>
   );
 }
 
-function ChatBubble({ message, slotContext }: { message: ChatMessage; slotContext: SlotContext }) {
+function ChatBubble({ message, slotContext, active }: { message: ChatMessage; slotContext: SlotContext; active: boolean }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
@@ -750,14 +761,17 @@ function ChatBubble({ message, slotContext }: { message: ChatMessage; slotContex
       <div className="text-dim" style={{
         fontSize: 11,
         alignSelf: isUser ? "flex-end" : "flex-start",
-        padding: "0.2rem 0.5rem",
+        padding: "0.2rem 0.6rem",
         borderLeft: "2px solid var(--border)",
-        opacity: 0.6,
+        opacity: 0.55,
+        animation: "wavex-fade-in 250ms ease-out",
       }}>
-        {message.text ? message.text.split("\n")[0].slice(0, 80) : "(handled)"}
+        ✓ {message.text ? message.text.split("\n")[0].slice(0, 80) : "(handled)"}
       </div>
     );
   }
+
+  const accent = active && !isUser && !isSystem;
 
   return (
     <div style={{
@@ -767,11 +781,14 @@ function ChatBubble({ message, slotContext }: { message: ChatMessage; slotContex
       borderRadius: 10,
       background: isUser ? "var(--accent)" : isSystem ? "transparent" : "var(--surface)",
       color: isUser ? "var(--bg)" : "var(--text)",
-      border: isUser ? "none" : "1px solid var(--border)",
+      border: isUser ? "none" : `1px solid ${accent ? "var(--accent)" : "var(--border)"}`,
+      boxShadow: accent ? "0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent)" : undefined,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
       fontSize: 13,
       lineHeight: 1.5,
+      transition: "border-color 0.3s ease-out, box-shadow 0.3s ease-out",
+      animation: "wavex-fade-in 250ms ease-out",
     }}>
       {message.text}
       {message.slot && <SlotRenderer slot={message.slot} slotContext={slotContext} />}
