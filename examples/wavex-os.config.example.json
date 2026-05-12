@@ -6,5 +6,9 @@
   "issuePrefix": "ACME",
   "wrapperPath": "${REPO_ROOT}/scripts/wrappers/claude-spawn.sh",
   "model": "claude-opus-4-7",
-  "kpiRegistryPath": "./examples/kpi-registry.example.json"
+  "kpiRegistryPath": "./examples/kpi-registry.example.json",
+
+  "_comment_phase_g": "Phase G additions — needed when rendering inference-server, cloudflared, or resource-sweep plists. Optional for legacy templates.",
+  "wavexOsRoot": "~/wavex-os",
+  "tunnelHostname": "api.wavex-os.com"
 }
