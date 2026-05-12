@@ -1,0 +1,11 @@
+{
+  "name": "wavex-liaison-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node scripts the WaveX Liaison agent invokes via Bash to build, encrypt, and verify fleet data. Installed under ~/.paperclip/instances/<co>/tools/wavex-liaison/ at activate-time.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.46.1",
+    "libsodium-wrappers": "^0.7.13"
+  }
+}
