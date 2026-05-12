@@ -164,6 +164,21 @@ export function OnboardingShell() {
     dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
   }, [state.phase, setCompanyId, runPillar1]);
 
+  /** Drop a transient "moving to next step" pill in the chat between a
+   *  card-submit and the next card's mount, then run `next` after a 400ms
+   *  beat so the operator's eye registers the advance. The pill collapses
+   *  to a ✓ breadcrumb when the next message lands. */
+  const transitionWithPill = useCallback((label: string, next: () => void): void => {
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: { role: "assistant", text: label, slot: { kind: "transition-pill", label } },
+    });
+    window.setTimeout(() => {
+      dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "transition-pill" });
+      next();
+    }, 400);
+  }, []);
+
   /** Pillar 1 halt-recovery handler — passed into Pillar1HaltCard via the
    *  slot context. The card calls this with the operator's free-text. */
   const handlePillar1Recovery = useCallback((response: Pillar1Response) => {
@@ -194,7 +209,10 @@ export function OnboardingShell() {
           claude_plan: "max_20x",
         });
         if (outcome.ok) {
-          // Silent → scope picker (Pillar 3 follows the scope confirm)
+          // Silent → scope picker (Pillar 3 follows the scope confirm).
+          // Collapse the "Verifying setup…" transition pill that the
+          // Pillar 1 confirm click dropped in.
+          dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "transition-pill" });
           dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 2, thinking: false } });
           const detected = detectScope(state.draft.pillar1?.rawInput ?? "");
           dispatch({
@@ -237,58 +255,66 @@ export function OnboardingShell() {
 
   const handleScopeDone = useCallback((mode: "full" | "focused", departments: Department[]) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "scope-prompt" });
-    dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
     const summary = mode === "full"
       ? "Full org — got it."
       : `Focused team: ${departments.length > 0 ? departments.join(" + ") : "custom only"}.`;
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: `${summary} Where are you in the product journey?`,
-        slot: { kind: "pillar3-prompt" },
-      },
+    transitionWithPill("Setting up product questions…", () => {
+      dispatch({ type: "SET_PHASE", phase: { kind: "pillars", stage: 3, thinking: false } });
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: `${summary} Where are you in the product journey?`,
+          slot: { kind: "pillar3-prompt" },
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   const handlePillar3Done = useCallback((response: Pillar3Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar3-prompt" });
     dispatch({ type: "PILLAR3_DONE", response });
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: "How do leads come in?",
-        slot: { kind: "pillar4-prompt" },
-      },
+    transitionWithPill("Asking about your GTM…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "How do leads come in?",
+          slot: { kind: "pillar4-prompt" },
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   const handlePillar4Done = useCallback((response: Pillar4Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar4-prompt" });
     dispatch({ type: "PILLAR4_DONE", response });
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: "How do you want your board to talk to you?",
-        slot: { kind: "pillar5-prompt" },
-      },
+    transitionWithPill("Asking about board comms…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "How do you want your board to talk to you?",
+          slot: { kind: "pillar5-prompt" },
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   const handlePillar5Done = useCallback((response: Pillar5Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar5-prompt" });
     dispatch({ type: "PILLAR5_DONE", response });
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: "Got it. Let me figure out what to plug in…",
-        slot: { kind: "thinking", phase: "phase-2" },
-      },
+    transitionWithPill("Mapping your connectors…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Got it. Let me figure out what to plug in…",
+          slot: { kind: "thinking", phase: "phase-2" },
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   /** Phase 2 connector generation — fires when state.phase transitions to
    *  connectors/loading. Tries loadConnector first (no-cost) and falls back
@@ -345,27 +371,31 @@ export function OnboardingShell() {
 
   const handleConnectorConfirmed = useCallback(() => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "connector-picker" });
-    dispatch({ type: "CONNECTORS_CONFIRMED" });
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: "Vault your credentials below, then we'll build your team.",
-      },
+    transitionWithPill("Opening credentials…", () => {
+      dispatch({ type: "CONNECTORS_CONFIRMED" });
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Vault your credentials below, then we'll build your team.",
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   const handleCredentialsDone = useCallback(() => {
-    dispatch({ type: "CREDENTIALS_DONE" });
-    dispatch({
-      type: "ADD_MESSAGE",
-      message: {
-        role: "assistant",
-        text: "Connections vaulted. Assembling your AI team…",
-        slot: { kind: "thinking", phase: "phase-3" },
-      },
+    transitionWithPill("Assembling your AI team…", () => {
+      dispatch({ type: "CREDENTIALS_DONE" });
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Connections vaulted. Assembling your AI team…",
+          slot: { kind: "thinking", phase: "phase-3" },
+        },
+      });
     });
-  }, []);
+  }, [transitionWithPill]);
 
   /** Phase 3 swarm generation — fires when state transitions to
    *  swarm_transition. On completion, dispatches SWARM_LOADED which moves
@@ -455,6 +485,15 @@ export function OnboardingShell() {
           rawInput: state.draft.pillar1?.rawInput ?? "",
           onPillar1Confirmed: () => {
             dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar1-confirm" });
+            // The Pillar 2 verify effect fires next (silently). The pill
+            // stays visible during the ~3-5s probe; the scope-prompt
+            // message (added by the verify effect on success) collapses
+            // it automatically because the next dispatched slot pushes
+            // the pill into history.
+            dispatch({
+              type: "ADD_MESSAGE",
+              message: { role: "assistant", text: "Verifying setup…", slot: { kind: "transition-pill", label: "Verifying setup…" } },
+            });
             dispatch({ type: "PILLAR1_CONFIRMED" });
           },
           onPillar1Recovered: handlePillar1Recovery,
@@ -725,11 +764,12 @@ function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContex
 
   // The most recent bubble that carries an interactive slot AND isn't yet
   // collapsed is the "active" card — gets a subtle accent border + glow so
-  // the operator's eye knows where to act.
+  // the operator's eye knows where to act. Excludes thinking + transition-
+  // pill slots since neither is a card the operator interacts with.
   const activeIdx = (() => {
     for (let i = thread.length - 1; i >= 0; i--) {
       const m = thread[i];
-      if (!m.collapsed && m.slot && m.slot.kind !== "thinking") return i;
+      if (!m.collapsed && m.slot && m.slot.kind !== "thinking" && m.slot.kind !== "transition-pill") return i;
     }
     return -1;
   })();
@@ -755,6 +795,31 @@ function ChatThread({ thread, slotContext }: { thread: ChatMessage[]; slotContex
 function ChatBubble({ message, slotContext, active }: { message: ChatMessage; slotContext: SlotContext; active: boolean }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+
+  // Transition pills render as small directional indicators, not full chat
+  // bubbles. They show during the gap between submitting a card and the
+  // next one mounting, so the operator's eye knows the system is advancing.
+  if (message.slot?.kind === "transition-pill" && !message.collapsed) {
+    return (
+      <div style={{
+        alignSelf: "flex-start",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        padding: "0.3rem 0.75rem",
+        borderRadius: 999,
+        border: "1px solid var(--border)",
+        background: "transparent",
+        color: "var(--text-dim)",
+        fontSize: 11,
+        opacity: 0.85,
+        animation: "wavex-fade-in 200ms ease-out",
+      }}>
+        <span className="wavex-pulse-dot" style={{ fontSize: 14, lineHeight: 1, letterSpacing: "0.05em" }}>•••</span>
+        <span>{message.slot.label}</span>
+      </div>
+    );
+  }
 
   if (message.collapsed) {
     return (

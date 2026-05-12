@@ -37,7 +37,8 @@ export type ChatSlot =
   | { kind: "pillar4-prompt" }
   | { kind: "pillar5-prompt" }
   | { kind: "connector-picker"; manifest: ConnectorManifest }
-  | { kind: "verify-fail"; fixHint: string };
+  | { kind: "verify-fail"; fixHint: string }
+  | { kind: "transition-pill"; label: string };
 
 // ── Top-level phase machine ───────────────────────────────────────────────
 
