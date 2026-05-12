@@ -20,6 +20,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { SignInWidget } from "../components/SignInWidget";
+import { HireAgentFlow } from "../components/HireAgentFlow";
+import { getSupabase } from "../lib/supabase";
 
 type Tier = {
   key: "founder" | "growth" | "custom";
@@ -175,6 +177,67 @@ export default function Pricing(): JSX.Element {
   const [pendingTier, setPendingTier] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [currentTier, setCurrentTier] = useState<"founder" | "growth" | "custom" | null>(null);
+
+  // Look up current subscription tier so we know whether to render the
+  // tier-card buy flow vs the hire-agent flow.
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase || !session) {
+      setCurrentTier(null);
+      return;
+    }
+    void (async () => {
+      const { data } = await supabase
+        .schema("wavex_os")
+        .from("subscriptions")
+        .select("tier,status")
+        .in("status", ["trialing", "active"])
+        .maybeSingle();
+      setCurrentTier((data?.tier ?? null) as "founder" | "growth" | "custom" | null);
+    })();
+  }, [session]);
+
+  // Called by HireAgentFlow when the operator confirms a hire.
+  async function handleHireRequest(catalogId: string, requiredTier: "founder" | "growth" | "custom"): Promise<void> {
+    if (!session) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    // If operator already has a high-enough tier, hire directly.
+    const tierOrder = { founder: 0, growth: 1, custom: 2 };
+    if (currentTier && tierOrder[currentTier] >= tierOrder[requiredTier]) {
+      const subResult = await supabase
+        .schema("wavex_os")
+        .from("subscriptions")
+        .select("id")
+        .in("status", ["trialing", "active"])
+        .maybeSingle();
+      if (!subResult.data) {
+        setError("Could not find your active subscription. Try refreshing.");
+        return;
+      }
+      const insertResult = await supabase
+        .schema("wavex_os")
+        .from("hired_expert_agents")
+        .insert({
+          subscription_id: subResult.data.id,
+          catalog_id: catalogId,
+          status: "active",
+          agreement_version: "1.0",
+        });
+      if (insertResult.error) {
+        setError(`Hire failed: ${insertResult.error.message}`);
+        return;
+      }
+      navigate("/?hired=" + encodeURIComponent(catalogId));
+      return;
+    }
+
+    // Otherwise need to upgrade tier — find matching Tier card and start checkout.
+    const t = TIERS.find((x) => x.key === requiredTier);
+    if (t) await startCheckout(t);
+  }
 
   // Handle success callback from Stripe Checkout
   const sessionId = params.get("session_id");
@@ -312,6 +375,20 @@ export default function Pricing(): JSX.Element {
           </div>
         )}
 
+        {/* If operator already has a subscription, surface the hire-agent
+            flow instead of (or above) the tier cards. */}
+        {session && currentTier ? (
+          <div style={{ marginBottom: 32 }}>
+            <HireAgentFlow
+              session={session}
+              currentTier={currentTier}
+              onHireRequest={handleHireRequest}
+            />
+          </div>
+        ) : null}
+
+        {/* Tier cards: shown to anyone without a sub, and as a "manage
+            subscription" section to those with one. */}
         <div
           style={{
             display: "grid",
@@ -328,6 +405,18 @@ export default function Pricing(): JSX.Element {
             />
           ))}
         </div>
+
+        {/* For signed-in users without a sub, show the hire flow BELOW the
+            tier cards so they see the agents they'll unlock by subscribing. */}
+        {session && !currentTier ? (
+          <div style={{ marginTop: 32 }}>
+            <HireAgentFlow
+              session={session}
+              currentTier={null}
+              onHireRequest={handleHireRequest}
+            />
+          </div>
+        ) : null}
 
         <div
           style={{

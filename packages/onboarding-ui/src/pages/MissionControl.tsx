@@ -1,9 +1,13 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import type { Session } from "@supabase/supabase-js";
 import { HealthStrip } from "../components/mission/HealthStrip";
 import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
+import { PrivacyPanel } from "../components/PrivacyPanel";
 import { useCompany } from "../op-omega/lib/CompanyContext";
+import { getSupabase } from "../lib/supabase";
 
 interface CompaniesPayload { ok: boolean; companies: Array<{ id: string; name: string }>; }
 
@@ -40,6 +44,15 @@ function CompanyPicker() {
 
 export default function MissionControl() {
   const { companyId } = useCompany();
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -90,6 +103,10 @@ export default function MissionControl() {
 
         <div style={{ marginBottom: "2.5rem" }}>
           <FleetGraph />
+        </div>
+
+        <div style={{ marginBottom: "2.5rem" }}>
+          <PrivacyPanel session={session} />
         </div>
 
         <div className="card">
