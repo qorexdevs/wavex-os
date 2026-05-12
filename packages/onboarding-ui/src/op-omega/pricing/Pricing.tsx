@@ -22,6 +22,10 @@ interface PricingProps {
   companyId: string;
   /** Called after Subscribe or Skip — parent handles Paperclip tab + nav. */
   onContinue: (chosenTierId: TierId, origin: "subscribe" | "skip") => void;
+  /** When true, render as a centered dialog over a dimmed backdrop (used
+   *  by the chat-first ImprintTheater hand-off). Default renders the full-
+   *  page layout used by the legacy /onboarding wizard. */
+  dialogMode?: boolean;
 }
 
 type TierId = "trial" | "founder" | "growth" | "custom";
@@ -36,7 +40,7 @@ interface TierConfig {
   ctaLabel: string;
 }
 
-export function Pricing({ companyId, onContinue }: PricingProps) {
+export function Pricing({ companyId, onContinue, dialogMode = false }: PricingProps) {
   const [submitting, setSubmitting] = useState<TierId | "skip" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,8 +71,22 @@ export function Pricing({ companyId, onContinue }: PricingProps) {
 
   const tiers = q.data?.tiers ?? [];
 
-  return (
-    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" }}>
+  const containerStyle = dialogMode
+    ? {
+        maxWidth: 1100,
+        width: "min(1100px, 95vw)",
+        maxHeight: "92vh",
+        margin: 0,
+        padding: "1.5rem 1.5rem 5rem",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        overflow: "auto" as const,
+      }
+    : { maxWidth: 1400, margin: "0 auto", padding: "2rem", paddingBottom: "6rem" };
+
+  const inner = (
+    <div style={containerStyle}>
       <H2>System Optimizer subscription</H2>
       <P>
         Strategic prompt injections to your CEO. Your WaveX Agent monitors performance and intervenes when agents drift.
@@ -125,6 +143,19 @@ export function Pricing({ companyId, onContinue }: PricingProps) {
           </button>
         </div>
       </div>
+    </div>
+  );
+
+  if (!dialogMode) return inner;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 80,
+      background: "color-mix(in srgb, #000 60%, transparent)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "1.5rem",
+    }}>
+      {inner}
     </div>
   );
 }

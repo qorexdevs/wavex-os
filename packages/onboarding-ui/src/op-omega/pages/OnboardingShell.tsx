@@ -28,6 +28,8 @@ import { ConnectorPickerCard } from "../components/inline-cards/ConnectorPickerC
 import { CredentialDrawer } from "../components/CredentialDrawer";
 import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
+import { ActivateProgress } from "./ActivateProgress";
+import { Pricing } from "../pricing/Pricing";
 import { startWorkflowPrefetch } from "../state/workflow-prefetch";
 import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
@@ -429,6 +431,19 @@ export function OnboardingShell() {
         <ImprintTheater
           companyId={companyId}
           onLaunch={() => dispatch({ type: "OPEN_PRICING" })}
+        />
+      )}
+      {state.phase.kind === "pricing" && companyId && (
+        <Pricing
+          companyId={companyId}
+          dialogMode
+          onContinue={() => dispatch({ type: "PRICING_DONE" })}
+        />
+      )}
+      {state.phase.kind === "activate" && companyId && state.draft.swarmManifest && (
+        <ActivateProgress
+          companyId={companyId}
+          swarmManifest={state.draft.swarmManifest}
         />
       )}
     </div>
