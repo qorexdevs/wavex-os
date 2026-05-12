@@ -53,7 +53,12 @@ export function ResponseChips<T extends string>({
   function toggleCanonical(v: T) {
     if (disabled) return;
     if (mode === "single") {
-      if (values[0] === v && customValues.length === 0) return;
+      // Click the already-active option to deselect (clears the field —
+      // parent's submit gate will disable Continue until something is picked).
+      if (values[0] === v && customValues.length === 0) {
+        onChange([]);
+        return;
+      }
       onChange([v]);
       if (customValues.length > 0) onCustomChange?.([]);
       return;

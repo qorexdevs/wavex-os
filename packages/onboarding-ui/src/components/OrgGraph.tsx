@@ -77,12 +77,15 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
   const dotColor = statusColor(a.status);
   const origin = originLabel(tpl?.origin);
   const displayName = templateIdToDisplayName(a.templateId);
+  // Inactive agents (parked/disabled/failed) render dimmer so the scope
+  // filter is visible at a glance. Active/standby keep full opacity.
+  const dim = a.status === "parked" || a.status === "disabled" || a.status === "failed";
   return {
     id: a.id,
     position: { x, y },
     data: {
       label: (
-        <div style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35 }}>
+        <div style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35, opacity: dim ? 0.4 : 1 }}>
           <div style={{
             position: "absolute", top: 6, right: 6,
             width: 6, height: 6, borderRadius: "50%",
@@ -101,8 +104,8 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
       ),
     },
     style: {
-      background: "var(--surface)",
-      border: `1px solid ${tier === 1 ? "var(--accent)" : "var(--border)"}`,
+      background: dim ? "color-mix(in srgb, var(--surface) 60%, transparent)" : "var(--surface)",
+      border: `1px solid ${dim ? "var(--border)" : tier === 1 ? "var(--accent)" : "var(--border)"}`,
       borderRadius: 6,
       width: NODE_W,
       padding: 0,

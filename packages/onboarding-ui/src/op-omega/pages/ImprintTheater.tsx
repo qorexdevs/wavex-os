@@ -86,7 +86,10 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
       background: "#0a0a0c",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       padding: "2rem",
+      overflowY: "auto",
     }}>
+      {/* Top spacer collapses when content overflows so Act 3 stays scrollable. */}
+      <div style={{ flex: "0 0 auto" }} />
       {error && <ErrorView error={error} />}
 
       {!error && act === "preparing" && (
@@ -195,7 +198,14 @@ function ImprintAct({ manifest, sha256, source, showFullManifest, onToggleManife
       <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
         Your imprint {source === "fallback" && <span style={{ color: "var(--warning)" }}>(quick draft)</span>}
       </div>
-      <div style={{ fontSize: 15, lineHeight: 1.6, color: "var(--text)", padding: "0 0.5rem" }}>
+      <div style={{
+        fontSize: 15,
+        lineHeight: 1.6,
+        color: "var(--text)",
+        padding: "0 0.5rem",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
+      }}>
         <StreamingText text={imprint} charsPerSec={60} onComplete={() => setStreamDone(true)} />
       </div>
       <div style={{ textAlign: "center", marginTop: "0.5rem" }}>

@@ -42,13 +42,13 @@ test.describe("chat-first fast walk @ /onboarding-chat?t0=1", () => {
     await page.getByRole("button", { name: /Looks right.*keep going|Update.*continue/i }).click();
 
     // ── Scope picker — keyword detection should have pre-selected ─────
-    // Marketing + Sales because the raw_input mentioned both.
+    // Marketing + Sales because the raw_input mentioned both. The card
+    // already opens in "focused" mode with those chips active, so don't
+    // click the Focused chip again (that would deselect it under the new
+    // single-mode deselect behavior).
     await expect(page.getByText(/Sounds like you want to focus|How big should this team be/i))
       .toBeVisible({ timeout: 30_000 });
-    // Test the focused path — keep marketing + revenue chips chipped + Continue
-    await page.getByRole("button", { name: /Focused on specific divisions/i }).click();
-    await expect(page.getByRole("button", { name: /Which divisions/i }).or(page.getByText(/Which divisions/i)))
-      .toBeVisible();
+    await expect(page.getByText(/Which divisions/i)).toBeVisible();
     await page.getByRole("button", { name: /^Continue/ }).last().click();
 
     // ── Pillar 3 ──────────────────────────────────────────────────────

@@ -494,12 +494,6 @@ export function OnboardingShell() {
 
 // ── Empty state (hero) ────────────────────────────────────────────────────
 
-const SUGGESTIONS = [
-  { label: "ricoma.com", value: "ricoma.com" },
-  { label: "Marketing and sales for my SaaS", value: "I'm a founder of a B2B SaaS at $50K MRR. I need a marketing and sales AI team to supplement my two-person GTM crew." },
-  { label: "AI ops team for a small startup", value: "We're a 5-person dev tools startup, pre-revenue. I want an AI operations team to handle the back office while we ship product." },
-];
-
 function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: boolean }) {
   const [draft, setDraft] = useState("");
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -533,12 +527,16 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
       <div style={{ position: "absolute", top: "1rem", left: "1rem", display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
         <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.02em" }}>WaveX OS</span>
         {t0 && (
-          <span style={{
-            fontSize: 10, padding: "0.1rem 0.45rem",
-            border: "1px solid var(--warning)",
-            color: "var(--warning)",
-            borderRadius: 999,
-          }}>
+          <span
+            title="Fast mode (?t0=1): every T2 inference call returns a deterministic fallback. No claude CLI required, no token cost. Drop the ?t0=1 from the URL for real inference."
+            style={{
+              fontSize: 10, padding: "0.1rem 0.45rem",
+              border: "1px solid var(--warning)",
+              color: "var(--warning)",
+              borderRadius: 999,
+              cursor: "help",
+            }}
+          >
             Fast mode
           </span>
         )}
@@ -609,35 +607,6 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
           </button>
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", justifyContent: "center" }}>
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s.label}
-              type="button"
-              onClick={() => send(s.value)}
-              style={{
-                padding: "0.5rem 0.85rem",
-                fontSize: 12,
-                borderRadius: 999,
-                background: "transparent",
-                border: "1px solid var(--border)",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                transition: "color 0.15s, border-color 0.15s, background 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--accent)";
-                e.currentTarget.style.color = "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border)";
-                e.currentTarget.style.color = "var(--text-dim)";
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -668,13 +637,17 @@ function TopBar({
           </span>
         )}
         {t0 && (
-          <span style={{
-            fontSize: 10, padding: "0.1rem 0.45rem",
-            border: "1px solid var(--warning)",
-            color: "var(--warning)",
-            borderRadius: 999,
-            marginLeft: "0.25rem",
-          }}>
+          <span
+            title="Fast mode (?t0=1): every T2 inference call returns a deterministic fallback. No claude CLI required, no token cost. Drop the ?t0=1 from the URL for real inference."
+            style={{
+              fontSize: 10, padding: "0.1rem 0.45rem",
+              border: "1px solid var(--warning)",
+              color: "var(--warning)",
+              borderRadius: 999,
+              marginLeft: "0.25rem",
+              cursor: "help",
+            }}
+          >
             Fast mode
           </span>
         )}

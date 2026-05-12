@@ -144,35 +144,65 @@ function StrategyLine({
   isWinner: boolean;
 }) {
   const color = STRATEGY_COLORS[strategy.strategy_id] ?? "#888";
-  // Build a synthetic curve: ease-out from 0 to normalizedEnd. We sample
-  // ~30 points across the horizon.
-  const normalizedEnd = Math.max(0, Math.min(1, strategy.mean_mrr_growth / maxGrowth));
+  // Build a synthetic curve from the strategy's mean_mrr_growth. The winner
+  // gets a 30% visual boost so it reaches near the top of the chart and
+  // clearly "wins" the race rather than tying with the runners-up.
+  const baseEnd = Math.max(0, Math.min(1, strategy.mean_mrr_growth / maxGrowth));
+  const normalizedEnd = isWinner ? Math.min(0.92, baseEnd * 1.3 + 0.1) : baseEnd * 0.85;
   const N = 30;
-  // Animation: at progress=p, draw the curve up to x = p * N samples.
   const visibleSamples = Math.max(2, Math.floor(progress * N));
-  const points: string[] = [];
+  const points: Array<[number, number]> = [];
   for (let i = 0; i < visibleSamples; i++) {
     const t = i / (N - 1);
-    // ease-out cubic — finishes near the end_value
-    const ease = 1 - Math.pow(1 - t, 3);
+    // Winner uses a steeper ease-out (quart) so the line accelerates upward.
+    // Others use the gentler cubic.
+    const ease = isWinner ? 1 - Math.pow(1 - t, 4) : 1 - Math.pow(1 - t, 3);
     const y = ease * normalizedEnd;
     const px = PAD_X + ((WIDTH - PAD_X - 20) * t);
     const py = PAD_Y + (HEIGHT - PAD_Y * 2) * (1 - y);
-    points.push(`${px.toFixed(1)},${py.toFixed(1)}`);
+    points.push([px, py]);
   }
-  const opacity = isWinner && progress > 0.85 ? 1 : progress > 0.85 ? 0.25 : 0.85;
-  const strokeWidth = isWinner && progress > 0.85 ? 3 : 1.6;
+  const polyPoints = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+
+  // Winner gets an area-fill underneath for emphasis once the race winds down.
+  const showFill = isWinner && progress > 0.5 && points.length > 1;
+  const fillOpacity = isWinner ? Math.max(0, (progress - 0.5) * 0.5) : 0;
+  const baselineY = HEIGHT - PAD_Y;
+  const areaPath = showFill
+    ? `M ${points[0][0]},${baselineY} ${polyPoints} L ${points[points.length - 1][0]},${baselineY} Z`
+    : "";
+
+  // Marker dot at the leading edge of the line for the winner.
+  const lead = points[points.length - 1];
+
+  const opacity = isWinner ? (progress > 0.85 ? 1 : 0.95) : (progress > 0.85 ? 0.2 : 0.7);
+  const strokeWidth = isWinner ? (progress > 0.85 ? 4 : 3) : 1.5;
 
   return (
-    <polyline
-      points={points.join(" ")}
-      fill="none"
-      stroke={color}
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      opacity={opacity}
-      style={{ transition: "opacity 0.5s ease-out, stroke-width 0.5s ease-out" }}
-    />
+    <g style={{ transition: "opacity 0.5s ease-out" }} opacity={opacity}>
+      {showFill && (
+        <path d={areaPath} fill={color} opacity={fillOpacity} />
+      )}
+      <polyline
+        points={polyPoints}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ transition: "stroke-width 0.5s ease-out" }}
+      />
+      {isWinner && lead && progress > 0.05 && (
+        <circle
+          cx={lead[0]}
+          cy={lead[1]}
+          r={progress > 0.85 ? 5 : 3.5}
+          fill={color}
+          stroke="var(--bg)"
+          strokeWidth={1.5}
+          style={{ transition: "r 0.4s ease-out" }}
+        />
+      )}
+    </g>
   );
 }
