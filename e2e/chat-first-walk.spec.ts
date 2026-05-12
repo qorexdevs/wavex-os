@@ -48,12 +48,17 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
     await page.getByRole("button", { name: /Looks right.*keep going|Update.*continue/i }).click();
 
     // ── Scope picker (after silent Pillar 2 verify) ───────────────────
+    // Real-T2 walk uses FOCUSED scope (marketing + revenue) so we verify
+    // both the inference path AND the scope filter park non-scoped chiefs.
+    // The raw_input "ricoma.com" doesn't trip keyword detection, so the
+    // card opens in "full" mode by default — flip to focused, chip the
+    // two divisions, then continue.
     await expect(page.getByText(/How big should this team be|Tell me how to scope/i))
       .toBeVisible({ timeout: 60_000 });
-    // Default the smoke walk to full company — focused-mode coverage is in
-    // a separate spec.
-    await page.getByRole("button", { name: /Full company/i }).click();
-    await page.getByRole("button", { name: /^Continue/ }).first().click();
+    await page.getByRole("button", { name: /Focused on specific divisions/i }).click();
+    await page.getByRole("button", { name: /^Marketing$/i }).click();
+    await page.getByRole("button", { name: /Sales.*Revenue/i }).click();
+    await page.getByRole("button", { name: /^Continue/ }).last().click();
 
     // ── Pillar 3 prompt card ──────────────────────────────────────────
     await expect(page.getByText(/Where are you in the product journey/i))
@@ -98,17 +103,42 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
     // ── Swarm Studio (full-screen, after T2 swarm gen) ────────────────
     await expect(page.getByRole("button", { name: /These look right.*wire them up/i }))
       .toBeVisible({ timeout: 240_000 });
-    // Footer agent count should be 30+
+    // Total slot count should be 30+ even with focused scope (parked
+    // agents still render, just dimmed).
     await expect(page.getByText(/\d{2,} agents/)).toBeVisible();
+
+    // Verify the scope filter actually parked non-marketing/revenue
+    // chiefs by reading the swarm manifest from the API. CFO/CDO/COO
+    // should be parked; CMO/CRO + their reports should be active.
+    const swarmResp = await page.request.get(
+      `/op-omega/onboarding/swarm-manifest?companyId=${EXPECTED_SLUG}`,
+    );
+    expect(swarmResp.ok()).toBeTruthy();
+    const swarmJson = await swarmResp.json();
+    const agents = swarmJson.manifest.agents as Record<string, { status: string; department: string }>;
+    const cmoStatus = agents.cmo?.status;
+    const croStatus = agents.cro?.status;
+    const cfoStatus = agents.cfo?.status;
+    const cdoStatus = agents.cdo?.status;
+    const cooStatus = agents.coo?.status;
+    expect(cmoStatus, "CMO should be active in marketing+revenue scope").toBe("active");
+    expect(croStatus, "CRO should be active in marketing+revenue scope").toBe("active");
+    expect(cfoStatus, "CFO should be parked outside marketing+revenue scope").toBe("parked");
+    expect(cdoStatus, "CDO should be parked outside marketing+revenue scope").toBe("parked");
+    expect(cooStatus, "COO should be parked outside marketing+revenue scope").toBe("parked");
+
     await page.getByRole("button", { name: /These look right.*wire them up/i }).click();
 
     // ── Imprint Theater ───────────────────────────────────────────────
     // Preparing screen appears first.
     await expect(page.getByText(/Preparing your launch/i)).toBeVisible({ timeout: 10_000 });
-    // After finalize (1-3 min) Acts 1-3 play. The launch button appears in Act 3.
-    await expect(page.getByRole("button", { name: /Let's launch/i }))
-      .toBeVisible({ timeout: 300_000 });
-    await page.getByRole("button", { name: /Let's launch/i }).click();
+    // After finalize (1-3 min) Acts 1-3 play. Act 3 streams the imprint
+    // char-by-char at ~60chars/sec — Let's Launch stays disabled until
+    // the stream completes. Wait for enabled, not just visible.
+    const launch = page.getByRole("button", { name: /Let's launch/i });
+    await expect(launch).toBeVisible({ timeout: 300_000 });
+    await expect(launch).toBeEnabled({ timeout: 120_000 });
+    await launch.click();
 
     // ── Pricing dialog ────────────────────────────────────────────────
     await expect(page.getByRole("heading", { name: /System Optimizer subscription/i }))
