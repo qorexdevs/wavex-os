@@ -1,0 +1,255 @@
+/** Imprint Theater — the second earned full-screen reveal. Plays three
+ *  acts after /op-omega/onboarding/finalize returns:
+ *    Act 1 (~8s): Monte Carlo race across 5 GTM strategies.
+ *    Act 2 (~3s): Winner reveal with stat tiles.
+ *    Act 3: Streaming imprint prose + expandable signed manifest.
+ *
+ *  While the finalize call is in flight (~1-3 min on a real T2 imprint),
+ *  the theater shows a calm "preparing your launch" screen with the
+ *  T2ProgressIndicator. Once the response arrives, Acts 1-3 play in
+ *  sequence; the operator clicks "Let's launch" to advance to pricing. */
+
+import { useEffect, useRef, useState } from "react";
+import type { CompanyManifest } from "@op-omega/plugin-onboarding";
+import { opOmegaOnboardingApi, ApiError } from "../lib/api";
+import { isT0FastMode } from "../lib/dev-flags";
+import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { MonteCarloRace, type MonteCarloReportLike } from "../components/MonteCarloRace";
+import { StreamingText } from "../components/StreamingText";
+
+interface Props {
+  companyId: string;
+  onLaunch: () => void;
+}
+
+interface FinalizeResult {
+  manifest: CompanyManifest;
+  sha256: string;
+  source: "t2" | "fallback";
+}
+
+type Act = "preparing" | 1 | 2 | 3 | "ready";
+
+const ACT1_MIN_MS = 8000;
+const ACT2_MIN_MS = 3000;
+
+export function ImprintTheater({ companyId, onLaunch }: Props) {
+  const [result, setResult] = useState<FinalizeResult | null>(null);
+  const [mcReport, setMcReport] = useState<MonteCarloReportLike | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [act, setAct] = useState<Act>("preparing");
+  const [showFullManifest, setShowFullManifest] = useState(false);
+  const finalizeRanRef = useRef(false);
+
+  // Fire finalize on mount. The route consumes the prefetched workflow
+  // manifest if it's fresh (see packages/op-omega-server/src/routes/phases.ts).
+  useEffect(() => {
+    if (finalizeRanRef.current) return;
+    finalizeRanRef.current = true;
+    void (async () => {
+      try {
+        const r = await opOmegaOnboardingApi.finalize({
+          companyId,
+          skipInference: isT0FastMode(),
+        });
+        setResult({ manifest: r.manifest, sha256: r.sha256, source: r.source });
+        // Fetch the full MC report from disk (written by finalize) for the
+        // 5-strategy race chart. Failure is non-fatal — Act 1 will skip.
+        try {
+          const mc = await opOmegaOnboardingApi.getMcReport(companyId);
+          if (mc.ok && mc.report) setMcReport(mc.report);
+        } catch { /* race chart will be skipped */ }
+        setAct(1);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : (e as Error).message);
+      }
+    })();
+  }, [companyId]);
+
+  // Act 1 → 2 transition (after race finishes AND minimum display time).
+  useEffect(() => {
+    if (act !== 1) return;
+    const id = window.setTimeout(() => setAct(2), ACT1_MIN_MS);
+    return () => window.clearTimeout(id);
+  }, [act]);
+
+  // Act 2 → 3 transition (after stat-tile dwell).
+  useEffect(() => {
+    if (act !== 2) return;
+    const id = window.setTimeout(() => setAct(3), ACT2_MIN_MS);
+    return () => window.clearTimeout(id);
+  }, [act]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 70,
+      background: "#0a0a0c",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "2rem",
+    }}>
+      {error && <ErrorView error={error} />}
+
+      {!error && act === "preparing" && (
+        <div style={{ maxWidth: 520, width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: "0.5rem" }}>
+            Preparing your launch
+          </div>
+          <div className="text-dim" style={{ fontSize: 12, marginBottom: "1.5rem" }}>
+            Running Monte Carlo simulations + drafting your imprint. ~1-3 minutes.
+          </div>
+          <T2ProgressIndicator active phase="finalize" />
+        </div>
+      )}
+
+      {!error && act === 1 && result && mcReport && (
+        <MonteCarloRace report={mcReport} />
+      )}
+      {!error && act === 1 && result && !mcReport && (
+        <div className="text-dim" style={{ fontSize: 12 }}>Simulations complete…</div>
+      )}
+
+      {!error && act === 2 && result && (
+        <WinnerReveal manifest={result.manifest} />
+      )}
+
+      {!error && act === 3 && result && (
+        <ImprintAct
+          manifest={result.manifest}
+          sha256={result.sha256}
+          source={result.source}
+          showFullManifest={showFullManifest}
+          onToggleManifest={() => setShowFullManifest((v) => !v)}
+          onLaunch={onLaunch}
+        />
+      )}
+    </div>
+  );
+}
+
+function ErrorView({ error }: { error: string }) {
+  return (
+    <div style={{ maxWidth: 520, textAlign: "center" }}>
+      <div style={{ color: "var(--warning)", fontWeight: 700, marginBottom: "0.5rem" }}>
+        ✗ Couldn't finalize
+      </div>
+      <div className="text-dim" style={{ fontSize: 13 }}>{error}</div>
+    </div>
+  );
+}
+
+function WinnerReveal({ manifest }: { manifest: CompanyManifest }) {
+  const w = manifest.mc_winner;
+  if (!w) return null;
+  const STRATEGY_LABELS: Record<string, string> = {
+    RETENTION_FIRST: "Retention first",
+    BALANCED: "Balanced",
+    ACQUISITION_HEAVY: "Acquisition heavy",
+    NARRATIVE_LED: "Narrative led",
+    CAPITAL_EFFICIENT: "Capital efficient",
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem", maxWidth: 760 }}>
+      <div className="text-dim" style={{ fontSize: 12 }}>Your path</div>
+      <div style={{ fontSize: 42, fontWeight: 700, color: "var(--accent)", textAlign: "center" }}>
+        {STRATEGY_LABELS[w.strategy_id] ?? w.strategy_id}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "1rem", width: "100%" }}>
+        <StatTile label="Mean MRR growth" value={`${(w.mean_mrr_growth * 100).toFixed(0)}%`} />
+        <StatTile label="P(auto-catalytic)" value={`${(w.p_auto_catalytic * 100).toFixed(0)}%`} />
+        <StatTile label="P(ruin)" value={`${(w.p_ruin * 100).toFixed(0)}%`} accent={w.p_ruin < 0.2 ? "good" : w.p_ruin > 0.4 ? "warn" : "neutral"} />
+      </div>
+    </div>
+  );
+}
+
+function StatTile({ label, value, accent = "neutral" }: { label: string; value: string; accent?: "good" | "warn" | "neutral" }) {
+  const color = accent === "good" ? "var(--accent)" : accent === "warn" ? "var(--warning)" : "var(--text)";
+  return (
+    <div style={{
+      padding: "1rem",
+      background: "#13131a",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      textAlign: "center",
+    }}>
+      <div className="text-dim" style={{ fontSize: 11, marginBottom: "0.25rem" }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color }}>{value}</div>
+    </div>
+  );
+}
+
+interface ImprintActProps {
+  manifest: CompanyManifest;
+  sha256: string;
+  source: "t2" | "fallback";
+  showFullManifest: boolean;
+  onToggleManifest: () => void;
+  onLaunch: () => void;
+}
+
+function ImprintAct({ manifest, sha256, source, showFullManifest, onToggleManifest, onLaunch }: ImprintActProps) {
+  const imprint = manifest.imprint_summary ?? "";
+  const [streamDone, setStreamDone] = useState(false);
+  return (
+    <div style={{ maxWidth: 760, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
+        Your imprint {source === "fallback" && <span style={{ color: "var(--warning)" }}>(quick draft)</span>}
+      </div>
+      <div style={{ fontSize: 15, lineHeight: 1.6, color: "var(--text)", padding: "0 0.5rem" }}>
+        <StreamingText text={imprint} charsPerSec={60} onComplete={() => setStreamDone(true)} />
+      </div>
+      <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
+        <button
+          type="button"
+          onClick={onToggleManifest}
+          style={{
+            padding: "0.3rem 0.7rem",
+            borderRadius: 4,
+            background: "transparent",
+            color: "var(--text-dim)",
+            border: "1px solid var(--border)",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          {showFullManifest ? "Hide" : "Read"} the full signed manifest
+        </button>
+      </div>
+      {showFullManifest && (
+        <pre style={{
+          fontSize: 10,
+          background: "#101015",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: "0.75rem",
+          maxHeight: 220,
+          overflow: "auto",
+          color: "var(--text-dim)",
+        }}>
+          <div style={{ marginBottom: "0.5rem", color: "var(--accent)" }}>sha256: {sha256}</div>
+          {JSON.stringify(manifest, null, 2)}
+        </pre>
+      )}
+      <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
+        <button
+          type="button"
+          onClick={onLaunch}
+          disabled={!streamDone}
+          style={{
+            padding: "0.7rem 1.4rem",
+            borderRadius: 8,
+            background: "var(--accent)",
+            color: "var(--bg)",
+            border: "none",
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: streamDone ? "pointer" : "wait",
+            opacity: streamDone ? 1 : 0.5,
+          }}
+        >
+          Let's launch →
+        </button>
+      </div>
+    </div>
+  );
+}

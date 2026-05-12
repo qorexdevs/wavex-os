@@ -246,6 +246,25 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
     }
   });
 
+  // GET monte_carlo_report.json — used by the chat-first ImprintTheater
+  // to drive the 5-strategy race animation. The report is written to disk
+  // by finalize (see vendor/op-omega/.../finalize/assemble.ts) so this is
+  // a cheap file read, no T2 cost.
+  app.get("/op-omega/onboarding/mc-report", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const { companyId } = (req.query ?? {}) as { companyId?: string };
+    if (!companyId) return reply.status(400).send({ error: "companyId required" });
+    assertCompanyAccess(authReq(req), companyId);
+    const { readFile } = await import("node:fs/promises");
+    try {
+      const path = join(getOnboardingDir(companyId), "monte_carlo_report.json");
+      const raw = await readFile(path, "utf8");
+      return { ok: true, report: JSON.parse(raw) };
+    } catch {
+      return { ok: false, error: "monte_carlo_report.json not found — run finalize first" };
+    }
+  });
+
   app.post("/op-omega/onboarding/finalize", async (req, reply) => {
     if (!gateBoard(req, reply)) return;
     const parsed = completeSchema.safeParse(req.body);

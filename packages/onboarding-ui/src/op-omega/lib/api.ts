@@ -227,6 +227,19 @@ export const opOmegaOnboardingApi = {
     call<{ ok: true; manifest: ConnectorManifest; source: "t2" | "fallback"; warnings: string[] }>(
       "GET", `/op-omega/onboarding/connector-recommendations?companyId=${encodeURIComponent(companyId)}`),
 
+  // Monte Carlo report (full per-strategy breakdown, written by finalize)
+  getMcReport: (companyId: string) =>
+    call<{
+      ok: boolean;
+      report?: {
+        horizon_cycles: number;
+        n_runs_per_strategy: number;
+        strategies: Array<{ strategy_id: string; mean_mrr_growth: number; p_ruin: number; sharpe: number }>;
+        winner: { strategy_id: string; rationale: string };
+      };
+      error?: string;
+    }>("GET", `/op-omega/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`),
+
   // Finalize
   finalize: (input: {
     companyId: string;
