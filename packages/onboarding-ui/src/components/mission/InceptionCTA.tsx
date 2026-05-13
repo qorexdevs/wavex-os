@@ -24,15 +24,17 @@ interface HandoffState {
   agentsReady: number;
 }
 
-/** Probe whether Paperclip is actually reachable on localhost:5174 (the
- *  standard dev port). We avoid CORS by hitting the no-cors mode — if
- *  fetch resolves at all (even with opaque response), the server exists.
- *  We give up after 1.5s so the CTA renders fast either way. */
+/** Paperclip is vendored at packages/core/ and runs on port 3100 by
+ *  default (see packages/core/server/src/config.ts:294). We probe that
+ *  port via no-cors to detect whether the customer has it running
+ *  alongside wavex-os. The 1.5s timeout keeps the CTA snappy either way. */
+const PAPERCLIP_LOCAL_URL = "http://localhost:3100";
+
 async function probePaperclipLocal(): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
-    await fetch("http://localhost:5174/", { mode: "no-cors", signal: controller.signal });
+    await fetch(`${PAPERCLIP_LOCAL_URL}/`, { mode: "no-cors", signal: controller.signal });
     clearTimeout(timer);
     return true;
   } catch {
@@ -106,7 +108,7 @@ export function InceptionCTA() {
     : state.paperclipUrl
       ? state.paperclipUrl
       : localPaperclipReachable
-        ? "http://localhost:5174"
+        ? PAPERCLIP_LOCAL_URL
         : null;
 
   async function forceFirstCycle(): Promise<void> {
@@ -161,7 +163,7 @@ export function InceptionCTA() {
             {state.handedOff
               ? "Watch every issue, comment, and KPI snapshot live on the Paperclip dashboard."
               : paperclipUnreachable
-                ? "Paperclip isn't running locally. Install it to watch every issue, comment, and KPI snapshot live."
+                ? "Paperclip is vendored in this repo at packages/core/ but isn't running yet. Start it in a second terminal to see the live fleet dashboard."
                 : probeStillResolving
                   ? "Checking for a local Paperclip dashboard…"
                   : "Watch every issue, comment, and KPI snapshot on your local Paperclip dashboard."}
@@ -187,25 +189,11 @@ export function InceptionCTA() {
               Open Paperclip Dashboard ↗
             </a>
           )}
-          {paperclipUnreachable && (
-            <a
-              href="https://github.com/paperclipai/paperclip"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: "0.55rem 0.9rem",
-                borderRadius: 6,
-                background: "var(--accent)",
-                color: "var(--bg)",
-                fontWeight: 600,
-                fontSize: 12,
-                textDecoration: "none",
-                textAlign: "center",
-              }}
-            >
-              Set up Paperclip ↗
-            </a>
-          )}
+          {/* When Paperclip isn't running locally, the primary action is to
+              START IT (it's already vendored, no install needed). We don't
+              offer a click-to-start button because we can't spawn a long-
+              running dev server from the browser — we surface the exact
+              command instead in the quick-start block below. */}
           <button
             type="button"
             onClick={() => void forceFirstCycle()}
@@ -226,8 +214,12 @@ export function InceptionCTA() {
         </div>
       </div>
       {paperclipUnreachable && (
-        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", lineHeight: 1.55 }}>
-          Quick start: <code>git clone https://github.com/paperclipai/paperclip && cd paperclip && pnpm i && pnpm dev</code> in a new terminal — Paperclip listens on <code>localhost:5174</code>. Refresh this page once it's running.
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", lineHeight: 1.6 }}>
+          Open a new terminal in this repo and run{" "}
+          <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm run dev:paperclip</code>
+          {" "}— that boots the vendored Paperclip core at <code>localhost:3100</code> with your <strong>{companyId}</strong> fleet already incepted. Or use{" "}
+          <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm run dev:everything</code>
+          {" "}to boot wavex-os + mock-core + Paperclip together. Refresh this page once it's listening.
         </div>
       )}
       {forceResult && (
