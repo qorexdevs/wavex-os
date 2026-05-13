@@ -34,6 +34,66 @@ import {
   pingConnection,
   listConnections,
 } from "@wavex-os/composio-shim";
+import { getInferenceMode } from "@wavex-os/inference-adapter";
+
+/** When the customer's stack is in hosted mode (their installer pointed
+ *  WAVEX_INFERENCE_HUB_URL at the operator's Mac mini), we PROXY the
+ *  OAuth initiate to the hub so the customer's local environment doesn't
+ *  need a COMPOSIO_API_KEY. Returns null if hosted mode isn't on, in
+ *  which case the caller falls back to local composio-shim. */
+async function proxyToHubInitiate(args: {
+  toolkitSlug: string;
+  installId: string;
+  email: string;
+  redirectBackUrl?: string;
+}): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean } | null> {
+  if (getInferenceMode() !== "hosted") return null;
+  const hub = (process.env.WAVEX_INFERENCE_HUB_URL ?? "").replace(/\/+$/, "");
+  if (!hub) return null;
+  try {
+    // Mint a Pool A session token by calling the hub.
+    const sessResp = await fetch(`${hub}/v1/onboarding/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: args.email, install_id: args.installId }),
+    });
+    if (!sessResp.ok) return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+    const { token } = (await sessResp.json()) as { token: string };
+    const initResp = await fetch(`${hub}/v1/connectors/oauth/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        toolkit_slug: args.toolkitSlug,
+        redirect_back_url: args.redirectBackUrl,
+      }),
+    });
+    if (!initResp.ok) {
+      const body = (await initResp.json().catch(() => ({}))) as { error?: string };
+      // If hub itself reports composio unavailable, surface as needs-wiring
+      // so the UI shows the right callout (manual paste fallback).
+      return {
+        url: null,
+        pendingConnectionId: null,
+        needsLiveWiring: body.error === "composio_unavailable",
+      };
+    }
+    const r = (await initResp.json()) as { redirect_url: string | null; pending_connection_id: string | null };
+    return { url: r.redirect_url, pendingConnectionId: r.pending_connection_id };
+  } catch {
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+  }
+}
+
+function installIdFromState(): string {
+  try {
+    const path = join(homedir(), ".wavex-os", "install.json");
+    if (existsSync(path)) {
+      const j = JSON.parse(require("node:fs").readFileSync(path, "utf8")) as { install_id?: string };
+      if (j.install_id) return j.install_id;
+    }
+  } catch { /* fall through */ }
+  return "anon";
+}
 
 interface AvatarToolEntry {
   provider: string;
@@ -107,7 +167,14 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
           `?company_id=${encodeURIComponent(companyId)}` +
           (avatarId ? `&avatar_id=${encodeURIComponent(avatarId)}` : "") +
           `&toolkit_slug=${encodeURIComponent(toolkitSlug)}`;
-      const result = await initOAuth({
+      // Try hub-proxy first (hosted mode); fall back to local composio-shim.
+      const hubResult = await proxyToHubInitiate({
+        toolkitSlug,
+        installId: installIdFromState(),
+        email: (userId as string | undefined) ?? "anon@wavex-os.local",
+        redirectBackUrl: `${origin}/onboarding?companyId=${encodeURIComponent(companyId)}&connector_oauth=ok&toolkit=${encodeURIComponent(toolkitSlug)}`,
+      });
+      const result = hubResult ?? await initOAuth({
         companyId,
         userId,
         toolkitSlug,

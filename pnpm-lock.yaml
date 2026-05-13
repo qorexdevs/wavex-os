@@ -137,7 +137,10 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.95.0
-        version: 0.95.2
+        version: 0.95.2(zod@3.25.76)
+      '@composio/core':
+        specifier: 0.9.1
+        version: 0.9.1(zod@3.25.76)
       '@supabase/supabase-js':
         specifier: ^2.46.1
         version: 2.105.4
@@ -446,7 +449,7 @@ importers:
 
 packages:
 
-  /@anthropic-ai/sdk@0.95.2:
+  /@anthropic-ai/sdk@0.95.2(zod@3.25.76):
     resolution: {integrity: sha512-Egddwo3sheo1PzUrMkZnH6VkQYwS0h/b/i8vSK8Ta9M45UQipAMeDFH57dYuDAfXMEUUGeKw6CMlremgMZgrSQ==}
     hasBin: true
     peerDependencies:
@@ -457,6 +460,7 @@ packages:
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.0.0
+      zod: 3.25.76
     dev: false
 
   /@babel/code-frame@7.29.0:

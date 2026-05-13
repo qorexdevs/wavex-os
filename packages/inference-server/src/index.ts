@@ -26,6 +26,7 @@ import { registerHealth } from "./routes/health.js";
 import { registerOnboarding } from "./routes/onboarding.js";
 import { registerOptimizer } from "./routes/optimizer.js";
 import { registerAdmin } from "./routes/admin.js";
+import { registerConnectorRoutes } from "./routes/connectors.js";
 
 // Load `~/.wavex-os/state/.env` (or STATE_DIR/.env) before reading any env vars.
 // Keeps secrets out of the launchd plist while letting the daemon boot
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
   await registerOnboarding(app);
   await registerOptimizer(app);
   await registerAdmin(app);
+  await registerConnectorRoutes(app);
 
   app.setNotFoundHandler((_req, reply) => {
     reply.code(404).send({ error: "not_found" });
