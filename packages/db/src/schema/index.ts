@@ -4,3 +4,8 @@ export * from "./credentials.js";
 export * from "./kpis.js";
 export * from "./cost-events.js";
 export * from "./issues.js";
+// Phase 6 — Avatar memory v1 (scaffolded; migration unrun in dev, file-based
+// JSONL store in op-omega-server handles writes until cloud lands).
+export * from "./memory-episodic.js";
+export * from "./memory-preference.js";
+export * from "./memory-semantic.js";

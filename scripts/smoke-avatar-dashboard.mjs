@@ -34,7 +34,7 @@ async function main() {
 
   // Switch to Approval inbox
   await page.locator("button").filter({ hasText: /^Approval inbox$/ }).click();
-  await page.waitForSelector("text=/Run triage now/i", { timeout: 5_000 });
+  await page.waitForSelector("button:has-text('Run triage')", { timeout: 5_000 });
   console.log("✓ Approval inbox tab loaded");
 
   // Autonomy chip should be visible if trust.json is set on disk.
@@ -52,10 +52,11 @@ async function main() {
     console.log(`✓ Saw ${startPending} pre-existing pending approval(s)`);
   }
 
-  // Trigger another triage run
-  await page.locator("button").filter({ hasText: /Run triage now/i }).click();
-  await page.waitForSelector("text=/Runner: \\d+ processed/i", { timeout: 15_000 });
-  const runStatus = await page.locator("text=/Runner: \\d+ processed/i").first().textContent();
+  // Trigger gmail triage via the new per-provider menu
+  await page.locator("button").filter({ hasText: /^Run triage/ }).first().click();
+  await page.locator("button").filter({ hasText: /^Gmail$/ }).first().click();
+  await page.waitForSelector("text=/gmail: \\d+ processed/i", { timeout: 15_000 });
+  const runStatus = await page.locator("text=/gmail: \\d+ processed/i").first().textContent();
   console.log(`✓ Triage run completed → ${runStatus?.trim()}`);
 
   // After refresh the inbox should have at least 1 pending approval card

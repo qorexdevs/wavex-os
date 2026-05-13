@@ -26,7 +26,8 @@ export type PhaseKey =
   | "pillar_1" | "pillar_2" | "pillar_3" | "pillar_4" | "pillar_5"
   | "connector_manifest" | "swarm_manifest" | "workflow_manifest"
   | "finalize" | "recommend_agent" | "help_chat" | "board_chat"
-  | "avatar_voice" | "avatar_intro";
+  | "avatar_voice" | "avatar_intro" | "avatar_memory_distill"
+  | "avatar_mail_triage" | "avatar_calendar_triage" | "avatar_slack_digest";
 
 interface T2Event {
   ts_iso: string;

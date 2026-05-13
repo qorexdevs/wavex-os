@@ -207,7 +207,9 @@ async function hireAgent(
 // Avatar provider to a semantically-close member of that enum.
 const PROVIDER_ICONS: Record<string, string> = {
   gmail: "mail",
+  outlook: "mail",
   google_calendar: "zap",
+  microsoft_calendar: "zap",
   slack: "message-square",
   notion: "file-code",
   linear: "target",
@@ -218,7 +220,9 @@ const PROVIDER_ICONS: Record<string, string> = {
 
 const PROVIDER_TITLES: Record<string, string> = {
   gmail: "Gmail agent",
-  google_calendar: "Calendar agent",
+  outlook: "Outlook agent",
+  google_calendar: "Google Calendar agent",
+  microsoft_calendar: "Microsoft Calendar agent",
   slack: "Slack agent",
   notion: "Notion agent",
   linear: "Linear agent",

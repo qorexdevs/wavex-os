@@ -23,6 +23,11 @@ import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting } from "../lib/token-accounting.js";
 import { handoffAvatarToPaperclip } from "../bridge/avatar-handoff.js";
 import { runGmailTriage } from "../avatar/runners/gmail-triage.js";
+import { runMailTriage } from "../avatar/runners/mail-triage.js";
+import { runCalendarTriage } from "../avatar/runners/calendar-triage.js";
+import { runSlackDigest } from "../avatar/runners/slack-digest.js";
+import { logDecision, logEdit, readEpisodic } from "../avatar/memory/episodic.js";
+import { readPreferences, distillPreferences } from "../avatar/memory/preferences.js";
 
 // ── Storage helpers ──────────────────────────────────────────────────────
 
@@ -329,7 +334,11 @@ const createSchema = z.object({
 });
 
 const connectToolSchema = z.object({
-  provider: z.enum(["gmail", "google_calendar", "slack", "notion", "linear", "github", "twilio_sms", "hubspot"]),
+  provider: z.enum([
+    "gmail", "google_calendar", "slack", "notion", "linear", "github", "twilio_sms", "hubspot",
+    // Phase 6 — Microsoft parity.
+    "outlook", "microsoft_calendar",
+  ]),
 });
 
 // Per-provider personalization captured by the onboarding drawer (Phase 3).
@@ -624,6 +633,61 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
     },
   );
 
+  // Phase 6 — provider-agnostic mail triage. Supersedes /run/gmail-triage;
+  // the gmail route stays as a back-compat alias until the dashboard
+  // migrates to the per-provider menu.
+  app.post<{
+    Params: { id: string; provider: string };
+    Querystring: { dryRun?: string; skipInference?: string };
+  }>(
+    "/api/avatar/:id/run/mail-triage/:provider",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const dryRun = req.query.dryRun !== "false";
+      const skipInference = req.query.skipInference !== "false";
+      const result = await runMailTriage(id, req.params.provider, { dryRun, skipInference });
+      return { ok: true, result };
+    },
+  );
+
+  // Phase 6 — Slack mention-digest runner (read-only). No provider switch
+  // since Slack is a single integration. Produces avatar.slack.mention_digest
+  // approvals with deep_link payloads — operator clicks through to Slack.
+  app.post<{ Params: { id: string }; Querystring: { dryRun?: string; skipInference?: string } }>(
+    "/api/avatar/:id/run/slack-digest",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const dryRun = req.query.dryRun !== "false";
+      const skipInference = req.query.skipInference !== "false";
+      const result = await runSlackDigest(id, { dryRun, skipInference });
+      return { ok: true, result };
+    },
+  );
+
+  // Phase 6 — calendar-triage runner (Google + Microsoft via providerId).
+  app.post<{
+    Params: { id: string; provider: string };
+    Querystring: { dryRun?: string; skipInference?: string };
+  }>(
+    "/api/avatar/:id/run/calendar-triage/:provider",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const dryRun = req.query.dryRun !== "false";
+      const skipInference = req.query.skipInference !== "false";
+      const result = await runCalendarTriage(id, req.params.provider, { dryRun, skipInference });
+      return { ok: true, result };
+    },
+  );
+
   // Audit log surface — paginated reads from Paperclip's activity_log
   // scoped to the avatar's mirror company.
   app.get<{ Params: { id: string }; Querystring: { limit?: string; before?: string } }>(
@@ -714,6 +778,25 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       };
       await writeJson(apvPath, updated);
 
+      // Phase 6 — memory v1: capture every decision (+ edit diff if any)
+      // as an episodic event. Non-fatal: a memory write failure must
+      // never break the decide flow.
+      try {
+        await logDecision(
+          id,
+          { id: current.id, type: current.type, payload: current.payload },
+          req.body.decision,
+          req.body.decisionNote,
+        );
+        const beforeText = typeof current.payload?.draftText === "string" ? current.payload.draftText : "";
+        const afterText = typeof req.body.editedPayload?.draftText === "string"
+          ? req.body.editedPayload.draftText as string
+          : null;
+        if (afterText !== null && afterText !== beforeText) {
+          await logEdit(id, current.id, beforeText, afterText);
+        }
+      } catch { /* non-fatal */ }
+
       // Audit trail in Paperclip's activity_log so the audit-log tab
       // picks it up alongside agent-side actions.
       const handoff = await readJson<{ paperclipUrl?: string; paperclipCompanyId?: string }>(
@@ -737,6 +820,44 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
         } catch { /* non-fatal */ }
       }
       return { ok: true, approval: updated };
+    },
+  );
+
+  // Phase 6 — Memory v1 read. Returns active preference rules + the
+  // most recent N episodic events for the dashboard Memory tab.
+  app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
+    "/api/avatar/:id/memory",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const limit = Math.min(Number(req.query.limit ?? 50), 200);
+      const [preferences, episodic] = await Promise.all([
+        readPreferences(id),
+        readEpisodic(id),
+      ]);
+      // Newest first for the UI.
+      const tail = episodic.slice(-limit).reverse();
+      return { ok: true, preferences, episodic: tail };
+    },
+  );
+
+  // Phase 6 — Manual T2 distill trigger. The dashboard's "Re-distill"
+  // button calls this; in production a cron job runs it daily. Falls
+  // back to the deterministic apology-removal heuristic under
+  // skipInference (matches the rest of the avatar T2 surfaces).
+  app.post<{ Params: { id: string }; Querystring: { skipInference?: string; lookbackHours?: string } }>(
+    "/api/avatar/:id/memory/distill",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const skipInference = req.query.skipInference === "true";
+      const lookbackHours = req.query.lookbackHours ? Number(req.query.lookbackHours) : undefined;
+      const added = await distillPreferences(id, { skipInference, lookbackHours });
+      return { ok: true, added, count: added.length };
     },
   );
 

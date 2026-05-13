@@ -35,9 +35,11 @@ const PROVIDER_LABELS: Record<string, string> = {
   github: "GitHub",
   twilio_sms: "Twilio SMS",
   hubspot: "HubSpot",
+  outlook: "Outlook",
+  microsoft_calendar: "Microsoft Calendar",
 };
 
-type Tab = "overview" | "inbox" | "audit";
+type Tab = "overview" | "inbox" | "memory" | "audit";
 
 export function AvatarDashboard() {
   const { id } = useParams<{ id: string }>();
@@ -88,6 +90,7 @@ export function AvatarDashboard() {
         <Tabs tab={tab} setTab={setTab} />
         {tab === "overview" && <OverviewTab avatar={avatar} />}
         {tab === "inbox" && id && <InboxTab avatarId={id} />}
+        {tab === "memory" && id && <MemoryTab avatarId={id} />}
         {tab === "audit" && id && <AuditTab avatarId={id} />}
         <div className="text-dim" style={{ fontSize: 11, textAlign: "center", marginTop: "1rem" }}>
           avatar <code>{avatar.avatarId}</code>
@@ -139,6 +142,7 @@ function Tabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const TABS: Array<{ id: Tab; label: string }> = [
     { id: "overview", label: "Overview" },
     { id: "inbox", label: "Approval inbox" },
+    { id: "memory", label: "Memory" },
     { id: "audit", label: "Audit log" },
   ];
   return (
@@ -350,13 +354,26 @@ function InboxTab({ avatarId }: { avatarId: string }) {
     };
   }, [approvals]);
 
-  async function triggerRun() {
+  /** Phase 6 — per-runner trigger. Skill id matches the paperclip-handoff
+   *  agent key: gmail / outlook → mail-triage, google_calendar /
+   *  microsoft_calendar → calendar-triage, slack → slack-digest. */
+  async function triggerRun(skill: string) {
     setRunning(true);
     setRunMessage(null);
     setError(null);
     try {
-      const r = await opOmegaOnboardingApi.runAvatarGmailTriage(avatarId);
-      setRunMessage(`Runner: ${r.result.processed} processed · ${r.result.drafted} drafted · ${r.result.approvalsCreated} queued`);
+      if (skill === "gmail" || skill === "outlook") {
+        const r = await opOmegaOnboardingApi.runAvatarMailTriage(avatarId, skill);
+        setRunMessage(`${skill}: ${r.result.processed} processed · ${r.result.drafted} drafted · ${r.result.approvalsCreated} queued`);
+      } else if (skill === "google_calendar" || skill === "microsoft_calendar") {
+        const r = await opOmegaOnboardingApi.runAvatarCalendarTriage(avatarId, skill);
+        setRunMessage(`${skill}: ${r.result.processed} invites · ${r.result.approvalsCreated} queued`);
+      } else if (skill === "slack") {
+        const r = await opOmegaOnboardingApi.runAvatarSlackDigest(avatarId);
+        setRunMessage(`slack: ${r.result.processed} mentions · ${r.result.approvalsCreated} queued`);
+      } else {
+        setRunMessage(`No runner wired for "${skill}" yet.`);
+      }
       await refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -393,19 +410,8 @@ function InboxTab({ avatarId }: { avatarId: string }) {
               {graduating ? "Graduating…" : preset === "aggressive" ? `Autonomy: ${preset}` : `Autonomy: ${preset} — graduate?`}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => void triggerRun()}
-            disabled={running}
-            style={{
-              padding: "0.4rem 0.85rem",
-              borderRadius: 6, border: "1px solid var(--border)",
-              background: "transparent", color: "var(--text)",
-              fontSize: 12, cursor: running ? "wait" : "pointer",
-            }}
-          >
-            {running ? "Running…" : "Run triage now"}
-          </button>
+          <RunMenu skills={skills} disabled={running} onRun={(skill) => void triggerRun(skill)} />
+          {running && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Running…</span>}
         </div>
         {runMessage && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem" }}>{runMessage}</div>}
       </section>
@@ -513,25 +519,57 @@ function ApprovalCard({
     }
   }
 
+  // Phase 6 — derive the provider from the namespaced approval type
+  // (avatar.<provider>.<kind>). Drives the provider chip + the variant
+  // rendering (mail draft / calendar invite / slack mention).
+  const parts = approval.type.split(".");
+  const provider = parts[1] ?? "unknown";
+  const kind = parts[2] ?? "";
+  const providerLabel = PROVIDER_LABELS[provider] ?? provider;
+
   const cls = approval.payload.classification;
-  const clsColor = cls === "now" ? "var(--accent)" : cls === "soon" ? "var(--warning)" : "var(--text-dim)";
+  const importance = approval.payload.importance;
+  const suggested = approval.payload.suggested;
+  // Tag chip color: mail uses classification (now/soon/fyi); calendar uses
+  // suggested response; slack uses importance.
+  const tag = (cls ?? importance ?? suggested ?? "").toString();
+  const tagColor =
+    tag === "now" || tag === "urgent" || tag === "accept" ? "var(--accent)"
+    : tag === "soon" || tag === "info" || tag === "propose-time" ? "var(--warning)"
+    : tag === "decline" ? "var(--warning)"
+    : "var(--text-dim)";
 
   return (
     <div style={{
       ...card,
-      borderLeft: `3px solid ${clsColor}`,
+      borderLeft: `3px solid ${tagColor}`,
       opacity: approval.status !== "pending" ? 0.65 : 1,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+        {tag && (
+          <span style={{
+            padding: "0.1rem 0.45rem", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+            textTransform: "uppercase", color: tagColor, border: `1px solid ${tagColor}`, borderRadius: 999,
+          }}>
+            {tag}
+          </span>
+        )}
         <span style={{
-          padding: "0.1rem 0.45rem", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
-          textTransform: "uppercase", color: clsColor, border: `1px solid ${clsColor}`, borderRadius: 999,
+          padding: "0.1rem 0.45rem", fontSize: 10, fontWeight: 600,
+          color: "var(--text-dim)", border: "1px solid var(--border)", borderRadius: 999,
         }}>
-          {cls}
+          {providerLabel}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 700 }}>{approval.payload.subject}</span>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>
+          {approval.payload.subject ?? approval.payload.summary ?? approval.payload.channel ?? "(no subject)"}
+        </span>
         <span className="text-dim" style={{ fontSize: 11 }}>
-          from {approval.payload.from.name} · conf {(approval.payload.confidence * 100).toFixed(0)}%
+          {kind === "invite_response"
+            ? `${approval.payload.organizer?.name ?? "?"} · ${new Date(approval.payload.start ?? Date.now()).toLocaleString()}`
+            : kind === "mention_digest"
+              ? `${approval.payload.author?.name ?? "?"} in ${approval.payload.channel ?? "?"}`
+              : `from ${approval.payload.from?.name ?? "?"}`}
+          {typeof approval.payload.confidence === "number" && ` · conf ${(approval.payload.confidence * 100).toFixed(0)}%`}
         </span>
         {approval.status !== "pending" && (
           <span style={statusBadge(approval.status === "approved" ? "accent" : "warning")}>
@@ -539,10 +577,42 @@ function ApprovalCard({
           </span>
         )}
       </div>
-      <div className="text-dim" style={{ fontSize: 11, marginBottom: "0.5rem", fontStyle: "italic" }}>
-        “{approval.payload.preview.slice(0, 200)}…”
-      </div>
-      {approval.payload.draftText ? (
+      {/* Body preview: mail uses preview, slack uses text, calendar uses body */}
+      {(approval.payload.preview || approval.payload.text || approval.payload.body) && (
+        <div className="text-dim" style={{ fontSize: 11, marginBottom: "0.5rem", fontStyle: "italic" }}>
+          "{(approval.payload.preview ?? approval.payload.text ?? approval.payload.body ?? "").slice(0, 200)}…"
+        </div>
+      )}
+      {/* Calendar invite: show the suggested response details */}
+      {kind === "invite_response" && approval.payload.draft_message && (
+        <div style={{
+          padding: "0.6rem 0.8rem", background: "var(--bg)",
+          border: "1px solid var(--border)", borderRadius: 6,
+          fontSize: 13, color: "var(--text)", whiteSpace: "pre-wrap",
+          lineHeight: 1.55, marginBottom: "0.5rem",
+        }}>
+          {approval.payload.draft_message}
+        </div>
+      )}
+      {/* Slack mention: deep-link CTA instead of an editable draft */}
+      {kind === "mention_digest" && approval.payload.permalink && (
+        <a
+          href={approval.payload.permalink}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-block", marginBottom: "0.5rem",
+            padding: "0.35rem 0.7rem", borderRadius: 6,
+            background: "transparent", border: "1px solid var(--border)",
+            color: "var(--accent)", fontSize: 12, fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          View in Slack →
+        </a>
+      )}
+      {/* Mail draft (existing behavior) */}
+      {kind === "draft_reply" && approval.payload.draftText ? (
         editing ? (
           <textarea
             value={draft}
@@ -566,9 +636,11 @@ function ApprovalCard({
           </div>
         )
       ) : (
-        <div className="text-dim" style={{ fontSize: 11, fontStyle: "italic", marginBottom: "0.5rem" }}>
-          No draft (FYI).
-        </div>
+        kind === "draft_reply" && (
+          <div className="text-dim" style={{ fontSize: 11, fontStyle: "italic", marginBottom: "0.5rem" }}>
+            No draft (FYI).
+          </div>
+        )
       )}
       <div className="text-dim" style={{ fontSize: 10, marginBottom: "0.6rem" }}>
         {approval.payload.reasoning}
@@ -576,7 +648,7 @@ function ApprovalCard({
       {error && <div style={{ color: "var(--warning)", fontSize: 11, marginBottom: "0.4rem" }}>✗ {error}</div>}
       {approval.status === "pending" && (
         <div style={{ display: "flex", gap: "0.4rem", justifyContent: "flex-end" }}>
-          {approval.payload.draftText && !editing && (
+          {kind === "draft_reply" && approval.payload.draftText && !editing && (
             <button type="button" onClick={() => setEditing(true)} style={ghostBtn}>Edit</button>
           )}
           {editing && (
@@ -656,6 +728,218 @@ function AuditTab({ avatarId }: { avatarId: string }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+// ── Memory tab ─────────────────────────────────────────────────────────
+
+function MemoryTab({ avatarId }: { avatarId: string }) {
+  const [preferences, setPreferences] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.getAvatarMemory>>["preferences"]>([]);
+  const [episodic, setEpisodic] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.getAvatarMemory>>["episodic"]>([]);
+  const [loading, setLoading] = useState(true);
+  const [distilling, setDistilling] = useState(false);
+  const [distillMsg, setDistillMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const r = await opOmegaOnboardingApi.getAvatarMemory(avatarId, 30);
+      setPreferences(r.preferences);
+      setEpisodic(r.episodic);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [avatarId]);
+
+  async function distill() {
+    setDistilling(true);
+    setDistillMsg(null);
+    try {
+      const r = await opOmegaOnboardingApi.distillAvatarMemory(avatarId);
+      setDistillMsg(r.count > 0
+        ? `Learned ${r.count} new rule${r.count === 1 ? "" : "s"}.`
+        : "No new rules — your recent activity didn't surface a confident pattern yet.");
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setDistilling(false);
+    }
+  }
+
+  if (loading) return <div className="text-dim" style={{ fontSize: 12 }}>Loading memory…</div>;
+
+  return (
+    <>
+      <section style={{ ...card, padding: "0.85rem 1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.85rem", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+            What I've learned
+          </div>
+          <span className="text-dim" style={{ fontSize: 11 }}>
+            {preferences.length} active rule{preferences.length === 1 ? "" : "s"} · {episodic.length} recent event{episodic.length === 1 ? "" : "s"}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={() => void distill()}
+            disabled={distilling}
+            style={{
+              padding: "0.4rem 0.85rem",
+              borderRadius: 6, border: "1px solid var(--border)",
+              background: "transparent", color: "var(--text)",
+              fontSize: 12, cursor: distilling ? "wait" : "pointer",
+            }}
+          >
+            {distilling ? "Re-distilling…" : "Re-distill from recent activity"}
+          </button>
+        </div>
+        {distillMsg && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.5rem" }}>{distillMsg}</div>}
+        {error && <div style={{ color: "var(--warning)", fontSize: 11, marginTop: "0.4rem" }}>✗ {error}</div>}
+      </section>
+
+      <section style={card}>
+        <SectionTitle>Active preferences</SectionTitle>
+        {preferences.length === 0 ? (
+          <p className="text-dim" style={{ margin: 0, fontSize: 12 }}>
+            No preferences distilled yet. Decide a few approvals (especially with edits) and click
+            <em> Re-distill</em> — your avatar will produce rules it then applies to every future draft.
+          </p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+            {preferences.map((p) => (
+              <li key={p.id} style={{
+                padding: "0.55rem 0.7rem", background: "var(--bg)",
+                border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+                borderRadius: 6, fontSize: 12,
+              }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600, color: "var(--text)" }}>{p.rule}</span>
+                  <span style={statusBadge("accent")}>{p.category}</span>
+                  <span className="text-dim" style={{ fontSize: 10 }}>
+                    conf {(p.confidence * 100).toFixed(0)}% · learned {new Date(p.learnedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section style={{ ...card, padding: 0 }}>
+        <div style={{ padding: "0.7rem 1rem", borderBottom: "1px solid var(--border)" }}>
+          <SectionTitle>Recent operator events</SectionTitle>
+        </div>
+        {episodic.length === 0 ? (
+          <p className="text-dim" style={{ margin: 0, padding: "0.85rem 1rem", fontSize: 12 }}>
+            Nothing yet — events appear as you approve, reject, or edit drafts.
+          </p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {episodic.map((e) => (
+              <li key={e.id} style={{
+                padding: "0.55rem 1rem", borderBottom: "1px solid var(--border)",
+                display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0.85rem", alignItems: "center",
+                fontSize: 12,
+              }}>
+                <span style={{ color: "var(--text-dim)", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 10 }}>
+                  {new Date(e.ts).toLocaleString()}
+                </span>
+                <span style={{ color: "var(--text)" }}>
+                  <code style={{ color: "var(--accent)", marginRight: "0.5rem" }}>{e.kind}</code>
+                  {e.kind === "edit" && e.edited?.after ? (
+                    <span className="text-dim">
+                      rewrote draft to <em style={{ color: "var(--text)" }}>"{e.edited.after.slice(0, 80)}{e.edited.after.length > 80 ? "…" : ""}"</em>
+                    </span>
+                  ) : (
+                    <span className="text-dim">
+                      {e.decision ?? "?"}{e.classification ? ` · ${e.classification}` : ""}{e.confidence != null ? ` · conf ${(e.confidence * 100).toFixed(0)}%` : ""}
+                    </span>
+                  )}
+                </span>
+                <span style={{ color: "var(--text-dim)", fontSize: 10 }}>
+                  {e.approvalType ? e.approvalType.replace(/^avatar\./, "") : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+// ── Run menu (per-skill triage) ───────────────────────────────────────
+
+function RunMenu({
+  skills, disabled, onRun,
+}: {
+  skills: Array<{ skill: string; status: string | null }>;
+  disabled: boolean;
+  onRun: (skill: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const runnable = skills.filter((s) =>
+    s.skill === "gmail" || s.skill === "outlook"
+    || s.skill === "google_calendar" || s.skill === "microsoft_calendar"
+    || s.skill === "slack",
+  );
+  if (runnable.length === 0) {
+    return (
+      <span className="text-dim" style={{ fontSize: 11 }}>
+        No connected runners — wire a tool from onboarding.
+      </span>
+    );
+  }
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        style={{
+          padding: "0.4rem 0.85rem",
+          borderRadius: 6, border: "1px solid var(--border)",
+          background: "transparent", color: "var(--text)",
+          fontSize: 12, cursor: disabled ? "wait" : "pointer",
+        }}
+      >
+        Run triage ▾
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", right: 0,
+            background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: 8, minWidth: 200, padding: "0.3rem", zIndex: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+          }}
+          onMouseLeave={() => setOpen(false)}
+        >
+          {runnable.map((s) => (
+            <button
+              key={s.skill}
+              type="button"
+              onClick={() => { setOpen(false); onRun(s.skill); }}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "0.4rem 0.6rem", background: "transparent",
+                border: "none", color: "var(--text)", fontSize: 12,
+                cursor: "pointer", borderRadius: 4,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              {PROVIDER_LABELS[s.skill] ?? s.skill}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

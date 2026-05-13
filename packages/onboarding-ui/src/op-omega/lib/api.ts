@@ -375,6 +375,78 @@ export const opOmegaOnboardingApi = {
     }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/gmail-triage${qs ? "?" + qs : ""}`);
   },
 
+  // Phase 6 — provider-agnostic runners
+  runAvatarMailTriage: (avatarId: string, provider: "gmail" | "outlook", opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; providerId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; drafted: number; approvalsCreated: number;
+        errors: Array<{ threadId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/mail-triage/${provider}${qs ? "?" + qs : ""}`);
+  },
+
+  runAvatarCalendarTriage: (avatarId: string, provider: "google_calendar" | "microsoft_calendar", opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; providerId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; approvalsCreated: number;
+        errors: Array<{ eventId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/calendar-triage/${provider}${qs ? "?" + qs : ""}`);
+  },
+
+  runAvatarSlackDigest: (avatarId: string, opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; approvalsCreated: number;
+        errors: Array<{ ts: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/slack-digest${qs ? "?" + qs : ""}`);
+  },
+
+  getAvatarMemory: (avatarId: string, limit = 50) =>
+    call<{
+      ok: true;
+      preferences: Array<{
+        id: string; rule: string; category: string; confidence: number;
+        learnedAt: string; supportingEventIds: string[]; applyCount: number;
+      }>;
+      episodic: Array<{
+        id: string; ts: string; kind: string; approvalId?: string;
+        approvalType?: string; classification?: string; confidence?: number;
+        decision?: string; edited?: { before?: string; after?: string }; note?: string;
+      }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/memory?limit=${limit}`),
+
+  distillAvatarMemory: (avatarId: string, opts?: { skipInference?: boolean; lookbackHours?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.skipInference) params.set("skipInference", "true");
+    if (opts?.lookbackHours) params.set("lookbackHours", String(opts.lookbackHours));
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      count: number;
+      added: Array<{ id: string; rule: string; category: string; confidence: number }>;
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/memory/distill${qs ? "?" + qs : ""}`);
+  },
+
   // Phase 2 — approval inbox
   listAvatarApprovals: (avatarId: string, status: "pending" | "approved" | "rejected" | "all" = "pending") =>
     call<{
@@ -388,17 +460,44 @@ export const opOmegaOnboardingApi = {
         decidedAt?: string;
         decisionNote?: string;
         requestedByAgentId: string;
+        // Phase 6 — payload widens across approval kinds (mail draft /
+        // calendar invite_response / slack mention_digest). All fields
+        // optional so the dashboard can render each variant by reading
+        // `type` and picking the right ones. Server enforces the per-
+        // kind shape; this is the union view.
         payload: {
-          threadId: string;
-          subject: string;
-          from: { name: string; email: string };
-          preview: string;
-          receivedAt: string;
-          draftText: string | null;
-          classification: "now" | "soon" | "fyi";
-          confidence: number;
-          reasoning: string;
-          openQuestion: string | null;
+          provider?: string;
+          // Mail draft_reply
+          threadId?: string;
+          subject?: string;
+          from?: { name: string; email: string };
+          preview?: string;
+          receivedAt?: string;
+          draftText?: string | null;
+          classification?: "now" | "soon" | "fyi";
+          openQuestion?: string | null;
+          // Calendar invite_response
+          eventId?: string;
+          summary?: string;
+          organizer?: { name: string; email: string };
+          start?: string;
+          end?: string;
+          inside_working_hours?: boolean;
+          suggested?: "accept" | "decline" | "propose-time";
+          proposed_times?: string[] | null;
+          draft_message?: string | null;
+          // Slack mention_digest
+          channel?: string;
+          channelId?: string;
+          author?: { name: string; email?: string };
+          ts?: string;
+          text?: string;
+          permalink?: string;
+          importance?: "urgent" | "info" | "fyi";
+          // Shared
+          confidence?: number;
+          reasoning?: string;
+          body?: string;
         };
         editedPayload?: { draftText?: string } | null;
       }>;

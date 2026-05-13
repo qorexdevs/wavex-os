@@ -16,14 +16,16 @@ interface Provider {
 }
 
 const PROVIDERS: Provider[] = [
-  { id: "gmail",           label: "Gmail",           icon: "✉️" },
-  { id: "google_calendar", label: "Google Calendar", icon: "📅" },
-  { id: "slack",           label: "Slack",           icon: "💬" },
-  { id: "notion",          label: "Notion",          icon: "📓" },
-  { id: "linear",          label: "Linear",          icon: "📋" },
-  { id: "github",          label: "GitHub",          icon: "🐙" },
-  { id: "twilio_sms",      label: "Twilio SMS",      icon: "📱" },
-  { id: "hubspot",         label: "HubSpot",         icon: "🧲" },
+  { id: "gmail",              label: "Gmail",              icon: "✉️" },
+  { id: "outlook",            label: "Outlook",            icon: "📧" },
+  { id: "google_calendar",    label: "Google Calendar",    icon: "📅" },
+  { id: "microsoft_calendar", label: "Microsoft Calendar", icon: "🗓️" },
+  { id: "slack",              label: "Slack",              icon: "💬" },
+  { id: "notion",             label: "Notion",             icon: "📓" },
+  { id: "linear",             label: "Linear",             icon: "📋" },
+  { id: "github",             label: "GitHub",             icon: "🐙" },
+  { id: "twilio_sms",         label: "Twilio SMS",         icon: "📱" },
+  { id: "hubspot",            label: "HubSpot",            icon: "🧲" },
 ];
 
 interface Props {
@@ -58,10 +60,16 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
       if (!justAdded) throw new Error("connect did not record");
       setConnected(r.connected);
       onConnected(justAdded);
-      // Auto-open the personalize drawer for Gmail on first connect — the
-      // wedge skill is gmail-triage, and the drawer is where we capture
-      // VIPs / privacy zones / signoff that the runner consumes.
-      if (provider === "gmail") setDrawerOpen("gmail");
+      // Auto-open the personalize drawer for mail providers on first connect.
+      // The drawer captures VIPs / privacy zones / signoff that the runner
+      // consumes when classifying threads for this provider. Clear the
+      // shared state so an Outlook drawer doesn't reuse Gmail values.
+      if (provider === "gmail" || provider === "outlook") {
+        setVips([]);
+        setPrivacyZones([]);
+        setSignoff("");
+        setDrawerOpen(provider);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
@@ -154,7 +162,7 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
           );
         })}
       </div>
-      {drawerOpen === "gmail" && (
+      {(drawerOpen === "gmail" || drawerOpen === "outlook") && (
         <div style={{
           padding: "0.85rem 1rem",
           background: "color-mix(in srgb, var(--accent) 5%, transparent)",
@@ -164,7 +172,7 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>
-              Personalize Gmail · optional
+              Personalize {drawerOpen === "outlook" ? "Outlook" : "Gmail"} · optional
             </div>
             <button
               type="button"
@@ -188,18 +196,20 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
               values={vips}
               onChange={setVips}
               placeholder="alex@bigfund.com, @stripe.com"
-              ariaLabel="Gmail VIPs"
+              ariaLabel={`${drawerOpen} VIPs`}
             />
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
-              Privacy zones (labels or folders to never touch)
+              {drawerOpen === "outlook"
+                ? "Privacy zones (folder names to never touch)"
+                : "Privacy zones (labels or folders to never touch)"}
             </div>
             <ChipInput
               values={privacyZones}
               onChange={setPrivacyZones}
               placeholder="Personal, Family"
-              ariaLabel="Gmail privacy zones"
+              ariaLabel={`${drawerOpen} privacy zones`}
             />
           </div>
           <div>
@@ -211,7 +221,7 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
               value={signoff}
               onChange={(e) => setSignoff(e.target.value)}
               placeholder="— Alex"
-              aria-label="Gmail signoff"
+              aria-label={`${drawerOpen} signoff`}
               style={{
                 width: "100%", padding: "0.45rem 0.6rem",
                 background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6,
@@ -222,7 +232,7 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="button"
-              onClick={() => void saveMeta("gmail")}
+              onClick={() => void saveMeta(drawerOpen)}
               disabled={savingMeta}
               style={{
                 padding: "0.35rem 0.85rem", borderRadius: 6,
