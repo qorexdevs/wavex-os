@@ -150,6 +150,22 @@ export const opOmegaOnboardingApi = {
     "POST", "/op-omega/onboarding/pillar/5", input,
   ),
 
+  /** Inference-driven suggestion for the next pillar's field values, based
+   *  on prior pillar context. The inline cards call this on mount so the
+   *  customer sees pre-highlighted chips ("Suggested: assisted demo —
+   *  matches your $50K MRR B2B SaaS signal") instead of a static form.
+   *
+   *  Supported for pillars 3, 4, 5. recommended is a partial object keyed
+   *  by the pillar's fields; reasoning is a short why-this-pick string. */
+  pillarSuggest: (pillar: 3 | 4 | 5, companyId: string) =>
+    call<{
+      ok: boolean;
+      pillar: number;
+      recommended: Record<string, unknown>;
+      reasoning: string | null;
+      error?: string;
+    }>("POST", `/op-omega/onboarding/pillar/${pillar}/suggest`, { companyId }),
+
   pillar5TestSend: (input: {
     companyId: string;
     channel: "telegram" | "slack" | "sms" | "email_only";
