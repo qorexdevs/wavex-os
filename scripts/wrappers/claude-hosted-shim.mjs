@@ -30,6 +30,14 @@ import { randomBytes } from "node:crypto";
 
 const args = process.argv.slice(2);
 
+// Short-circuit `--version` so anything that probes the binary identity
+// (op-omega's probeClaudeCode, doctor scripts, etc.) doesn't see a failure
+// when the hub-shim is wired in. Mirrors `claude --version`'s exit shape.
+if (args.includes("--version") || args.includes("-v")) {
+  process.stdout.write("wavex-os hosted-shim 0.1.0 (Pool A relay)\n");
+  process.exit(0);
+}
+
 let prompt = null;
 let outputFormat = "text";
 for (let i = 0; i < args.length; i++) {
