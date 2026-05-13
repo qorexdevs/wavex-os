@@ -218,6 +218,86 @@ export function registerPillarRoutes(app: FastifyInstance): void {
     });
   });
 
+  // ── Narrator endpoint ───────────────────────────────────────────────
+  //
+  // OnboardingShell's chat thread used to contain hardcoded transition
+  // sentences ("Got it. Reading your site…", "Where are you in the product
+  // journey?", "How do leads come in?"). They felt programmatic because
+  // they were the same for every customer regardless of context.
+  //
+  // This endpoint returns ONE tailored transition sentence grounded in
+  // what we already know about the customer + which phase they're
+  // entering. The shell calls it at each transition and falls back to
+  // the hardcoded copy if the call fails or is slow.
+  //
+  // Cost-bounded: ~30-60 output tokens per call. The handful of
+  // transition points across a full walk add maybe 200-300 tokens total
+  // — trivial relative to the wizard's other T2 spend.
+  const narrateSchema = z.object({
+    companyId: z.string().min(1),
+    from: z.string().max(40),
+    to: z.string().max(40),
+  });
+
+  app.post("/op-omega/onboarding/narrate", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const parsed = narrateSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed" });
+    const { companyId, from, to } = parsed.data;
+    assertCompanyAccess(ar, companyId);
+
+    const responses = await loadPillarResponses(companyId).catch(() => null);
+    const ctx: string[] = [];
+    const p1 = responses?.pillar_1 as
+      | { org_name?: string; industry_hint?: string; business_model_hint?: string; company_context?: string }
+      | undefined;
+    if (p1?.org_name) ctx.push(`Company: ${p1.org_name}`);
+    if (p1?.industry_hint) ctx.push(`Industry: ${p1.industry_hint}`);
+    if (p1?.business_model_hint) ctx.push(`Business model: ${p1.business_model_hint}`);
+    if (p1?.company_context) ctx.push(`Context: ${p1.company_context.slice(0, 300)}`);
+    const p3 = responses?.pillar_3 as { product_state?: string; stage?: string } | undefined;
+    if (p3?.stage) ctx.push(`Stage: ${p3.stage}`);
+    const p4 = responses?.pillar_4 as { sales_motion?: string } | undefined;
+    if (p4?.sales_motion) ctx.push(`Motion: ${p4.sales_motion}`);
+
+    const prompt = `You are the narrator of a chat-first onboarding wizard. The customer is moving from one phase to the next. Write ONE short sentence (≤140 chars) that:
+- Acknowledges what just happened with a sentence-specific reference to what they told us (e.g., "Got the 40-customer $50K MRR picture") rather than generic "Got it".
+- Introduces what's next without re-explaining the wizard.
+
+CUSTOMER CONTEXT:
+${ctx.join("\n") || "(very little so far — only an org name)"}
+
+PHASE TRANSITION: ${from} → ${to}
+
+Output ONLY the sentence — no quotes, no markdown, no preamble.`;
+
+    try {
+      const out = await withTokenAccounting(companyId, "narrator" as PhaseKey, async () => {
+        const resp = await tierRoute({
+          agent_id: "onboarding.narrator",
+          prompt,
+          task_metadata: { creativity_required: true, customer_facing: true, reasoning_depth: "shallow", priority: "batch" },
+          companyId,
+          outputFormat: "text",
+          timeout_ms: 20_000,
+        });
+        return resp.output.trim();
+      });
+      // Strip quotes if Claude wrapped its answer.
+      const sentence = out.replace(/^["'`]|["'`]$/g, "").replace(/\n.*$/s, "").slice(0, 200);
+      return reply.send({ ok: true, sentence });
+    } catch (e) {
+      if (e instanceof BudgetExhaustedError) {
+        return reply.send({ ok: false, error: e.message });
+      }
+      return reply.send({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
   // ── Pillar suggestion endpoint ──────────────────────────────────────
   //
   // Why this exists: Pillar 3/4/5 cards on main currently render hardcoded

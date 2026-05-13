@@ -456,6 +456,34 @@ export function OnboardingShell() {
     }, 400);
   }, []);
 
+  /** Inference-grounded narrator: fires /op-omega/onboarding/narrate with
+   *  the current pillar context and returns ONE tailored transition
+   *  sentence ("Got the picture — 40 paying customers and $50K MRR.
+   *  Now let me figure out which connectors you actually need.")
+   *
+   *  Races against a 2s deadline — if the call hasn't returned by then we
+   *  return the hardcoded fallback so the chat NEVER stalls. The narrator
+   *  call piggybacks on the 400ms transition-pill animation so most of the
+   *  visible latency disappears anyway. */
+  const narrateOrFallback = useCallback(async (
+    from: string,
+    to: string,
+    fallback: string,
+  ): Promise<string> => {
+    const slug = companyId ?? deriveSlug(state.draft.pillar1?.rawInput ?? "");
+    if (!slug) return fallback;
+    const NARRATOR_TIMEOUT_MS = 2000;
+    try {
+      const result = await Promise.race([
+        opOmegaOnboardingApi.narrate({ companyId: slug, from, to }).then((r) => r.sentence || fallback),
+        new Promise<string>((resolve) => setTimeout(() => resolve(fallback), NARRATOR_TIMEOUT_MS)),
+      ]);
+      return result || fallback;
+    } catch {
+      return fallback;
+    }
+  }, [companyId, state.draft.pillar1?.rawInput]);
+
   /** Pillar 1 halt-recovery handler — passed into Pillar1HaltCard via the
    *  slot context. The card calls this with the operator's free-text. */
   const handlePillar1Recovery = useCallback((response: Pillar1Response) => {
@@ -637,47 +665,44 @@ export function OnboardingShell() {
   const handlePillar3Done = useCallback((response: Pillar3Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar3-prompt" });
     dispatch({ type: "PILLAR3_DONE", response });
-    transitionWithPill("Asking about your GTM…", () => {
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          role: "assistant",
-          text: "How do leads come in?",
-          slot: { kind: "pillar4-prompt" },
-        },
+    void (async () => {
+      const text = await narrateOrFallback("pillar-3", "pillar-4", "How do leads come in?");
+      transitionWithPill("Asking about your GTM…", () => {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: { role: "assistant", text, slot: { kind: "pillar4-prompt" } },
+        });
       });
-    });
-  }, [transitionWithPill]);
+    })();
+  }, [transitionWithPill, narrateOrFallback]);
 
   const handlePillar4Done = useCallback((response: Pillar4Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar4-prompt" });
     dispatch({ type: "PILLAR4_DONE", response });
-    transitionWithPill("Asking about board comms…", () => {
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          role: "assistant",
-          text: "How do you want your board to talk to you?",
-          slot: { kind: "pillar5-prompt" },
-        },
+    void (async () => {
+      const text = await narrateOrFallback("pillar-4", "pillar-5", "How do you want your board to talk to you?");
+      transitionWithPill("Asking about board comms…", () => {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: { role: "assistant", text, slot: { kind: "pillar5-prompt" } },
+        });
       });
-    });
-  }, [transitionWithPill]);
+    })();
+  }, [transitionWithPill, narrateOrFallback]);
 
   const handlePillar5Done = useCallback((response: Pillar5Response) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "pillar5-prompt" });
     dispatch({ type: "PILLAR5_DONE", response });
-    transitionWithPill("Mapping your connectors…", () => {
-      dispatch({
-        type: "ADD_MESSAGE",
-        message: {
-          role: "assistant",
-          text: "Got it. Let me figure out what to plug in…",
-          slot: { kind: "thinking", phase: "phase-2" },
-        },
+    void (async () => {
+      const text = await narrateOrFallback("pillar-5", "connectors", "Got it. Let me figure out what to plug in…");
+      transitionWithPill("Mapping your connectors…", () => {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: { role: "assistant", text, slot: { kind: "thinking", phase: "phase-2" } },
+        });
       });
-    });
-  }, [transitionWithPill]);
+    })();
+  }, [transitionWithPill, narrateOrFallback]);
 
   /** Phase 2 connector generation — fires when state.phase transitions to
    *  connectors/loading. Tries loadConnector first (no-cost) and falls back

@@ -166,6 +166,15 @@ export const opOmegaOnboardingApi = {
       error?: string;
     }>("POST", `/op-omega/onboarding/pillar/${pillar}/suggest`, { companyId }),
 
+  /** One-shot phase-transition narration grounded in pillar context. The
+   *  shell calls this between phases (e.g., "Got the picture" → "let me
+   *  figure out the connectors you need") so the chat doesn't feel like a
+   *  paper form. Falls back to hardcoded copy on failure. */
+  narrate: (input: { companyId: string; from: string; to: string }) =>
+    call<{ ok: boolean; sentence?: string; error?: string }>(
+      "POST", "/op-omega/onboarding/narrate", input,
+    ),
+
   pillar5TestSend: (input: {
     companyId: string;
     channel: "telegram" | "slack" | "sms" | "email_only";

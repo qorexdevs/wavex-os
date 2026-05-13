@@ -154,6 +154,69 @@ const SUGGESTION_RULES: AutomationSuggestion[] = [
   },
 ];
 
+/** Pool A inference path for avatar automations. Returns a small list of
+ *  tailored suggestions grounded in the avatar's profile + tools + voice +
+ *  trust state. Empty array on failure → caller falls back to the rule
+ *  table. JSON envelope: { suggestions: [{ id, title, body, needs }] }. */
+async function inferAvatarSuggestions(opts: {
+  profile: AvatarProfile | null | undefined;
+  connectedProviders: string[];
+  voice: VoiceProfile | undefined;
+  trust: TrustFile | null | undefined;
+}): Promise<AutomationSuggestion[]> {
+  const role = opts.profile?.role ?? "(role unknown)";
+  const name = opts.profile?.name ?? "operator";
+  const wh = opts.profile?.working_hours ? `${opts.profile.working_hours[0]}-${opts.profile.working_hours[1]} ${opts.profile.tz ?? ""}` : "(unknown)";
+  const tone = opts.voice?.tone ?? "(unknown)";
+  const structure = opts.voice?.structure ?? "(unknown)";
+  const formality = opts.voice?.formality ?? "(unknown)";
+  const vipBlock = (opts.trust?.vips ?? []).slice(0, 6).map((v) => v.label ?? v.email).join(", ");
+  const toolList = opts.connectedProviders.join(", ");
+
+  const prompt = `You are designing the first set of automations for a personal AI assistant ("avatar") that just got connected to a real operator's accounts. Predict 3-5 specific, high-value automations this operator would actually use on day one.
+
+OPERATOR CONTEXT:
+- Name: ${name}
+- Role: ${role}
+- Working hours: ${wh}
+- Voice tone: ${tone} · formality: ${formality} · structure: ${structure}
+${vipBlock ? `- Flagged VIPs to prioritize: ${vipBlock}` : ""}
+
+CONNECTED TOOLS (only suggest automations that use a SUBSET of these — never invent tool dependencies):
+  ${toolList}
+
+ID NAMING — use kebab-case, descriptive, max 30 chars. Examples: "morning-brief", "vip-inbox-triage", "pr-review-draft", "meeting-prep-pack".
+
+Output ONLY a single JSON object with this exact shape. No prose, no code fences:
+{
+  "suggestions": [
+    { "id": "<kebab-case-id>", "title": "<3-6 words>", "body": "<one-sentence what + when>", "needs": ["<tool>", ...] }
+  ]
+}
+
+Tailor to the role + working hours. A "Designer" gets different automations than an "Engineering Manager" or "Founder". Body should reference specific behavior ("8 min before each calendar event"; "every Friday 4pm"; "when an email from a VIP arrives"). Keep needs ⊆ connected tools.`;
+
+  const resp = await tierRoute({
+    agent_id: "onboarding.avatar-suggestions",
+    prompt,
+    task_metadata: {
+      creativity_required: true, customer_facing: false,
+      reasoning_depth: "shallow", priority: "batch",
+    },
+    companyId: "avatar-onboarding",
+    outputFormat: "text",
+    timeout_ms: 30_000,
+  });
+  const raw = resp.output.trim().replace(/^```(?:json)?\s*|\s*```$/gm, "");
+  const parsed = JSON.parse(raw) as { suggestions?: AutomationSuggestion[] };
+  const list = (parsed.suggestions ?? []).filter((s) => s && s.id && s.title && s.body && Array.isArray(s.needs));
+  // Cap at 5, enforce needs ⊆ connected — defensive against Claude inventing tools.
+  const connectedSet = new Set(opts.connectedProviders);
+  return list
+    .filter((s) => s.needs.every((n) => connectedSet.has(n)))
+    .slice(0, 5);
+}
+
 /** Phase 3 — trust-aware suggestions. If the operator flagged VIPs during
  *  the Trust step AND Gmail is connected, a personalized "Triage VIP inbox"
  *  suggestion bubbles to the top with the VIP names cited verbatim. Other
@@ -546,19 +609,60 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
     return { ok: true, trust };
   });
 
-  // List rule-based suggestions for the avatar's connected tools
-  app.get<{ Params: { id: string } }>("/op-omega/onboarding/avatar/:id/suggestions", async (req, reply) => {
-    if (!gateBoard(req, reply)) return;
-    const id = req.params.id;
-    const dir = avatarDir(id);
-    if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
-    const tools = (await readJson<{ connected: ToolConnection[] }>(join(dir, "tools.json")))?.connected ?? [];
-    const trust = await readJson<TrustFile>(join(dir, "trust.json"));
-    const suggestions = suggestionsFor(tools.map((t) => t.provider), trust);
-    // Persist so the dashboard can show what was suggested even if rules change later.
-    await writeJson(join(dir, "automations.json"), { enabled: [], suggested: suggestions } satisfies AutomationsFile);
-    return { ok: true, suggestions };
-  });
+  // Inference-driven suggestions for the avatar's connected tools.
+  // Was a hardcoded rule table — "Meeting prep brief", "Daily Slack→Notion
+  // digest", etc. — emitted whenever the tool set matched. That felt
+  // programmatic because EVERY avatar with gmail+calendar got the same
+  // meeting-prep suggestion regardless of role / working hours / voice.
+  //
+  // Now: load profile + connected tools + voice profile + trust → ask
+  // Pool A for 3-5 automations tailored to THIS specific avatar. The
+  // hardcoded rule table stays as the fallback when inference fails or
+  // skip-inference is requested.
+  app.get<{ Params: { id: string }; Querystring: { skipInference?: string } }>(
+    "/op-omega/onboarding/avatar/:id/suggestions",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+
+      const profile = await readJson<AvatarProfile>(join(dir, "profile.json"));
+      const tools = (await readJson<{ connected: ToolConnection[] }>(join(dir, "tools.json")))?.connected ?? [];
+      const voice = await readJson<{ profile?: VoiceProfile }>(join(dir, "voice.json"));
+      const trust = await readJson<TrustFile>(join(dir, "trust.json"));
+      const providers = tools.map((t) => t.provider);
+      const skipInference = req.query.skipInference === "1";
+
+      let suggestions: AutomationSuggestion[] = [];
+      let source: "t2" | "rules" = "rules";
+
+      if (!skipInference && providers.length > 0) {
+        try {
+          const inferred = await inferAvatarSuggestions({
+            profile,
+            connectedProviders: providers,
+            voice: voice?.profile,
+            trust,
+          });
+          if (inferred.length > 0) {
+            suggestions = inferred;
+            source = "t2";
+          }
+        } catch {
+          // Fall through to rule-based suggestions — inference is best-effort.
+        }
+      }
+
+      if (suggestions.length === 0) {
+        suggestions = suggestionsFor(providers, trust);
+      }
+
+      // Persist so the dashboard can show what was suggested even if rules / inference change later.
+      await writeJson(join(dir, "automations.json"), { enabled: [], suggested: suggestions } satisfies AutomationsFile);
+      return { ok: true, suggestions, source };
+    },
+  );
 
   // Finalize: lock in enabled automations
   app.post<{ Params: { id: string } }>("/op-omega/onboarding/avatar/:id/finalize", async (req, reply) => {
