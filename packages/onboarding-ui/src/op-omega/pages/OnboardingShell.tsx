@@ -840,27 +840,52 @@ export function OnboardingShell() {
     if (!companyId || swarmRanRef.current) return;
     swarmRanRef.current = true;
     void (async () => {
-      try {
-        const loaded = await opOmegaOnboardingApi.loadSwarm(companyId);
-        let manifest: SwarmManifest | null = loaded.exists ? (loaded.manifest as SwarmManifest) : null;
-        if (!manifest) {
+      // Same 3-attempt retry as connector manifest. Swarm generation calls
+      // T2 which transient-fails on hub timeouts. Without retry the customer
+      // dead-ended on "HTTP 500: internal" with no path forward.
+      let manifest: SwarmManifest | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (attempt === 1) {
+            const loaded = await opOmegaOnboardingApi.loadSwarm(companyId);
+            if (loaded.exists) {
+              manifest = loaded.manifest as SwarmManifest;
+              break;
+            }
+          }
           const generated = await opOmegaOnboardingApi.generateSwarm(companyId, t0);
           manifest = generated.manifest;
+          break;
+        } catch (e) {
+          lastError = e;
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, attempt * 1500));
+          }
         }
+      }
+
+      if (manifest) {
         // Collapse the Phase 3 thinking bubble before transitioning to
-        // the Swarm Studio full-screen reveal. Same reason as Phase 2:
-        // avoids two T2 progress indicators racing.
+        // the Swarm Studio full-screen reveal. Avoids two T2 progress
+        // indicators racing for the global inference status.
         dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
         dispatch({ type: "SWARM_LOADED", manifest });
-      } catch (e) {
-        dispatch({
-          type: "ADD_MESSAGE",
-          message: {
-            role: "assistant",
-            text: `Couldn't generate swarm manifest: ${e instanceof Error ? e.message : String(e)}`,
-          },
-        });
+        return;
       }
+
+      dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
+      const detail = lastError instanceof Error ? lastError.message : String(lastError);
+      const isTransient = /HTTP 5\d\d|timeout|fetch|network|ECONN/i.test(detail);
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: isTransient
+            ? `Our hub blipped while assembling your team (${detail}). I retried twice — still no luck. Refresh the page to try again.`
+            : `Couldn't generate swarm manifest: ${detail}. Refresh to try again.`,
+        },
+      });
     })();
   }, [state.phase, companyId, t0]);
 

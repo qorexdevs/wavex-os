@@ -21,12 +21,30 @@ interface PendingPrefetch {
 
 let pending: PendingPrefetch | null = null;
 
+/** Generate the workflow manifest with up to 3 attempts (1.5s, 3s backoff).
+ *  Same transient-hub-blip protection as connector + swarm phases — a
+ *  single timeout doesn't dead-end the wizard at the Imprint Theater. */
+async function generateWithRetry(companyId: string, t0FastMode: boolean): Promise<WorkflowManifest> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const r = await opOmegaOnboardingApi.generateWorkflow(companyId, { skipInference: t0FastMode });
+      return r.manifest;
+    } catch (e) {
+      lastError = e;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export function startWorkflowPrefetch(companyId: string, t0FastMode = false): Promise<WorkflowManifest> {
   if (pending && pending.companyId === companyId) {
     return pending.promise;
   }
-  const promise = opOmegaOnboardingApi.generateWorkflow(companyId, { skipInference: t0FastMode })
-    .then((r) => r.manifest)
+  const promise = generateWithRetry(companyId, t0FastMode)
     .catch((err) => {
       pending = null;
       throw err;
