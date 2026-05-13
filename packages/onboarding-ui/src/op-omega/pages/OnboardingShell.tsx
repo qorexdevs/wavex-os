@@ -19,6 +19,7 @@ import { isT0FastMode } from "../lib/dev-flags";
 import { TokenCounter } from "../components/TokenCounter";
 import { BudgetChip } from "../components/BudgetChip";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { HelpChat } from "../components/HelpChat";
 import { Pillar1ConfirmCard } from "../components/inline-cards/Pillar1ConfirmCard";
 import { Pillar1HaltCard } from "../components/inline-cards/Pillar1HaltCard";
 import { Pillar3PromptCard } from "../components/inline-cards/Pillar3PromptCard";
@@ -911,6 +912,22 @@ export function OnboardingShell() {
       ) : null}
       {!showEmptyState && !isFullScreenPhase && (
         <ChatInput onSubmit={handleSubmit} disabled={state.phase.kind === "welcome" ? false : state.phase.kind === "pillars" && state.phase.thinking} />
+      )}
+      {/* Free-form HelpChat — always reachable once we have a companyId. The
+       *  main ChatInput is phase-locked (each message becomes a pillar submit
+       *  for the active stage), so the customer otherwise has no surface to
+       *  ask "wait, what does this mean?" or "should I pick X or Y?" mid-walk.
+       *  HelpChat is a Pool-A-backed concierge that knows the customer's full
+       *  pillar context — opens as a collapsible right-edge drawer. */}
+      {companyId && (
+        <HelpChat
+          companyId={companyId}
+          phase={
+            state.phase.kind === "pillars" && state.phase.stage
+              ? `pillar-${state.phase.stage}`
+              : state.phase.kind
+          }
+        />
       )}
       {/* Persistent dark backdrop for full-screen phases — bridges the
        *  unmount-then-mount gap when transitioning Theater → Pricing →
