@@ -25,6 +25,7 @@ import { listConnections } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { listConnectorStates, writeCredential, recordTestResult, skipConnector } from "../vault/service.js";
 import { runProbe, hasProbe } from "../vault/probes.js";
+import { scanInstalledMcpServersMap, type DetectedMcp } from "../lib/mcp-scanner.js";
 
 function authReq(req: FastifyRequest) {
   return { method: req.method, headers: req.headers as Record<string, string> };
@@ -77,6 +78,14 @@ interface ConciergeRow {
    *  Saves the operator from googling "where do I find my Stripe API key".
    *  Null for connectors with no obvious self-serve URL. */
   keysUrl: string | null;
+  /** True when the customer already has an MCP server installed for this
+   *  connector (detected from Claude Desktop / Claude Code / Cursor configs).
+   *  The UI renders these as "✓ Connected via your existing MCP" with no
+   *  paste form. Priority is: mcpManaged → composioManaged → direct paste. */
+  mcpManaged: boolean;
+  /** Source label shown to the operator when mcpManaged=true, e.g. "Claude
+   *  Desktop" or "Cursor". Null when mcpManaged=false. */
+  mcpSourcedFrom: string | null;
 }
 
 /** Per-connector deep links to where the operator gets their API keys.
@@ -208,6 +217,9 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
     }
 
     const states = await listConnectorStates(companyId);
+    // Scan once per request — cheap (3 small file reads) and gives the UI
+    // the customer's installed MCPs so we can short-circuit the paste form.
+    const mcpDetected: Map<string, DetectedMcp> = scanInstalledMcpServersMap();
     const merged: ConciergeRow[] = [];
     const buckets: Array<{ bucket: "required" | "suggested" | "deferred"; entries: ConnectorEntry[] }> = [
       { bucket: "required", entries: manifest.required },
@@ -218,6 +230,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
       for (const e of b.entries) {
         const desc = describeConnector(e.id);
         const s = states.get(e.id);
+        const mcp = mcpDetected.get(e.id);
         merged.push({
           connectorId: e.id,
           bucket: b.bucket,
@@ -232,6 +245,8 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
           skipReason: s?.skipReason ?? null,
           composioManaged: desc.composio,
           keysUrl: CONNECTOR_KEYS_URL[e.id] ?? null,
+          mcpManaged: Boolean(mcp),
+          mcpSourcedFrom: mcp?.sourcedFrom ?? null,
         });
       }
     }

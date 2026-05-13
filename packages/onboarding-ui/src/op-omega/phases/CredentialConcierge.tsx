@@ -361,15 +361,33 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
       </div>
       <div className="text-dim" style={{ fontSize: 12, marginBottom: "0.75rem" }}>{row.rationale}</div>
 
+      {/* MCP-first: highest priority. If the customer already has an MCP
+          server installed for this connector, skip every other UI surface
+          and just confirm they're set. No paste, no OAuth popup. */}
+      {row.mcpManaged && row.status !== "skipped" && (
+        <div style={{
+          padding: "0.6rem", background: "var(--bg)", borderRadius: 4, fontSize: 12,
+          border: "1px solid var(--accent)",
+        }}>
+          <div style={{ color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>
+            ✓ Connected via your existing {row.mcpSourcedFrom} MCP
+          </div>
+          <div className="text-dim">
+            We detected the <code>{row.connectorId}</code> MCP server on your machine —
+            your fleet will use that connection. No keys to paste.
+          </div>
+        </div>
+      )}
+
       {/* Pre-vaulted (claude-code from Pillar 2 — no expected keys) */}
-      {row.expectedKeys.length === 0 && !row.composioManaged && (
+      {!row.mcpManaged && row.expectedKeys.length === 0 && !row.composioManaged && (
         <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
           ✓ Configured upstream (Pillar 2 / 5). No additional credentials needed.
         </div>
       )}
 
-      {/* Composio-managed */}
-      {row.composioManaged && !skipMode && row.status !== "skipped" && (
+      {/* Composio-managed (only when no MCP available) */}
+      {!row.mcpManaged && row.composioManaged && !skipMode && row.status !== "skipped" && (
         <ComposioConnectBlock
           connectorId={row.connectorId}
           companyId={companyId}
@@ -380,8 +398,9 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
       )}
 
       {/* Direct-key paste form — hidden when already skipped unless the
-          operator clicked "vault credentials to un-skip". */}
-      {row.expectedKeys.length > 0 && !skipMode && (row.status !== "skipped" || revealAfterSkip) && (
+          operator clicked "vault credentials to un-skip". Also hidden when
+          we found a matching MCP server (handled above). */}
+      {!row.mcpManaged && row.expectedKeys.length > 0 && !skipMode && (row.status !== "skipped" || revealAfterSkip) && (
         <div>
           {row.expectedKeys.map((k) => {
             const isVaulted = row.vaultedKeys.includes(k);

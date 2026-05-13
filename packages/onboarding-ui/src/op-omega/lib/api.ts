@@ -177,6 +177,14 @@ export const opOmegaOnboardingApi = {
         skipReason: string | null;
         composioManaged: boolean;
         keysUrl: string | null;
+        /** True when the customer already has an MCP server installed for this
+         *  connector (detected from Claude Desktop / Claude Code / Cursor).
+         *  The UI renders these as "✓ Connected via your existing MCP" — no
+         *  paste form. Detection is read-only; we never extract MCP secrets. */
+        mcpManaged: boolean;
+        /** Label of the MCP source ("Claude Desktop", "Claude Code", "Cursor")
+         *  shown when mcpManaged is true. Null otherwise. */
+        mcpSourcedFrom: string | null;
       }>;
       progress: { requiredCount: number; requiredReady: number; allRequiredAddressed: boolean };
     }>("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`),
