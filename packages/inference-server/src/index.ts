@@ -19,10 +19,35 @@
  */
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { registerHealth } from "./routes/health.js";
 import { registerOnboarding } from "./routes/onboarding.js";
 import { registerOptimizer } from "./routes/optimizer.js";
 import { registerAdmin } from "./routes/admin.js";
+
+// Load `~/.wavex-os/state/.env` (or STATE_DIR/.env) before reading any env vars.
+// Keeps secrets out of the launchd plist while letting the daemon boot
+// unattended at login. Existing process env wins over file values.
+function loadEnvFile(): void {
+  const stateDir = process.env.STATE_DIR ?? join(homedir(), ".wavex-os", "state");
+  const path = join(stateDir, ".env");
+  if (!existsSync(path)) return;
+  for (const raw of readFileSync(path, "utf8").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+loadEnvFile();
 
 const PORT = Number(process.env.WAVEX_INFERENCE_PORT ?? 8787);
 const HOST = process.env.WAVEX_INFERENCE_HOST ?? "127.0.0.1";

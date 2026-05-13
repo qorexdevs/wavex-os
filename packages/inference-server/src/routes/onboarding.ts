@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { incrementCounter, getCounter } from "../lib/rate-limit.js";
 import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
+import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -32,7 +33,8 @@ const POOL_A_DAILY_CAP_CENTS = parseInt(process.env.POOL_A_DAILY_CAP_CENTS ?? "1
 const DEFAULT_MODEL = process.env.WAVEX_POOL_A_MODEL ?? "claude-sonnet-4-6";
 const MAX_OUTPUT_TOKENS_HARD = 8000;
 
-const anthropic = ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null;
+const BACKEND = inferenceBackend();
+const anthropic = BACKEND === "apikey" && ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null;
 const supabase = SUPABASE_URL && SUPABASE_SVC ? createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } }) : null;
 
 interface SessionBody {
@@ -196,11 +198,11 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Anthropic call
-      if (!anthropic) {
+      // Anthropic call — backend chosen at module load via WAVEX_INFERENCE_BACKEND
+      if (BACKEND === "apikey" && !anthropic) {
         return reply.code(503).send({
           error: "anthropic_not_configured",
-          message: "ANTHROPIC_API_KEY not set on the inference server.",
+          message: "WAVEX_INFERENCE_BACKEND=apikey but ANTHROPIC_API_KEY not set.",
         });
       }
 
@@ -213,36 +215,60 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
       const maxOut = Math.min(max_output_tokens ?? 4000, MAX_OUTPUT_TOKENS_HARD);
 
       try {
-        const resp = await anthropic.messages.create({
-          model: chosenModel,
-          max_tokens: maxOut,
-          messages: [{ role: "user", content: prompt }],
-        });
+        let respId: string;
+        let content: string;
+        let usage: {
+          input_tokens: number;
+          output_tokens: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
 
-        const content = resp.content.map((c) => c.type === "text" ? c.text : "").join("");
+        if (BACKEND === "oauth") {
+          const r = await callAnthropicOAuth({
+            model: chosenModel,
+            max_tokens: maxOut,
+            messages: [{ role: "user", content: prompt }],
+          });
+          respId = r.id;
+          content = r.content.map((c) => (c.type === "text" ? (c as { text: string }).text : "")).join("");
+          usage = r.usage;
+        } else {
+          // apikey path
+          const r = await anthropic!.messages.create({
+            model: chosenModel,
+            max_tokens: maxOut,
+            messages: [{ role: "user", content: prompt }],
+          });
+          respId = r.id;
+          content = r.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+          usage = r.usage as typeof usage;
+        }
+
         const cost = calcCostCents(chosenModel, {
-          input_tokens: resp.usage.input_tokens,
-          output_tokens: resp.usage.output_tokens,
-          cache_read_input_tokens: (resp.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens,
-          cache_creation_input_tokens: (resp.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens,
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_read_input_tokens: usage.cache_read_input_tokens,
+          cache_creation_input_tokens: usage.cache_creation_input_tokens,
         });
 
         await writeLedger({
           pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
-          request_id: resp.id, model: chosenModel,
-          prompt_tokens: resp.usage.input_tokens,
-          completion_tokens: resp.usage.output_tokens,
-          cache_read_tokens: (resp.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0,
-          cache_creation_tokens: (resp.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0,
-          cost_cents: cost,
+          request_id: respId, model: chosenModel,
+          prompt_tokens: usage.input_tokens,
+          completion_tokens: usage.output_tokens,
+          cache_read_tokens: usage.cache_read_input_tokens ?? 0,
+          cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
+          cost_cents: BACKEND === "oauth" ? 0 : cost, // OAuth-Max is flat-rate, attribution-only
           status: "ok",
         });
 
         return reply.send({
           content,
           model: chosenModel,
-          usage: resp.usage,
-          request_id: resp.id,
+          usage,
+          request_id: respId,
+          backend: BACKEND,
         });
       } catch (e) {
         const err = e as { status?: number; message?: string };
@@ -256,6 +282,7 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
           error: "anthropic_call_failed",
           message: err.message ?? "unknown",
           status: err.status,
+          backend: BACKEND,
         });
       }
     },

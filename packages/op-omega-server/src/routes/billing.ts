@@ -19,6 +19,7 @@ import {
   isActive,
   type SubscriptionFile,
 } from "../billing/subscription-store.js";
+import { ensureLiaisonAgent } from "../bridge/paperclip-liaison-spawn.js";
 
 // Operators set these in their local .env. No defaults — downstream forks
 // must point at their OWN Supabase project, not whatever was here when
@@ -151,20 +152,35 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
       });
     }
 
-    // F.4.f stub: we don't yet create the Paperclip agent here. That
-    // requires knowing the customer's paperclip company id (from the
-    // existing handoff mapping) and posting to Paperclip's /api/agents
-    // endpoint with the wavex-liaison skill bundle. The full spawn lives
-    // in F.4.f.b once we have the Paperclip API surface confirmed.
-    //
-    // For now, return the catalog of hires we WOULD spawn a Liaison for.
-    // The Liaison itself can be hired manually until F.4.f.b lands.
-    return reply.send({
-      liaison: {
-        status: "pending_spawn",
+    // F.4.f.b — real Paperclip spawn. Idempotent: if the wavex-liaison
+    // agent is already in this company's paperclip-handoff.json, returns
+    // it without re-hiring.
+    try {
+      const result = await ensureLiaisonAgent();
+      if (result.status === "no_company_mapping") {
+        // The customer hasn't activated their company yet (no Paperclip
+        // mapping on disk). Surface the catalog of active hires so the UI
+        // can prompt the user to finish activation before the Liaison can
+        // come online.
+        return reply.send({
+          liaison: null,
+          reason: result.reason ?? "no_company_mapping",
+          active_hires: hires.map((h) => h.catalog_id),
+        });
+      }
+      return reply.send({
+        liaison: {
+          status: result.status,
+          paperclip_agent_id: result.paperclipAgentId,
+          paperclip_company_id: result.paperclipCompanyId,
+          wavex_company_id: result.wavexCompanyId,
+          ...(result.reason ? { note: result.reason } : {}),
+        },
         active_hires: hires.map((h) => h.catalog_id),
-        next_step: "F.4.f.b will wire the Paperclip POST /api/agents call with the wavex-liaison skill bundle from packages/onboarding-ui/public/agent-templates/wavex-liaison/",
-      },
-    });
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(503).send({ error: "liaison_spawn_failed", message });
+    }
   });
 }

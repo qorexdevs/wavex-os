@@ -15,7 +15,11 @@ import Stripe from "https://esm.sh/stripe@17.5.0?target=denonext";
 // @ts-expect-error — Deno-style import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 
-const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")!;
+// Read the TEST-env-prefixed key first to keep wavex-os checkout flows isolated
+// from wavexcard's live billing. STRIPE_SECRET_KEY in this project resolves to
+// wavexcard's prod key — using it here would create real-money charges instead
+// of test-mode flows.
+const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_TEST_ENV") ?? Deno.env.get("STRIPE_SECRET_KEY")!;
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
