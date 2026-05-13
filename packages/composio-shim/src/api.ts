@@ -40,8 +40,17 @@ export async function initOAuth(params: {
   if (getComposioMode() === "disabled") {
     return { url: null, pendingConnectionId: null };
   }
-  console.warn(`[composio-shim] initOAuth(${params.toolkitSlug}): live mode not yet implemented`);
-  return { url: null, pendingConnectionId: null };
+  // Live mode — real Composio Connect dance lands when @composio/core is
+  // added as a dep + the connectors Drizzle table is materialized.
+  // Surface a clear breadcrumb so the Avatar bridge / tools UI can show
+  // "needs COMPOSIO_API_KEY + live wiring" instead of silently failing.
+  // For Gmail specifically, the operator can wire credentials via the
+  // existing paste-key path (packages/op-omega-server/src/routes/credentials.ts).
+  console.warn(
+    `[composio-shim] initOAuth(${params.toolkitSlug}): live OAuth not yet wired; ` +
+    `operator should fall back to paste-key path or wait for the @composio/core integration.`,
+  );
+  return { url: null, pendingConnectionId: null, needsLiveWiring: true };
 }
 
 export function composioUserId(companyId: string, userId: string): string {

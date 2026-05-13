@@ -285,6 +285,96 @@ export const opOmegaOnboardingApi = {
       { enabledAutomationIds },
     ),
 
+  // Phase 2 — manual triage trigger (dev surface; scheduler fires this
+  // automatically in prod). Returns the runner's report.
+  runAvatarGmailTriage: (avatarId: string, opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; paperclipCompanyId: string; gmailAgentId: string | null;
+        processed: number; drafted: number; approvalsCreated: number;
+        errors: Array<{ threadId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/gmail-triage${qs ? "?" + qs : ""}`);
+  },
+
+  // Phase 2 — approval inbox
+  listAvatarApprovals: (avatarId: string, status: "pending" | "approved" | "rejected" | "all" = "pending") =>
+    call<{
+      ok: true;
+      approvals: Array<{
+        id: string;
+        avatarId: string;
+        type: string;
+        status: "pending" | "approved" | "rejected";
+        createdAt: string;
+        decidedAt?: string;
+        decisionNote?: string;
+        requestedByAgentId: string;
+        payload: {
+          threadId: string;
+          subject: string;
+          from: { name: string; email: string };
+          preview: string;
+          receivedAt: string;
+          draftText: string | null;
+          classification: "now" | "soon" | "fyi";
+          confidence: number;
+          reasoning: string;
+          openQuestion: string | null;
+        };
+        editedPayload?: { draftText?: string } | null;
+      }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/approvals?status=${status}`),
+
+  decideAvatarApproval: (
+    avatarId: string,
+    approvalId: string,
+    body: { decision: "approve" | "reject"; decisionNote?: string; editedPayload?: { draftText?: string } },
+  ) =>
+    call<{ ok: true; approval: { id: string; status: string; decidedAt: string } }>(
+      "POST",
+      `/api/avatar/${encodeURIComponent(avatarId)}/approvals/${encodeURIComponent(approvalId)}/decide`,
+      body,
+    ),
+
+  // Phase 2 — audit log
+  getAvatarAudit: (avatarId: string, limit = 50) =>
+    call<{
+      ok: true;
+      entries: Array<{
+        id: string;
+        actorType: string;
+        actorId: string;
+        action: string;
+        entityType: string;
+        entityId: string;
+        agentId: string | null;
+        details: Record<string, unknown> | null;
+        createdAt: string;
+      }>;
+      error?: string;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/audit?limit=${limit}`),
+
+  // Phase 2 — per-skill kill switch (pause/resume one sub-agent on the
+  // mirrored Paperclip company without touching the rest of the fleet)
+  listAvatarSkills: (avatarId: string) =>
+    call<{
+      ok: true;
+      skills: Array<{ skill: string; agentId: string; status: string | null }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/skills`),
+
+  controlAvatarSkill: (avatarId: string, skill: string, action: "pause" | "resume") =>
+    call<{ ok: true; skill: string; agentId: string; status: string | null }>(
+      "POST",
+      `/api/avatar/${encodeURIComponent(avatarId)}/skills/${encodeURIComponent(skill)}/control`,
+      { action },
+    ),
+
   getAvatar: (avatarId: string) =>
     call<{
       ok: true;

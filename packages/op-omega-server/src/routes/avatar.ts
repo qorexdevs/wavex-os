@@ -22,6 +22,7 @@ import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting } from "../lib/token-accounting.js";
 import { handoffAvatarToPaperclip } from "../bridge/avatar-handoff.js";
+import { runGmailTriage } from "../avatar/runners/gmail-triage.js";
 
 // ── Storage helpers ──────────────────────────────────────────────────────
 
@@ -396,6 +397,207 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       automations,
     };
   });
+
+  // Manually trigger inbox-triage runner (dev surface; in prod the
+  // scheduler fires this on a cron). dryRun=true (default) substitutes
+  // a 3-thread sample for the real Gmail pull, so the approval inbox
+  // + audit log are testable before Composio OAuth lands.
+  app.post<{ Params: { id: string }; Querystring: { dryRun?: string; skipInference?: string } }>(
+    "/api/avatar/:id/run/gmail-triage",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const dryRun = req.query.dryRun !== "false";
+      const skipInference = req.query.skipInference !== "false";
+      const result = await runGmailTriage(id, { dryRun, skipInference });
+      return { ok: true, result };
+    },
+  );
+
+  // Audit log surface — paginated reads from Paperclip's activity_log
+  // scoped to the avatar's mirror company.
+  app.get<{ Params: { id: string }; Querystring: { limit?: string; before?: string } }>(
+    "/api/avatar/:id/audit",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const handoff = await readJson<{ paperclipUrl?: string; paperclipCompanyId?: string }>(
+        join(dir, "paperclip-handoff.json"),
+      );
+      if (!handoff?.paperclipUrl || !handoff?.paperclipCompanyId) {
+        return { ok: true, entries: [], note: "not yet bridged to Paperclip" };
+      }
+      const limit = Math.min(Number(req.query.limit ?? 50), 200);
+      const url = `${handoff.paperclipUrl}/api/companies/${handoff.paperclipCompanyId}/activity?limit=${limit}`;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return { ok: false, error: `paperclip audit ${r.status}`, entries: [] };
+        // Paperclip's GET /companies/:id/activity returns a flat array.
+        const body = await r.json() as unknown;
+        const entries = Array.isArray(body) ? body : (body as { entries?: unknown[] }).entries ?? [];
+        return { ok: true, entries };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e), entries: [] };
+      }
+    },
+  );
+
+  // Avatar's approvals — read from the per-avatar file store
+  // (avatars/<id>/approvals/<approvalId>.json). Paperclip's approvals
+  // table has a closed type-enum that doesn't admit avatar.* kinds, so
+  // we keep avatar approvals in our own store. Audit + activity-log
+  // entries still flow into Paperclip via the activity API.
+  app.get<{ Params: { id: string }; Querystring: { status?: string } }>(
+    "/api/avatar/:id/approvals",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const apvDir = join(dir, "approvals");
+      const wantStatus = req.query.status ?? "pending";
+      const { readdir } = await import("node:fs/promises");
+      let entries: string[] = [];
+      try { entries = await readdir(apvDir); } catch { /* empty */ }
+      const approvals = [] as Array<Record<string, unknown>>;
+      for (const fname of entries) {
+        if (!fname.endsWith(".json")) continue;
+        const parsed = await readJson<{ status?: string }>(join(apvDir, fname));
+        if (!parsed) continue;
+        if (wantStatus === "all" || parsed.status === wantStatus) approvals.push(parsed as Record<string, unknown>);
+      }
+      // Newest first.
+      approvals.sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")));
+      return { ok: true, approvals };
+    },
+  );
+
+  // Decide a pending approval. Updates the local approval file +
+  // writes a corresponding activity_log entry to Paperclip for audit.
+  app.post<{
+    Params: { id: string; approvalId: string };
+    Body: { decision: "approve" | "reject"; decisionNote?: string; editedPayload?: Record<string, unknown> };
+  }>(
+    "/api/avatar/:id/approvals/:approvalId/decide",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const apvPath = join(dir, "approvals", `${req.params.approvalId}.json`);
+      const current = await readJson<{
+        id: string; status: string; payload: Record<string, unknown>;
+        requestedByAgentId: string; type: string;
+      }>(apvPath);
+      if (!current) return reply.status(404).send({ error: "approval not found" });
+      if (current.status !== "pending") {
+        return reply.status(409).send({ error: `approval already ${current.status}` });
+      }
+      const updated = {
+        ...current,
+        status: req.body.decision === "approve" ? "approved" : "rejected",
+        decidedAt: new Date().toISOString(),
+        decisionNote: req.body.decisionNote ?? null,
+        editedPayload: req.body.editedPayload ?? null,
+      };
+      await writeJson(apvPath, updated);
+
+      // Audit trail in Paperclip's activity_log so the audit-log tab
+      // picks it up alongside agent-side actions.
+      const handoff = await readJson<{ paperclipUrl?: string; paperclipCompanyId?: string }>(
+        join(dir, "paperclip-handoff.json"),
+      );
+      if (handoff?.paperclipUrl && handoff?.paperclipCompanyId) {
+        try {
+          await fetch(`${handoff.paperclipUrl}/api/companies/${handoff.paperclipCompanyId}/activity`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actorType: "user",
+              actorId: "operator",
+              agentId: current.requestedByAgentId,
+              action: req.body.decision === "approve" ? "avatar.approval.approved" : "avatar.approval.rejected",
+              entityType: "approval",
+              entityId: current.id,
+              details: { type: current.type, edited: req.body.editedPayload != null, note: req.body.decisionNote },
+            }),
+          });
+        } catch { /* non-fatal */ }
+      }
+      return { ok: true, approval: updated };
+    },
+  );
+
+  // Per-skill kill switch — pause/resume a single sub-agent on the
+  // mirror Paperclip company. Used by the dashboard to halt the gmail
+  // skill (or any other) without pausing the whole fleet. Skill name
+  // matches the agent key in paperclip-handoff.json (e.g. "gmail").
+  app.post<{
+    Params: { id: string; skill: string };
+    Body: { action: "pause" | "resume" };
+  }>(
+    "/api/avatar/:id/skills/:skill/control",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const handoff = await readJson<{ paperclipUrl?: string; agents?: Record<string, string> }>(
+        join(dir, "paperclip-handoff.json"),
+      );
+      const agentId = handoff?.agents?.[req.params.skill];
+      if (!handoff?.paperclipUrl || !agentId) {
+        return reply.status(409).send({ error: "skill not mapped to a Paperclip agent" });
+      }
+      const action = req.body?.action === "resume" ? "resume" : "pause";
+      try {
+        const r = await fetch(`${handoff.paperclipUrl}/api/agents/${agentId}/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!r.ok) return reply.status(502).send({ error: `paperclip ${action} ${r.status}` });
+        const body = await r.json() as { status?: string };
+        return { ok: true, skill: req.params.skill, agentId, status: body.status ?? null };
+      } catch (e) {
+        return reply.status(502).send({ error: e instanceof Error ? e.message : String(e) });
+      }
+    },
+  );
+
+  // Per-skill state read — surfaces current `status` of each mapped
+  // sub-agent so the dashboard can render the right kill-switch label.
+  app.get<{ Params: { id: string } }>(
+    "/api/avatar/:id/skills",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const handoff = await readJson<{ paperclipUrl?: string; agents?: Record<string, string> }>(
+        join(dir, "paperclip-handoff.json"),
+      );
+      if (!handoff?.paperclipUrl || !handoff?.agents) {
+        return { ok: true, skills: [] as Array<{ skill: string; agentId: string; status: string | null }> };
+      }
+      const out: Array<{ skill: string; agentId: string; status: string | null }> = [];
+      for (const [skill, agentId] of Object.entries(handoff.agents)) {
+        try {
+          const r = await fetch(`${handoff.paperclipUrl}/api/agents/${agentId}`);
+          if (!r.ok) { out.push({ skill, agentId, status: null }); continue; }
+          const body = await r.json() as { status?: string };
+          out.push({ skill, agentId, status: body.status ?? null });
+        } catch {
+          out.push({ skill, agentId, status: null });
+        }
+      }
+      return { ok: true, skills: out };
+    },
+  );
 
   // List avatars (handy for resume + dashboard linking)
   app.get("/api/avatars", async (req, reply) => {
