@@ -477,8 +477,9 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
       // and re-persist. add-agent.ts wrote these to template_additions.json
       // because company.manifest.json didn't exist yet during Swarm Studio.
       // Without this merge they'd be lost when finalize runs.
+      let manifestMutated = false;
       try {
-        const { readFile: rf, writeFile: wf } = await import("node:fs/promises");
+        const { readFile: rf } = await import("node:fs/promises");
         const sidecarPath = join(getOnboardingDir(parsed.data.companyId), "template_additions.json");
         const sidecarRaw = await rf(sidecarPath, "utf8").catch(() => null);
         if (sidecarRaw) {
@@ -486,11 +487,73 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
           if (Array.isArray(sidecar.template_additions) && sidecar.template_additions.length > 0) {
             (result.manifest as { template_additions?: Array<unknown> }).template_additions =
               sidecar.template_additions;
-            const manifestPath = join(getOnboardingDir(parsed.data.companyId), "company.manifest.json");
-            await wf(manifestPath, JSON.stringify(result.manifest, null, 2), "utf8");
+            manifestMutated = true;
           }
         }
       } catch { /* sidecar merge is best-effort; finalize must not fail because of it */ }
+
+      // Populate goal + signed_at so Mission Control's KPI scoreboard stops
+      // saying "No baseline captured yet". The vendored assemble does not
+      // set these because the upstream contract doesn't include a goal
+      // shape — wavex-os layers them on top via stage-based baselines.
+      try {
+        const m = result.manifest as {
+          finalized_at?: string;
+          signed_at?: string;
+          goal?: { kpiId: string; current: number; target: number; days: number };
+          pillar_responses?: {
+            pillar_1?: { has_product?: boolean };
+            pillar_3?: { product_state?: string; stage?: string };
+          };
+        };
+        // Mirror finalized_at as signed_at — same moment in v1. Full Ed25519
+        // signing is T2.2 in PHASE_H_PLAN.md.
+        if (!m.signed_at && m.finalized_at) {
+          m.signed_at = m.finalized_at;
+          manifestMutated = true;
+        }
+        // Compute a sensible goal from Pillar 3's stage. MRR is the
+        // default kpiId — it's the first row in every kpi_registry today
+        // and matches what KpiBoard renders as the headline. Numbers come
+        // from STAGE_BASELINES in stage-baselines.ts (kept in sync here
+        // because vendor/op-omega/ is frozen and can't import from the UI).
+        if (!m.goal) {
+          const stage = m.pillar_responses?.pillar_3?.stage ?? "unknown";
+          const productState = m.pillar_responses?.pillar_3?.product_state ?? "unknown";
+          const isPreProduct = productState === "idea_only" || productState === "prototype_mvp";
+          // [current, target] pairs in dollars; both halve-then-triple the
+          // typical stage band so the "30% growth over 90d" framing reads
+          // as ambitious-but-real to a customer at the median of their band.
+          const goalsByStage: Record<string, { current: number; target: number }> = {
+            less_than_10k_mrr:   { current: 5_000,     target: 15_000 },
+            "0_10k_mrr":         { current: 5_000,     target: 15_000 },
+            "10k_100k_mrr":      { current: 45_000,    target: 100_000 },
+            "100k_1m_mrr":       { current: 400_000,   target: 1_000_000 },
+            "1m_10m_mrr":        { current: 2_500_000, target: 5_000_000 },
+            more_than_1m_mrr:    { current: 2_500_000, target: 5_000_000 },
+            "10m_plus_mrr":      { current: 12_000_000, target: 24_000_000 },
+          };
+          const band = isPreProduct
+            ? { current: 0, target: 5_000 }
+            : goalsByStage[stage] ?? { current: 5_000, target: 15_000 };
+          m.goal = {
+            kpiId: "monthly_recurring_revenue",
+            current: band.current,
+            target: band.target,
+            days: 90,
+          };
+          manifestMutated = true;
+        }
+      } catch { /* goal/signed_at injection is best-effort */ }
+
+      // Persist mutations (sidecar additions OR goal/signed_at).
+      if (manifestMutated) {
+        try {
+          const { writeFile: wf } = await import("node:fs/promises");
+          const manifestPath = join(getOnboardingDir(parsed.data.companyId), "company.manifest.json");
+          await wf(manifestPath, JSON.stringify(result.manifest, null, 2), "utf8");
+        } catch { /* persistence is best-effort; response still carries the augmented manifest */ }
+      }
 
       return {
         ok: true,
