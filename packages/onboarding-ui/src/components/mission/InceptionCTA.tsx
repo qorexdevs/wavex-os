@@ -189,7 +189,7 @@ export function InceptionCTA() {
           )}
           {paperclipUnreachable && (
             <a
-              href="https://github.com/aimerdoux/paperclip"
+              href="https://github.com/paperclipai/paperclip"
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -227,7 +227,7 @@ export function InceptionCTA() {
       </div>
       {paperclipUnreachable && (
         <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", lineHeight: 1.55 }}>
-          Quick start: <code>git clone https://github.com/aimerdoux/paperclip && cd paperclip && pnpm i && pnpm dev</code> in a new terminal — Paperclip listens on <code>localhost:5174</code>. Refresh this page once it's running.
+          Quick start: <code>git clone https://github.com/paperclipai/paperclip && cd paperclip && pnpm i && pnpm dev</code> in a new terminal — Paperclip listens on <code>localhost:5174</code>. Refresh this page once it's running.
         </div>
       )}
       {forceResult && (

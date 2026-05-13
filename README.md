@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: 0.2.0 / Phase H](https://img.shields.io/badge/status-0.2.0%20%E2%80%94%20Phase%20H-4ec9b0)](docs/ROADMAP.md)
-[![Built on Paperclip](https://img.shields.io/badge/built%20on-Paperclip-86c5da)](https://github.com/paperclip-ai/paperclip)
+[![Built on Paperclip](https://img.shields.io/badge/built%20on-Paperclip-86c5da)](https://github.com/paperclipai/paperclip)
 
 WaveX OS is a localhost-first wizard that materializes an AI agent company in about an hour. You answer five questions (the **5 pillars**), the wizard picks an agent roster from 165 vetted templates, builds a workflow plan, runs a Monte Carlo simulation against your goal, and activates the fleet into a real **Paperclip** runtime — where each agent gets heartbeats, KPIs, budgets, and a board.
 
@@ -247,7 +247,7 @@ You can self-host the optimizer too — `docs/SELF_HOSTING.md` lands with Phase 
 
 WaveX OS stands on the shoulders of:
 
-- **[Paperclip](https://github.com/paperclip-ai/paperclip)** — the agent runtime engine, vendored via git subtree at `packages/core/`.
+- **[Paperclip](https://github.com/paperclipai/paperclip)** — the agent runtime engine, vendored via git subtree at `packages/core/`.
 - **[op-omega](https://github.com/dylanriedw10-oss/operatoromega)** — the full-fidelity onboarding pipeline, vendored at `vendor/op-omega/` (source SHA tracked in [VENDOR.md](vendor/op-omega/VENDOR.md)).
 - **[agency-agents](https://github.com/msitarzewski/agency-agents)** by [@msitarzewski](https://github.com/msitarzewski) — 207 agent templates (MIT). 165 templates are vendored into `packages/onboarding-ui/public/agent-templates/` with per-file attribution.
 - **[Anthropic](https://anthropic.com)** — Claude Max powers the spawned agents.

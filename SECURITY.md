@@ -30,7 +30,7 @@ We will acknowledge within 72 hours, and aim to ship a patched release within 7 
 
 ## Out of scope
 
-- Issues in Paperclip's vendored code at `packages/core/` — please report those upstream at [paperclip-ai/paperclip](https://github.com/paperclip-ai/paperclip).
+- Issues in Paperclip's vendored code at `packages/core/` — please report those upstream at [paperclip-ai/paperclip](https://github.com/paperclipai/paperclip).
 - Issues in the System Optimizer hosted backend (when deployed) — that has its own security policy.
 - Pure DoS via heavy-but-legitimate inputs.
 - Issues in pinned third-party dependencies — unless we're using them in an unsafe way.

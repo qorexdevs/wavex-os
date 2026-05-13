@@ -6,7 +6,7 @@
 
 ## 1. Core principle: three-axis design
 
-WaveX OS is the open-source product layer on top of [Paperclip](https://github.com/paperclip-ai/paperclip) (the agent runtime engine). Three axes were considered up front because they each have different cost / control / privacy tradeoffs:
+WaveX OS is the open-source product layer on top of [Paperclip](https://github.com/paperclipai/paperclip) (the agent runtime engine). Three axes were considered up front because they each have different cost / control / privacy tradeoffs:
 
 | Axis | Options | WaveX OS choice |
 |------|---------|-----------------|
@@ -72,7 +72,7 @@ wavex-os/
 │
 ├── packages/
 │   ├── core/                   # Paperclip, vendored via git subtree
-│   │                           # (origin: github.com/paperclip-ai/paperclip)
+│   │                           # (origin: github.com/paperclipai/paperclip)
 │   ├── onboarding-ui/          # Vite + React 18 + TypeScript
 │   │   ├── src/
 │   │   │   ├── pages/onboarding/   # 11 wizard steps

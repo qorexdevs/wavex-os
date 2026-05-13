@@ -78,10 +78,10 @@ The wrapper script (`scripts/wrappers/*.sh`) is `set -euo pipefail` strict bash.
 Agent templates ship under `packages/agent-templates/<id>/SKILL.md`. They are PII-scrubbed at ingest time (see `scripts/ingest-agency-agents.mjs`). If you modify a template, run a fresh `grep -RInE 'sk-[A-Za-z0-9]+|<your-email>|/Users/'` over the directory before commit.
 
 ### Paperclip subtree
-`packages/core/` is a git subtree of [paperclip-ai/paperclip](https://github.com/paperclip-ai/paperclip). Do **not** edit files there directly. To pull upstream changes:
+`packages/core/` is a git subtree of [paperclip-ai/paperclip](https://github.com/paperclipai/paperclip). Do **not** edit files there directly. To pull upstream changes:
 
 ```bash
-git remote add paperclip-upstream https://github.com/paperclip-ai/paperclip.git
+git remote add paperclip-upstream https://github.com/paperclipai/paperclip.git
 git subtree pull --prefix=packages/core paperclip-upstream master --squash
 ```
 
