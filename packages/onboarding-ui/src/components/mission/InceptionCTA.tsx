@@ -48,6 +48,7 @@ export function InceptionCTA() {
   const [localPaperclipReachable, setLocalPaperclipReachable] = useState<boolean | null>(null);
   const [forceBusy, setForceBusy] = useState(false);
   const [forceResult, setForceResult] = useState<string | null>(null);
+  const [copyResult, setCopyResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) { setState(null); return; }
@@ -190,10 +191,37 @@ export function InceptionCTA() {
             </a>
           )}
           {/* When Paperclip isn't running locally, the primary action is to
-              START IT (it's already vendored, no install needed). We don't
-              offer a click-to-start button because we can't spawn a long-
-              running dev server from the browser — we surface the exact
-              command instead in the quick-start block below. */}
+              copy the start command — we can't spawn a long-running dev
+              server from the browser, but we can save the customer the
+              keystrokes. The actual command runs in a second terminal. */}
+          {paperclipUnreachable && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText("pnpm run dev:paperclip");
+                  setCopyResult("Copied · paste it in a new terminal in this repo");
+                  setTimeout(() => setCopyResult(null), 4000);
+                } catch {
+                  setCopyResult("Couldn't copy — select and copy the command below");
+                  setTimeout(() => setCopyResult(null), 4000);
+                }
+              }}
+              style={{
+                padding: "0.55rem 0.9rem",
+                borderRadius: 6,
+                background: "var(--accent)",
+                color: "var(--bg)",
+                fontWeight: 600,
+                fontSize: 12,
+                border: "none",
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              Copy start command
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void forceFirstCycle()}
@@ -220,6 +248,11 @@ export function InceptionCTA() {
           {" "}— that boots the vendored Paperclip core at <code>localhost:3100</code> with your <strong>{companyId}</strong> fleet already incepted. Or use{" "}
           <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm run dev:everything</code>
           {" "}to boot wavex-os + mock-core + Paperclip together. Refresh this page once it's listening.
+        </div>
+      )}
+      {copyResult && (
+        <div style={{ fontSize: 11, color: "var(--accent)", marginTop: "0.4rem" }}>
+          ✓ {copyResult}
         </div>
       )}
       {forceResult && (
