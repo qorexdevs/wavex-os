@@ -98,9 +98,25 @@ export function WorkflowDetails({ manifest }: Props) {
           <h3 style={{ ...sectionTitle, color: "var(--warning)", textTransform: "none" }}>
             🔒 Dry-run gates ({manifest.dry_run_gates.length}) — 14-day write suppression
           </h3>
-          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          {/* Wrap each gate token so they reflow on narrow containers
+           *  instead of overflowing horizontally (the prior layout cut off
+           *  any gate past the first ~3 on Theater Act 3 detail). */}
+          <div style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.4rem 0.65rem",
+            fontSize: 11,
+            color: "var(--text-dim)",
+            lineHeight: 1.6,
+          }}>
             {manifest.dry_run_gates.map((g) => (
-              <code key={g} style={{ marginRight: 8 }}>{g}</code>
+              <code key={g} style={{
+                wordBreak: "break-all",
+                background: "color-mix(in srgb, var(--warning) 6%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--warning) 25%, transparent)",
+                borderRadius: 4,
+                padding: "0.1rem 0.4rem",
+              }}>{g}</code>
             ))}
           </div>
         </Card>

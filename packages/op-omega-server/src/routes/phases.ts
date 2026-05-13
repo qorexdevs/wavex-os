@@ -319,12 +319,33 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         const scope = await readScope(parsed.data.companyId);
         let parked = 0;
         let mappedCustomToOps = false;
+        let unparkedForFull = 0;
         if (scope && scope.mode === "focused") {
           ({ parked, mappedCustomToOps } = applyScopeFilter(
             result.manifest as unknown as Parameters<typeof applyScopeFilter>[0],
             scope,
           ));
           if (parked > 0) mutated = true;
+        } else if (!scope || scope.mode === "full") {
+          // Full-org intent: the matrix selector parks agents the vendor
+          // judges "not relevant for your stage", but the operator's
+          // explicit choice was "give me the whole org." Promote every
+          // parked agent to active so the count matches the action.
+          // "disabled" stays as-is — vendor flagged those as structurally
+          // not relevant, which is a stronger signal than stage-fit.
+          const swarmAgents = (result.manifest as unknown as {
+            agents: Record<string, { status: string; reason?: string | null; unpark_condition?: string | null }>;
+          }).agents;
+          for (const entry of Object.values(swarmAgents)) {
+            if (entry.status === "parked") {
+              entry.status = "active";
+              // Clear vendor-attached parking fields so the entry is a
+              // clean "active" record after the override.
+              if ("unpark_condition" in entry) delete entry.unpark_condition;
+              unparkedForFull += 1;
+            }
+          }
+          if (unparkedForFull > 0) mutated = true;
         }
 
         if (mutated) {
@@ -335,6 +356,8 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
           warnings.push(`scope=focused with only custom labels [${scope?.custom_labels?.join(", ") ?? ""}] — mapped to Operations (COO + sub-agents active). ${parked} non-ops agents parked.`);
         } else if (parked > 0) {
           warnings.push(`scope=focused: parked ${parked} agents outside [${scope?.departments.join(", ")}]`);
+        } else if (unparkedForFull > 0) {
+          warnings.push(`scope=full: promoted ${unparkedForFull} matrix-parked agents to active to match operator's full-org choice.`);
         }
         return { ok: true, manifest: result.manifest, source: result.source, warnings };
       });
