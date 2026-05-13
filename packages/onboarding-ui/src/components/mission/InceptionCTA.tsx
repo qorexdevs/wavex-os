@@ -89,10 +89,33 @@ export function InceptionCTA() {
       });
       // Only probe localhost when we DON'T already have a configured
       // handoff URL — otherwise we'd waste the round-trip.
-      if (!paperclipUrl) {
-        const reachable = await probePaperclipLocal();
-        if (!cancelled) setLocalPaperclipReachable(reachable);
+      if (paperclipUrl) return;
+
+      // First probe — if it's already up, set reachable and exit.
+      const reachableNow = await probePaperclipLocal();
+      if (cancelled) return;
+      if (reachableNow) {
+        setLocalPaperclipReachable(true);
+        return;
       }
+
+      // Not reachable yet. With `pnpm dev` now booting Paperclip by default
+      // (see package.json), it's almost always coming up — give it a 60s
+      // boot budget before falling back to the manual-copy UX. Poll every
+      // 2s so the moment it's listening the user sees "Open Paperclip
+      // Dashboard ↗" light up.
+      setLocalPaperclipReachable(null); // explicit "waiting" state
+      const MAX_WAIT_MS = 60_000;
+      const POLL_INTERVAL_MS = 2_000;
+      const startedAt = Date.now();
+      while (!cancelled && Date.now() - startedAt < MAX_WAIT_MS) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        if (cancelled) return;
+        const r = await probePaperclipLocal();
+        if (cancelled) return;
+        if (r) { setLocalPaperclipReachable(true); return; }
+      }
+      if (!cancelled) setLocalPaperclipReachable(false);
     })();
     return () => { cancelled = true; };
   }, [companyId]);
@@ -140,7 +163,17 @@ export function InceptionCTA() {
   //      guidance (Paperclip GitHub link), NOT a broken localhost button.
   // This kills the ERR_CONNECTION_REFUSED the operator hit on the old
   // "default to localhost:5174 regardless" behavior.
+  // States:
+  //   probeStillResolving — first 1.5s before initial probe returns
+  //   paperclipBooting    — Paperclip not up yet but `pnpm dev` should be
+  //                          bringing it up; we're polling for ≤60s
+  //   paperclipUnreachable — 60s elapsed and still not listening; fall
+  //                          back to the copy-command UX
+  // The two non-final states intentionally show identical UI ("Starting
+  // Paperclip…"); the difference is only that the 60s timer is running
+  // in probeStillResolving=false. localPaperclipReachable=null covers both.
   const probeStillResolving = paperclipLink === null && localPaperclipReachable === null && !state.paperclipUrl;
+  const paperclipBooting = probeStillResolving;
   const paperclipUnreachable = paperclipLink === null && localPaperclipReachable === false;
 
   return (
@@ -164,9 +197,9 @@ export function InceptionCTA() {
             {state.handedOff
               ? "Watch every issue, comment, and KPI snapshot live on the Paperclip dashboard."
               : paperclipUnreachable
-                ? "Paperclip is vendored in this repo at packages/core/ but isn't running yet. Start it in a second terminal to see the live fleet dashboard."
-                : probeStillResolving
-                  ? "Checking for a local Paperclip dashboard…"
+                ? "Paperclip didn't come up within 60 s. If you're running `pnpm dev:no-paperclip`, switch to `pnpm dev` to boot it automatically."
+                : paperclipBooting
+                  ? "Starting Paperclip… the dashboard button will light up once it's listening (typically 5–20 s on first boot)."
                   : "Watch every issue, comment, and KPI snapshot on your local Paperclip dashboard."}
           </div>
         </div>
@@ -190,10 +223,34 @@ export function InceptionCTA() {
               Open Paperclip Dashboard ↗
             </a>
           )}
-          {/* When Paperclip isn't running locally, the primary action is to
-              copy the start command — we can't spawn a long-running dev
-              server from the browser, but we can save the customer the
-              keystrokes. The actual command runs in a second terminal. */}
+          {/* While Paperclip is booting under `pnpm dev`, show a disabled
+              primary CTA that lights up the moment the dashboard responds.
+              Users shouldn't have to know they should open another tab —
+              the polling loop in useEffect handles the transition. */}
+          {paperclipBooting && (
+            <button
+              type="button"
+              disabled
+              style={{
+                padding: "0.55rem 0.9rem",
+                borderRadius: 6,
+                background: "color-mix(in srgb, var(--accent) 35%, var(--surface))",
+                color: "var(--bg)",
+                fontWeight: 600,
+                fontSize: 12,
+                border: "none",
+                cursor: "wait",
+                textAlign: "center",
+                opacity: 0.85,
+              }}
+              title="Paperclip is being started by `pnpm dev`. This button will activate once the dashboard is listening on localhost:3100."
+            >
+              Starting Paperclip…
+            </button>
+          )}
+          {/* Only after the 60s grace period do we offer the manual command
+              copy as a last resort — at that point the user is almost
+              certainly on `pnpm dev:no-paperclip` and needs the nudge. */}
           {paperclipUnreachable && (
             <button
               type="button"
@@ -243,11 +300,14 @@ export function InceptionCTA() {
       </div>
       {paperclipUnreachable && (
         <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", lineHeight: 1.6 }}>
-          Open a new terminal in this repo and run{" "}
+          `pnpm dev` now boots Paperclip automatically, but we didn't see it
+          come up within 60 s. If you're running a subset (e.g.{" "}
+          <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm dev:no-paperclip</code>
+          {" "}or just{" "}
+          <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm dev:ui</code>
+          ), open a second terminal in this repo and run{" "}
           <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm run dev:paperclip</code>
-          {" "}— that boots the vendored Paperclip core at <code>localhost:3100</code> with your <strong>{companyId}</strong> fleet already incepted. Or use{" "}
-          <code style={{ padding: "0.05rem 0.35rem", background: "var(--surface-2)", borderRadius: 3 }}>pnpm run dev:everything</code>
-          {" "}to boot wavex-os + mock-core + Paperclip together. Refresh this page once it's listening.
+          {" "}— that boots the vendored Paperclip core at <code>localhost:3100</code> with your <strong>{companyId}</strong> fleet already incepted.
         </div>
       )}
       {copyResult && (
