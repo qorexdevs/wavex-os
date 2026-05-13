@@ -80,8 +80,17 @@ export function MonteCarloRace({ report, durationMs = 6000, onComplete }: Props)
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-      <div className="text-dim" style={{ fontSize: 12 }}>
-        Simulated {report.n_runs_per_strategy} runs × {report.horizon_cycles} cycles across 5 GTM strategies
+      {/* Header caption — operator-readable framing for what the race
+       *  actually represents. Without this the curves are engineering candy
+       *  that looks impressive but mysterious. */}
+      <div style={{ textAlign: "center", maxWidth: 560 }}>
+        <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, marginBottom: "0.25rem" }}>
+          Finding your winning growth strategy
+        </div>
+        <div className="text-dim" style={{ fontSize: 11, lineHeight: 1.5 }}>
+          {report.n_runs_per_strategy} runs × {report.horizon_cycles} cycles across 5 GTM
+          strategies — the one with the best compound trajectory wins.
+        </div>
       </div>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" style={{ maxWidth: WIDTH }}>
         {/* y-axis grid lines */}

@@ -34,6 +34,12 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
   const [additions, setAdditions] = useState<AddedAgent[]>([]);
   const [swapSlot, setSwapSlot] = useState<string | null>(null);
   const [addPanelOpen, setAddPanelOpen] = useState(false);
+  // Search + filter UI state — let operators slice a 35-agent chart by
+  // free-text match (slot/template) or by status preset. Non-matching
+  // agents stay in the layout but dim out so context isn't lost.
+  const [searchTerm, setSearchTerm] = useState("");
+  type StatusFilter = "all" | "active" | "parked";
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // Pull existing overlays + additions from the live company manifest so
   // re-entry preserves prior swaps/adds.
@@ -69,6 +75,43 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
   const totalCount = agents.length;
   const swapAgent = swapSlot ? agents.find((a) => a.slot === swapSlot) : null;
 
+  // Build highlight set + hover-detail callback for OrgGraph. The set is
+  // `undefined` when no filter is active (preserves OrgGraph's default
+  // styling); otherwise non-matching agents render at reduced opacity.
+  const normalizedTerm = searchTerm.trim().toLowerCase();
+  const hasFilter = normalizedTerm.length > 0 || statusFilter !== "all";
+  const matchedCount = hasFilter
+    ? agents.filter((a) => {
+        const matchesText = normalizedTerm === ""
+          || a.slot.toLowerCase().includes(normalizedTerm)
+          || a.templateId.toLowerCase().includes(normalizedTerm);
+        const matchesStatus =
+          statusFilter === "all"
+          || (statusFilter === "active" && (a.status === "active" || a.status === "standby"))
+          || (statusFilter === "parked" && (a.status === "parked" || a.status === "disabled"));
+        return matchesText && matchesStatus;
+      }).length
+    : agents.length;
+  const highlightSlots = hasFilter
+    ? new Set(agents.filter((a) => {
+        const matchesText = normalizedTerm === ""
+          || a.slot.toLowerCase().includes(normalizedTerm)
+          || a.templateId.toLowerCase().includes(normalizedTerm);
+        const matchesStatus =
+          statusFilter === "all"
+          || (statusFilter === "active" && (a.status === "active" || a.status === "standby"))
+          || (statusFilter === "parked" && (a.status === "parked" || a.status === "disabled"));
+        return matchesText && matchesStatus;
+      }).map((a) => a.id))
+    : undefined;
+
+  function hoverDetailFor(a: OrgAgent): string {
+    const dept = manifest.agents[a.slot]?.department ?? "—";
+    const reportsTo = a.reportsToSlot ?? "—";
+    const status = a.status ?? "unknown";
+    return `${a.slot}\n  template: ${a.templateId}\n  department: ${dept}\n  status: ${status}\n  reports to: ${reportsTo}`;
+  }
+
   return (
     <div style={{
       position: "fixed",
@@ -84,13 +127,60 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        gap: "1rem",
       }}>
-        <div>
+        <div style={{ flex: "0 0 auto" }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Your team</div>
           <div className="text-dim" style={{ fontSize: 11 }}>
-            Tap any role to swap the template. Use + to add a specialist.
+            Tap any role to swap. Hover for details. Use + to add a specialist.
           </div>
         </div>
+
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by slot or template…"
+            style={{
+              minWidth: 240,
+              padding: "0.4rem 0.7rem",
+              borderRadius: 6,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+              fontSize: 12,
+              outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: "0.3rem" }}>
+            {(["all", "active", "parked"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setStatusFilter(f)}
+                style={{
+                  padding: "0.3rem 0.65rem",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  background: statusFilter === f ? "var(--accent)" : "transparent",
+                  color: statusFilter === f ? "var(--bg)" : "var(--text-dim)",
+                  border: `1px solid ${statusFilter === f ? "var(--accent)" : "var(--border)"}`,
+                  fontWeight: statusFilter === f ? 600 : 400,
+                }}
+              >
+                {f === "all" ? "All" : f === "active" ? "Active only" : "Parked only"}
+              </button>
+            ))}
+          </div>
+          {hasFilter && (
+            <span className="text-dim" style={{ fontSize: 11 }}>
+              {matchedCount} / {agents.length} match
+            </span>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={() => setAddPanelOpen(true)}
@@ -103,6 +193,7 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
             fontWeight: 600,
             fontSize: 12,
             cursor: "pointer",
+            flex: "0 0 auto",
           }}
         >
           + Add agent
@@ -114,6 +205,8 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
           agents={agents}
           height={window.innerHeight - 140}
           onAgentClick={(a) => setSwapSlot(a.slot)}
+          highlightSlots={highlightSlots}
+          hoverDetail={hoverDetailFor}
         />
       </div>
 

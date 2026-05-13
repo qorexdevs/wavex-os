@@ -36,6 +36,13 @@ export interface OrgGraphProps {
   /** Click handler fired when an agent node is clicked. Used by Phase 3 to open
    *  the swap panel. Mission Control's FleetGraph leaves it undefined. */
   onAgentClick?: (agent: OrgAgent) => void;
+  /** When provided, agents whose `id` (slot) is NOT in this set render at
+   *  reduced opacity. Used by Swarm Studio's search + filter chips to
+   *  visually focus the chart without removing context. */
+  highlightSlots?: Set<string>;
+  /** Optional per-agent hover hint — returned string is set as the node's
+   *  `title` attribute, surfacing a native browser tooltip. */
+  hoverDetail?: (agent: OrgAgent) => string;
 }
 
 /** Convert "backend-architect" → "Backend Architect", "ceo" → "CEO",
@@ -72,20 +79,33 @@ function statusColor(status: OrgAgentStatus): string {
 const NODE_W = 180;
 const NODE_H = 64;
 
-function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
+function makeNode(
+  a: OrgAgent,
+  x: number,
+  y: number,
+  tier: number,
+  opts: { dimmedByFilter?: boolean; hoverTitle?: string } = {},
+): Node {
   const tpl = TEMPLATES_BY_ID[a.templateId];
   const dotColor = statusColor(a.status);
   const origin = originLabel(tpl?.origin);
   const displayName = templateIdToDisplayName(a.templateId);
   // Inactive agents (parked/disabled/failed) render dimmer so the scope
   // filter is visible at a glance. Active/standby keep full opacity.
-  const dim = a.status === "parked" || a.status === "disabled" || a.status === "failed";
+  // Search/filter dimming layers on top with a stronger fade so operators
+  // can spot a match across the chart at a glance.
+  const dimByStatus = a.status === "parked" || a.status === "disabled" || a.status === "failed";
+  const dimByFilter = opts.dimmedByFilter === true;
+  const finalOpacity = dimByFilter ? 0.15 : dimByStatus ? 0.4 : 1;
   return {
     id: a.id,
     position: { x, y },
     data: {
       label: (
-        <div style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35, opacity: dim ? 0.4 : 1 }}>
+        <div
+          style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35, opacity: finalOpacity, transition: "opacity 0.18s ease-out" }}
+          title={opts.hoverTitle}
+        >
           <div style={{
             position: "absolute", top: 6, right: 6,
             width: 6, height: 6, borderRadius: "50%",
@@ -104,8 +124,8 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
       ),
     },
     style: {
-      background: dim ? "color-mix(in srgb, var(--surface) 60%, transparent)" : "var(--surface)",
-      border: `1px solid ${dim ? "var(--border)" : tier === 1 ? "var(--accent)" : "var(--border)"}`,
+      background: dimByStatus || dimByFilter ? "color-mix(in srgb, var(--surface) 60%, transparent)" : "var(--surface)",
+      border: `1px solid ${dimByStatus || dimByFilter ? "var(--border)" : tier === 1 ? "var(--accent)" : "var(--border)"}`,
       borderRadius: 6,
       width: NODE_W,
       padding: 0,
@@ -121,7 +141,15 @@ function makeNode(a: OrgAgent, x: number, y: number, tier: number): Node {
  *  horizontal row below, then each chief's tier-3 sub-agents stacked
  *  vertically directly under them. Beats the old "all-of-tier-3-in-one-row"
  *  approach which produced a 6000px-wide graph with 26 sub-agents. */
-function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
+function buildLayout(
+  agents: OrgAgent[],
+  opts: { highlightSlots?: Set<string>; hoverDetail?: (a: OrgAgent) => string } = {},
+): { nodes: Node[]; edges: Edge[] } {
+  const hasHighlight = opts.highlightSlots !== undefined;
+  const nodeOpts = (a: OrgAgent) => ({
+    dimmedByFilter: hasHighlight ? !opts.highlightSlots!.has(a.id) : false,
+    hoverTitle: opts.hoverDetail?.(a),
+  });
   const COL_GAP = 28;
   const T1_T2_GAP = 90;
   const T2_T3_GAP = 60;
@@ -166,17 +194,17 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   const t1StartX = -t1Width / 2 + NODE_W / 2;
   tier1.forEach((agent, i) => {
     const x = t1StartX + i * (NODE_W + COL_GAP);
-    nodes.push(makeNode(agent, x, Y_T1, 1));
+    nodes.push(makeNode(agent, x, Y_T1, 1, nodeOpts(agent)));
   });
 
   // Tier 2 chiefs + their tier-3 children stacked below.
   tier2.forEach((chief, i) => {
     const x = startX + i * (NODE_W + COL_GAP);
-    nodes.push(makeNode(chief, x, Y_T2, 2));
+    nodes.push(makeNode(chief, x, Y_T2, 2, nodeOpts(chief)));
     const children = leafChildrenBySlot.get(chief.slot) ?? [];
     children.forEach((child, j) => {
       const y = Y_T3 + j * (NODE_H + T3_T3_GAP);
-      nodes.push(makeNode(child, x, y, 3));
+      nodes.push(makeNode(child, x, y, 3, nodeOpts(child)));
     });
   });
 
@@ -185,7 +213,7 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   if (orphans.length > 0) {
     const orphanX = startX + numCols * (NODE_W + COL_GAP);
     orphans.forEach((o, j) => {
-      nodes.push(makeNode(o, orphanX, Y_T3 + j * (NODE_H + T3_T3_GAP), 3));
+      nodes.push(makeNode(o, orphanX, Y_T3 + j * (NODE_H + T3_T3_GAP), 3, nodeOpts(o)));
     });
   }
 
@@ -204,8 +232,11 @@ function buildLayout(agents: OrgAgent[]): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-export function OrgGraph({ agents, height = 540, onAgentClick }: OrgGraphProps) {
-  const { nodes, edges } = useMemo(() => buildLayout(agents), [agents]);
+export function OrgGraph({ agents, height = 540, onAgentClick, highlightSlots, hoverDetail }: OrgGraphProps) {
+  const { nodes, edges } = useMemo(
+    () => buildLayout(agents, { highlightSlots, hoverDetail }),
+    [agents, highlightSlots, hoverDetail],
+  );
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   return (

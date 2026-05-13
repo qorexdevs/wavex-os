@@ -133,46 +133,91 @@ export function Pillar1ConfirmCard({ companyId, response, onConfirmed }: Props) 
         </div>
       )}
 
-      {/* Inferred signals preview — shows the deeper Pillar 1 fields so the
-       *  operator sees what T2 picked up beyond just industry / business model.
-       *  Read-only, no input required. */}
-      {(response.ideal_customer_profile || response.competitive_position || response.tone_signal || response.primary_acquisition_channel) && (
+      {/* Inferred signals preview — surfaces every field T2 populated from
+       *  the operator's site/pitch so they see the full reading, not just
+       *  industry + business_model chips. Read-only, with a clear "read from
+       *  your site" label to earn trust at the first inflection moment. */}
+      {(response.ideal_customer_profile
+        || response.competitive_position
+        || response.tone_signal
+        || response.primary_acquisition_channel
+        || response.revenue_model
+        || response.product_maturity_signal
+        || response.primary_friction_hypothesis
+        || response.differentiator_hypothesis) && (
         <div style={{
-          padding: "0.5rem 0.75rem",
+          padding: "0.65rem 0.85rem",
           background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 6,
           fontSize: 11,
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          columnGap: "0.85rem",
-          rowGap: "0.35rem",
-          color: "var(--text-dim)",
         }}>
-          {response.ideal_customer_profile && (
-            <>
-              <div style={{ fontWeight: 600 }}>ICP</div>
-              <div style={{ color: "var(--text)" }}>{response.ideal_customer_profile}</div>
-            </>
-          )}
-          {response.competitive_position && (
-            <>
-              <div style={{ fontWeight: 600 }}>Position</div>
-              <div style={{ color: "var(--text)" }}>{response.competitive_position}</div>
-            </>
-          )}
-          {response.tone_signal && (
-            <>
-              <div style={{ fontWeight: 600 }}>Tone</div>
-              <div style={{ color: "var(--text)" }}>{response.tone_signal}</div>
-            </>
-          )}
-          {response.primary_acquisition_channel && (
-            <>
-              <div style={{ fontWeight: 600 }}>Primary acq.</div>
-              <div style={{ color: "var(--text)" }}>{response.primary_acquisition_channel}</div>
-            </>
-          )}
+          <div style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            color: "var(--accent)",
+            marginBottom: "0.5rem",
+          }}>
+            Read from your site
+          </div>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            columnGap: "0.85rem",
+            rowGap: "0.4rem",
+            color: "var(--text-dim)",
+          }}>
+            {response.ideal_customer_profile && (
+              <>
+                <div style={{ fontWeight: 600 }}>ICP</div>
+                <div style={{ color: "var(--text)" }}>{response.ideal_customer_profile}</div>
+              </>
+            )}
+            {response.revenue_model && (
+              <>
+                <div style={{ fontWeight: 600 }}>Revenue</div>
+                <div style={{ color: "var(--text)" }}>{response.revenue_model}</div>
+              </>
+            )}
+            {response.competitive_position && (
+              <>
+                <div style={{ fontWeight: 600 }}>Position</div>
+                <div style={{ color: "var(--text)" }}>{response.competitive_position}</div>
+              </>
+            )}
+            {response.primary_acquisition_channel && (
+              <>
+                <div style={{ fontWeight: 600 }}>Primary acq.</div>
+                <div style={{ color: "var(--text)" }}>{response.primary_acquisition_channel}</div>
+              </>
+            )}
+            {response.product_maturity_signal && (
+              <>
+                <div style={{ fontWeight: 600 }}>Maturity</div>
+                <div style={{ color: "var(--text)" }}>{response.product_maturity_signal.replace(/_/g, " ")}</div>
+              </>
+            )}
+            {response.tone_signal && (
+              <>
+                <div style={{ fontWeight: 600 }}>Tone</div>
+                <div style={{ color: "var(--text)" }}>{response.tone_signal}</div>
+              </>
+            )}
+            {response.differentiator_hypothesis && (
+              <>
+                <div style={{ fontWeight: 600 }}>Differentiator</div>
+                <div style={{ color: "var(--text)", lineHeight: 1.45 }}>{response.differentiator_hypothesis}</div>
+              </>
+            )}
+            {response.primary_friction_hypothesis && (
+              <>
+                <div style={{ fontWeight: 600 }}>Friction</div>
+                <div style={{ color: "var(--text)", lineHeight: 1.45 }}>{response.primary_friction_hypothesis}</div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

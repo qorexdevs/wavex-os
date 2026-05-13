@@ -691,6 +691,26 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
     }
   }
 
+  /** Generalized starter patterns — each reveals one valid input shape
+   *  without prescribing a specific business. Click to seed the input
+   *  with a template the operator edits; doesn't auto-submit. */
+  const STARTERS: Array<{ label: string; seed: string }> = [
+    { label: "Your company URL", seed: "https://" },
+    { label: "Pitch in one sentence", seed: "We build " },
+    { label: "Scoped: just marketing & sales", seed: "I need a marketing and sales team for " },
+  ];
+
+  function applyStarter(seed: string): void {
+    setDraft(seed);
+    // Move cursor to end so the operator can keep typing immediately.
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        ref.current.focus();
+        ref.current.setSelectionRange(seed.length, seed.length);
+      }
+    });
+  }
+
   return (
     <div style={{
       flex: 1,
@@ -782,6 +802,36 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
           >
             ↑
           </button>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", justifyContent: "center" }}>
+          {STARTERS.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => applyStarter(s.seed)}
+              style={{
+                padding: "0.4rem 0.85rem",
+                borderRadius: 999,
+                background: "transparent",
+                color: "var(--text-dim)",
+                border: "1px solid var(--border)",
+                fontSize: 12,
+                cursor: "pointer",
+                transition: "color 0.15s, border-color 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--text)";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-dim)";
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
 
       </div>

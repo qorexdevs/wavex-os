@@ -180,11 +180,19 @@ function WinnerReveal({ manifest }: { manifest: CompanyManifest }) {
     NARRATIVE_LED: "Narrative led",
     CAPITAL_EFFICIENT: "Capital efficient",
   };
+  // Build a one-line, operator-readable rationale from the winner stats.
+  // Falls back to the rationale string the simulator returned if present.
+  const rationale = w.rationale && w.rationale.trim().length > 0
+    ? w.rationale
+    : `Highest expected compound growth (${(w.mean_mrr_growth * 100).toFixed(0)}%) at acceptable ruin risk (${(w.p_ruin * 100).toFixed(0)}%) for your stage.`;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem", maxWidth: 760 }}>
       <div className="text-dim" style={{ fontSize: 12 }}>Your path</div>
       <div style={{ fontSize: 42, fontWeight: 700, color: "var(--accent)", textAlign: "center" }}>
         {STRATEGY_LABELS[w.strategy_id] ?? w.strategy_id}
+      </div>
+      <div className="text-dim" style={{ fontSize: 12, textAlign: "center", maxWidth: 520, lineHeight: 1.5, marginTop: "-0.5rem" }}>
+        {rationale}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "1rem", width: "100%" }}>
         <StatTile label="Mean MRR growth" value={`${(w.mean_mrr_growth * 100).toFixed(0)}%`} />
