@@ -1,11 +1,21 @@
-/** Pillar 2 — Verify your setup. Mirrors upstream pillar-2.tsx:
- *  - 4 radio plan options (Max 20× / Max 5× / API only / Other)
- *  - Single "Verify & Continue" submit. Server probes the configured claudeBin
- *    to confirm install + auth, then returns Pillar2Outcome { ok, response, fix_hint? }
- *  - On ok: advance. On !ok: render the fix_hint inline so the operator can
- *    address (sign in, install, etc.) and re-verify. */
+/** Pillar 2 — Verify your setup.
+ *
+ *  Two-mode rendering:
+ *
+ *  - **Hosted mode** (customer's installer pointed the runtime at the
+ *    operator's hub): the customer doesn't have Claude Code locally and
+ *    doesn't need a Claude plan. We auto-pass with a one-line "Inference
+ *    provided by WaveX hub" confirmation and call onComplete() as soon as
+ *    the probe confirms the hub is reachable. No plan picker, no verify
+ *    button, no manual gate. Detected via probe.billing_type === "wavex_pool_a".
+ *
+ *  - **OAuth / API-key mode** (customer has their own Claude): the legacy
+ *    4-radio plan picker + Verify & Continue flow. Server probes the
+ *    configured claudeBin and returns Pillar2Outcome { ok, response, fix_hint? }.
+ *
+ *  We probe ONCE on mount to decide which surface to render. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import { Card, H2, P } from "../components/primitives";
 
@@ -30,6 +40,48 @@ export function Pillar2({ companyId, initial, onComplete }: Props) {
   const [busy, setBusy] = useState(false);
   const [fixHint, setFixHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Mode resolution: undefined = still probing, "hosted" = skip plan picker
+   *  and auto-advance, "local" = render the legacy plan picker flow. */
+  const [mode, setMode] = useState<"hosted" | "local" | undefined>(undefined);
+  const [hubInfo, setHubInfo] = useState<{ version?: string; test_output?: string } | null>(null);
+
+  // On mount: probe the runtime. If hosted, auto-record + advance.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const probe = await opOmegaOnboardingApi.claudeCodeCheck();
+        if (cancelled) return;
+        const isHosted = probe.ok === true && probe.probe?.billing_type === "wavex_pool_a";
+        if (isHosted && probe.probe) {
+          setHubInfo({ version: probe.probe.version, test_output: probe.probe.test_output });
+          setMode("hosted");
+          // Record a synthetic "other" plan with a hub note so the manifest
+          // stays valid + auto-advance. The upstream schema doesn't yet have
+          // a `hosted` enum value; the note documents what actually happened.
+          try {
+            const r = await opOmegaOnboardingApi.pillar2({
+              companyId,
+              claude_plan: "other",
+              claude_plan_other_note: "WaveX hub Pool A — inference provided by operator",
+            });
+            if (!cancelled && r.ok) {
+              // Brief hold so the customer sees the confirmation before we
+              // navigate away. 800ms is enough to register without feeling slow.
+              setTimeout(() => { if (!cancelled) onComplete(); }, 800);
+            }
+          } catch { /* fall through — operator can manually click below */ }
+        } else {
+          setMode("local");
+        }
+      } catch {
+        // Probe failed entirely → default to local-mode UI so the operator
+        // can still verify manually (covers offline / firewalled cases).
+        if (!cancelled) setMode("local");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, onComplete]);
 
   async function verify(): Promise<void> {
     setBusy(true);
@@ -50,6 +102,48 @@ export function Pillar2({ companyId, initial, onComplete }: Props) {
     }
   }
 
+  // ── Hosted mode: customer's runtime delegates inference to the WaveX hub.
+  // No plan picker, no Claude install, no verify button — auto-advance.
+  if (mode === "hosted") {
+    return (
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
+        <H2>Inference is ready</H2>
+        <P>
+          Your install is configured to use the WaveX hub for inference.
+          You don't need to install Claude Code or bring your own plan — the
+          operator's Pool A serves your onboarding under a rate-limited
+          session token. Continuing in a moment…
+        </P>
+        <Card>
+          <div style={{ fontSize: 13, color: "var(--accent)", marginBottom: "0.5rem" }}>
+            ✓ Connected to WaveX hub
+          </div>
+          {hubInfo?.version && (
+            <div className="text-dim" style={{ fontSize: 12 }}>
+              <code>{hubInfo.version}</code>
+            </div>
+          )}
+          {hubInfo?.test_output && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: "0.25rem" }}>
+              {hubInfo.test_output}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Probing (very brief — usually <200ms): minimal placeholder so we
+  // don't flash the plan picker before mode is resolved.
+  if (mode === undefined) {
+    return (
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem", color: "var(--text-dim)" }}>
+        Checking your inference setup…
+      </div>
+    );
+  }
+
+  // ── Local mode (oauth / apikey): the legacy plan picker + verify UI.
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "2rem" }}>
       <H2>Verifying your setup</H2>

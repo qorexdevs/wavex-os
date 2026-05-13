@@ -22,7 +22,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
-import { incrementCounter, getCounter } from "../lib/rate-limit.js";
+import { incrementCounter, getCounter, setAdd } from "../lib/rate-limit.js";
 import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
 import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
 
@@ -117,13 +117,21 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
 
       const finalInstallId = install_id ?? randomInstallId();
 
-      // Per-email throttle: 3 install_ids per email per 30 days
+      // Per-email throttle: cap DISTINCT install_ids per email per 30 days.
+      // Onboarding inference is a customer-acquisition cost — we WANT customers
+      // to try the wizard, get stuck, reset, retry. Counting every session-mint
+      // (as the old incrementCounter did) penalized legitimate retries with the
+      // same install_id. We now track distinct install_ids in a set, and the
+      // ceiling is intentionally generous — 25 is well above any real customer
+      // pattern (one Mac mini + a few VMs + multiple resets) and abuse vectors
+      // are caught by the $/day global cap and per-install lifetime limit.
+      const EMAIL_INSTALL_CEILING = 25;
       const emailKey = `pool-a:email-installs:${email.toLowerCase()}`;
-      const emailCount = await incrementCounter(emailKey, 30 * 24 * 3600);
-      if (emailCount > 3) {
+      const { size: emailDistinctCount } = await setAdd(emailKey, finalInstallId, 30 * 24 * 3600);
+      if (emailDistinctCount > EMAIL_INSTALL_CEILING) {
         return reply.code(429).send({
           error: "email_rate_limit",
-          message: "More than 3 install_ids per email per 30 days. If this is a mistake, email support.",
+          message: `More than ${EMAIL_INSTALL_CEILING} distinct install_ids per email per 30 days. If this is a mistake, email support.`,
         });
       }
 
@@ -163,23 +171,34 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
       const installHourKey = `pool-a:install-hour:${session.install_id}:${Math.floor(Date.now() / 3600000)}`;
       const ipKey = `pool-a:ip-hour:${ip24(req)}:${Math.floor(Date.now() / 3600000)}`;
 
+      // Per-install caps are sized for a generous wizard walk:
+      // - Baseline wizard uses ~6-8 T2 calls (pillar 1 enrichment, connector
+      //   manifest, swarm manifest, workflow manifest, optional re-runs)
+      // - Help-chat is unbounded by design (it's the CAC interaction)
+      // - A returning customer doing a full re-onboarding should still fit
+      // The real safety net is the $10/day global cap below — these per-install
+      // limits exist only to prevent a single bad actor from one-shotting it.
+      const INSTALL_LIFETIME_CAP = 100;
+      const INSTALL_HOUR_CAP = 40;
+      const IP_HOUR_CAP = 400;
+
       const lifetimeCount = await getCounter(installLifetimeKey);
-      if (lifetimeCount >= 20) {
+      if (lifetimeCount >= INSTALL_LIFETIME_CAP) {
         await writeLedger({
           pool: "A", install_id: session.install_id, email: session.email, ip_24: ip24(req),
           request_id: null, model: model ?? DEFAULT_MODEL,
           prompt_tokens: 0, completion_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0,
           cost_cents: 0, status: "rate_limited", error_class: "install_lifetime",
         });
-        return reply.code(429).send({ error: "install_lifetime_cap", limit: 20 });
+        return reply.code(429).send({ error: "install_lifetime_cap", limit: INSTALL_LIFETIME_CAP });
       }
       const hourCount = await getCounter(installHourKey);
-      if (hourCount >= 5) {
-        return reply.code(429).send({ error: "install_hour_cap", limit: 5, retry_after_sec: 3600 });
+      if (hourCount >= INSTALL_HOUR_CAP) {
+        return reply.code(429).send({ error: "install_hour_cap", limit: INSTALL_HOUR_CAP, retry_after_sec: 3600 });
       }
       const ipCount = await getCounter(ipKey);
-      if (ipCount >= 200) {
-        return reply.code(429).send({ error: "ip_hour_cap", limit: 200 });
+      if (ipCount >= IP_HOUR_CAP) {
+        return reply.code(429).send({ error: "ip_hour_cap", limit: IP_HOUR_CAP });
       }
 
       // Daily $10 cap

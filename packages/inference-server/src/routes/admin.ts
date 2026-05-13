@@ -9,6 +9,7 @@
  * /admin/status   — return current freeze state + today's burn $
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { dropKey, setSize } from "../lib/rate-limit.js";
 
 interface FreezeBody {
   reason?: string;
@@ -49,5 +50,19 @@ export async function registerAdmin(app: FastifyInstance): Promise<void> {
       daily_cap_cents: 1000,
       note: "Phase G.3 stub — real ledger reads land in G.3.b",
     });
+  });
+
+  // Reset the per-email distinct-install set. Used by the operator to clear
+  // their own counter after the dev cycle blew through it (or to help a
+  // legitimate customer who got mis-flagged). Takes the email as a query
+  // param to keep the response simple.
+  app.post<{ Querystring: { email?: string } }>("/admin/reset-email-installs", async (req, reply) => {
+    if (!requireAdminToken(req, reply)) return;
+    const email = (req.query.email ?? "").trim().toLowerCase();
+    if (!email) return reply.code(400).send({ error: "missing_email" });
+    const key = `pool-a:email-installs:${email}`;
+    const sizeBefore = await setSize(key);
+    const dropped = await dropKey(key);
+    return reply.send({ email, dropped, distinct_installs_cleared: sizeBefore });
   });
 }

@@ -16,6 +16,7 @@ import {
   nextIncompletePillar,
 } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
+import { getInferenceMode } from "@wavex-os/inference-adapter";
 import { withTokenAccounting, type PhaseKey } from "../lib/token-accounting.js";
 import { BudgetExhaustedError } from "../lib/token-budget.js";
 
@@ -147,6 +148,24 @@ export function registerPillarRoutes(app: FastifyInstance): void {
 
   pillarRoute(2, pillar2Schema, async (body) => {
     return withTokenAccounting(body.companyId, "pillar_2", async () => {
+      // Hosted mode: the customer has no local claude CLI — inference is
+      // served by the operator's hub. The vendored handlePillar2 always
+      // spawns the configured claudeBin (the hosted-shim) and checks its
+      // exit code, which is brittle and surfaces as a "verify failed"
+      // fix_hint to the user. Short-circuit here with a synthetic-pass
+      // outcome so the wizard advances without a Claude-plan picker UI.
+      if (getInferenceMode() === "hosted") {
+        const response = {
+          claude_code_verified: true,
+          claude_plan: body.claude_plan,
+          claude_plan_other_note: body.claude_plan_other_note,
+          claude_version: "wavex-os hosted (Pool A)",
+          inference_budget_profile: "conservative" as const,
+          verified_at: new Date().toISOString(),
+        };
+        await updatePillar(body.companyId, "pillar_2", response);
+        return { ok: true, response } as Awaited<ReturnType<typeof handlePillar2>>;
+      }
       const outcome = await handlePillar2({
         claude_plan: body.claude_plan,
         claude_plan_other_note: body.claude_plan_other_note,
