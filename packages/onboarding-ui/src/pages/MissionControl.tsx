@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { HealthStrip } from "../components/mission/HealthStrip";
+import { InceptionCTA } from "../components/mission/InceptionCTA";
 import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
@@ -148,6 +149,12 @@ export default function MissionControl() {
             </Link>
           </div>
         )}
+
+        {/* Inception CTA — when a company is selected, surface the "your
+            fleet is live, here's what to do next" card BEFORE the KPIs so
+            the customer has an obvious path forward. The legacy mission
+            control was a dead-end after activate. */}
+        {companyId && <InceptionCTA />}
 
         <div data-tour="mc-kpis" style={{ marginBottom: "2.5rem" }}>
           <KpiBoard />

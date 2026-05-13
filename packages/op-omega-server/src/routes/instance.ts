@@ -142,4 +142,42 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
       return reply.status(500).send({ error: "failed to enumerate companies" });
     }
   });
+
+  // Post-activate handoff state — read by InceptionCTA on Mission Control to
+  // decide whether to show "Open Paperclip Dashboard" with a real link vs
+  // the generic "fleet is live, defaults to localhost:5174" fallback.
+  // The handoff JSON is written by bridge/paperclip-handoff.ts when activate
+  // successfully posts the manifest to a Paperclip backend; absent it,
+  // either Paperclip wasn't configured (PAPERCLIP_HANDOFF_URL empty) or the
+  // customer ran with mock-core only.
+  app.get("/api/instance/:companyId/handoff", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    try {
+      const path = join(getOnboardingDir(companyId), "..", "paperclip-handoff.json");
+      const raw = await readFile(path, "utf8");
+      const j = JSON.parse(raw) as {
+        paperclipUrl?: string;
+        paperclipCompanyId?: string;
+        handedOffAt?: string;
+      };
+      return {
+        ok: true,
+        handoff: {
+          paperclipUrl: j.paperclipUrl ?? null,
+          paperclipCompanyId: j.paperclipCompanyId ?? null,
+          handedOff: Boolean(j.paperclipUrl && j.paperclipCompanyId),
+        },
+      };
+    } catch {
+      // No handoff file → fleet is local-only (mock-core / unconfigured
+      // Paperclip). CTA degrades to the generic "live on localhost" message.
+      return { ok: true, handoff: { paperclipUrl: null, paperclipCompanyId: null, handedOff: false } };
+    }
+  });
 }
