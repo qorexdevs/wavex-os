@@ -24,9 +24,26 @@ interface HandoffState {
   agentsReady: number;
 }
 
+/** Probe whether Paperclip is actually reachable on localhost:5174 (the
+ *  standard dev port). We avoid CORS by hitting the no-cors mode — if
+ *  fetch resolves at all (even with opaque response), the server exists.
+ *  We give up after 1.5s so the CTA renders fast either way. */
+async function probePaperclipLocal(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    await fetch("http://localhost:5174/", { mode: "no-cors", signal: controller.signal });
+    clearTimeout(timer);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function InceptionCTA() {
   const { companyId } = useCompany();
   const [state, setState] = useState<HandoffState | null>(null);
+  const [localPaperclipReachable, setLocalPaperclipReachable] = useState<boolean | null>(null);
   const [forceBusy, setForceBusy] = useState(false);
   const [forceResult, setForceResult] = useState<string | null>(null);
 
@@ -36,8 +53,7 @@ export function InceptionCTA() {
     void (async () => {
       // Best-effort probe — we ask /api/companies/<id>/agents to count
       // ready slots, and /api/instance/<id>/handoff for the paperclip URL.
-      // Either failing is OK; the CTA degrades to a static "fleet is live"
-      // message rather than dead-ending the customer.
+      // Either failing is OK; the CTA degrades gracefully.
       let agentsTotal = 0;
       let agentsReady = 0;
       let paperclipUrl: string | null = null;
@@ -68,15 +84,30 @@ export function InceptionCTA() {
         agentsTotal,
         agentsReady,
       });
+      // Only probe localhost when we DON'T already have a configured
+      // handoff URL — otherwise we'd waste the round-trip.
+      if (!paperclipUrl) {
+        const reachable = await probePaperclipLocal();
+        if (!cancelled) setLocalPaperclipReachable(reachable);
+      }
     })();
     return () => { cancelled = true; };
   }, [companyId]);
 
   if (!companyId || !state) return null;
 
-  const paperclipLink = state.paperclipUrl && state.paperclipCompanyId
+  // Resolve the dashboard link only when we have a real, reachable target.
+  // - configured handoff (paperclipUrl set) → trust it
+  // - else if localhost:5174 probed reachable → use it
+  // - else show no link (avoid the dead-localhost ERR_CONNECTION_REFUSED
+  //   the operator hit the first time around).
+  const paperclipLink: string | null = state.paperclipUrl && state.paperclipCompanyId
     ? `${state.paperclipUrl}/companies/${encodeURIComponent(state.paperclipCompanyId)}`
-    : (state.paperclipUrl ?? "http://localhost:5174");
+    : state.paperclipUrl
+      ? state.paperclipUrl
+      : localPaperclipReachable
+        ? "http://localhost:5174"
+        : null;
 
   async function forceFirstCycle(): Promise<void> {
     if (!companyId) return;
@@ -99,6 +130,16 @@ export function InceptionCTA() {
     }
   }
 
+  // Three render branches:
+  //   1. paperclipLink set → primary CTA = "Open Paperclip Dashboard ↗"
+  //   2. paperclipLink null + probe still resolving → show neutral status
+  //   3. paperclipLink null + probe confirmed unreachable → show setup
+  //      guidance (Paperclip GitHub link), NOT a broken localhost button.
+  // This kills the ERR_CONNECTION_REFUSED the operator hit on the old
+  // "default to localhost:5174 regardless" behavior.
+  const probeStillResolving = paperclipLink === null && localPaperclipReachable === null && !state.paperclipUrl;
+  const paperclipUnreachable = paperclipLink === null && localPaperclipReachable === false;
+
   return (
     <div className="card" style={{
       marginBottom: "2.5rem",
@@ -119,27 +160,52 @@ export function InceptionCTA() {
           <div className="text-dim" style={{ fontSize: 12, lineHeight: 1.55 }}>
             {state.handedOff
               ? "Watch every issue, comment, and KPI snapshot live on the Paperclip dashboard."
-              : "Run Paperclip alongside wavex-os to get a real-time fleet dashboard. Defaults to localhost:5174."}
+              : paperclipUnreachable
+                ? "Paperclip isn't running locally. Install it to watch every issue, comment, and KPI snapshot live."
+                : probeStillResolving
+                  ? "Checking for a local Paperclip dashboard…"
+                  : "Watch every issue, comment, and KPI snapshot on your local Paperclip dashboard."}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", alignItems: "stretch" }}>
-          <a
-            href={paperclipLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: "0.55rem 0.9rem",
-              borderRadius: 6,
-              background: "var(--accent)",
-              color: "var(--bg)",
-              fontWeight: 600,
-              fontSize: 12,
-              textDecoration: "none",
-              textAlign: "center",
-            }}
-          >
-            Open Paperclip Dashboard ↗
-          </a>
+          {paperclipLink && (
+            <a
+              href={paperclipLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "0.55rem 0.9rem",
+                borderRadius: 6,
+                background: "var(--accent)",
+                color: "var(--bg)",
+                fontWeight: 600,
+                fontSize: 12,
+                textDecoration: "none",
+                textAlign: "center",
+              }}
+            >
+              Open Paperclip Dashboard ↗
+            </a>
+          )}
+          {paperclipUnreachable && (
+            <a
+              href="https://github.com/aimerdoux/paperclip"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "0.55rem 0.9rem",
+                borderRadius: 6,
+                background: "var(--accent)",
+                color: "var(--bg)",
+                fontWeight: 600,
+                fontSize: 12,
+                textDecoration: "none",
+                textAlign: "center",
+              }}
+            >
+              Set up Paperclip ↗
+            </a>
+          )}
           <button
             type="button"
             onClick={() => void forceFirstCycle()}
@@ -159,6 +225,11 @@ export function InceptionCTA() {
           </button>
         </div>
       </div>
+      {paperclipUnreachable && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", lineHeight: 1.55 }}>
+          Quick start: <code>git clone https://github.com/aimerdoux/paperclip && cd paperclip && pnpm i && pnpm dev</code> in a new terminal — Paperclip listens on <code>localhost:5174</code>. Refresh this page once it's running.
+        </div>
+      )}
       {forceResult && (
         <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
           {forceResult}
