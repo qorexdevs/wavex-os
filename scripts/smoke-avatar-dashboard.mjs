@@ -17,6 +17,12 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // Phase 7-B — pre-dismiss the coachmark walkthrough so the existing
+  // selectors aren't blocked by the overlay.
+  await page.addInitScript(() => {
+    localStorage.setItem("coachmark-avatar-v1", "1");
+    localStorage.setItem("coachmark-mission-v1", "1");
+  });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (msg) => {
@@ -34,11 +40,12 @@ async function main() {
 
   // Switch to Approval inbox
   await page.locator("button").filter({ hasText: /^Approval inbox$/ }).click();
-  await page.waitForSelector("button:has-text('Run triage')", { timeout: 5_000 });
+  await page.waitForSelector("button:has-text('Process now')", { timeout: 5_000 });
   console.log("✓ Approval inbox tab loaded");
 
-  // Autonomy chip should be visible if trust.json is set on disk.
-  const chip = page.locator("button", { hasText: /Autonomy:/ }).first();
+  // Autonomy chip — copy varies by tier; just confirm one of the
+  // friendly variants is present (or skip if no trust.json).
+  const chip = page.locator("button", { hasText: /trust me with more|fully trusted|I wait for your approval/i }).first();
   if (await chip.count() > 0) {
     const label = await chip.textContent();
     console.log(`✓ Autonomy chip: ${label?.trim()}`);
@@ -53,10 +60,10 @@ async function main() {
   }
 
   // Trigger gmail triage via the new per-provider menu
-  await page.locator("button").filter({ hasText: /^Run triage/ }).first().click();
+  await page.locator("button").filter({ hasText: /^Process now/ }).first().click();
   await page.locator("button").filter({ hasText: /^Gmail$/ }).first().click();
-  await page.waitForSelector("text=/gmail: \\d+ processed/i", { timeout: 15_000 });
-  const runStatus = await page.locator("text=/gmail: \\d+ processed/i").first().textContent();
+  await page.waitForSelector("text=/Read \\d+ Gmail thread/i", { timeout: 15_000 });
+  const runStatus = await page.locator("text=/Read \\d+ Gmail thread/i").first().textContent();
   console.log(`✓ Triage run completed → ${runStatus?.trim()}`);
 
   // After refresh the inbox should have at least 1 pending approval card
@@ -79,10 +86,12 @@ async function main() {
   await page.waitForSelector("button:has-text('pause Gmail')", { timeout: 5_000 });
   console.log("✓ Resumed gmail skill");
 
-  // Switch to Audit tab
+  // Switch to Audit tab — Phase 7-A humanizes the action strings, so
+  // look for the friendly copy ("Drafted a Gmail reply" / "You approved
+  // a draft" / "Paused gmail" / etc.) instead of the raw namespace.
   await page.locator("button").filter({ hasText: /^Audit log$/ }).click();
-  await page.waitForSelector("text=/avatar\\.(gmail|approval)\\./i", { timeout: 5_000 });
-  const auditCount = await page.locator("li code:has-text('avatar.')").count();
+  await page.waitForSelector("text=/Drafted a Gmail reply|You approved a draft|Auto-approved on your behalf|Paused Gmail|Resumed Gmail/i", { timeout: 5_000 });
+  const auditCount = await page.locator("span[title^='avatar.'], span[title^='agent.']").count();
   console.log(`✓ Audit log rendered (${auditCount} entries visible)`);
 
   if (errors.length) {

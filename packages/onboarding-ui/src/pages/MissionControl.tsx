@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
@@ -8,6 +8,8 @@ import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
 import { useCompany } from "../op-omega/lib/CompanyContext";
 import { getSupabase } from "../lib/supabase";
+import { CoachmarkOverlay, type CoachmarkStep } from "../op-omega/components/Coachmark";
+import { useCoachmark } from "../op-omega/lib/coachmarks";
 
 interface CompaniesPayload { ok: boolean; companies: Array<{ id: string; name: string }>; }
 
@@ -54,6 +56,36 @@ export default function MissionControl() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Phase 7-B — first-run walkthrough for Mission Control.
+  const tour = useCoachmark("coachmark-mission-v1");
+  const tourSteps: CoachmarkStep[] = useMemo(() => [
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='mc-health']"),
+      title: "Live status, at a glance",
+      body: "Green here means everything's running. If something turns yellow or red, you'll see it here first.",
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='mc-kpis']"),
+      title: "Your headline goal",
+      body: "This is the number your team is moving — and the supporting metrics underneath. Updates as the agents work.",
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='mc-fleet']"),
+      title: "Every agent in your org",
+      body: "Each card is one agent. Status updates live as they spawn, pause, or finish a run.",
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='mc-privacy']"),
+      title: "Who can see your data",
+      body: "Every external agent reading your data shows up here, with a one-click revoke if you change your mind.",
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='mc-company']"),
+      title: "Switch or start over",
+      body: "Pick a different company here, or click '+ New' to start a fresh onboarding from scratch.",
+    },
+  ], []);
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       <header style={{
@@ -72,8 +104,8 @@ export default function MissionControl() {
           <span className="text-dim" style={{ fontSize: 12 }}>· Mission Control</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-          <CompanyPicker />
-          <HealthStrip />
+          <div data-tour="mc-company"><CompanyPicker /></div>
+          <div data-tour="mc-health"><HealthStrip /></div>
         </div>
       </header>
 
@@ -97,15 +129,15 @@ export default function MissionControl() {
           </div>
         )}
 
-        <div style={{ marginBottom: "2.5rem" }}>
+        <div data-tour="mc-kpis" style={{ marginBottom: "2.5rem" }}>
           <KpiBoard />
         </div>
 
-        <div style={{ marginBottom: "2.5rem" }}>
+        <div data-tour="mc-fleet" style={{ marginBottom: "2.5rem" }}>
           <FleetGraph />
         </div>
 
-        <div style={{ marginBottom: "2.5rem" }}>
+        <div data-tour="mc-privacy" style={{ marginBottom: "2.5rem" }}>
           <PrivacyPanel session={session} />
         </div>
 
@@ -126,6 +158,9 @@ export default function MissionControl() {
           WaveX OS · MIT · <a href="https://github.com/aimerdoux/wavex-os" target="_blank" rel="noreferrer">github.com/aimerdoux/wavex-os</a>
         </p>
       </main>
+      {!tour.dismissed && (
+        <CoachmarkOverlay steps={tourSteps} onDone={tour.dismiss} />
+      )}
     </div>
   );
 }
