@@ -169,3 +169,31 @@ Candidates from PR review:
 | 7 | T3 (Pool B BYO OAuth) | architecturally biggest; do last |
 
 Each track is independently shippable.
+
+---
+
+## Session log — 2026-05-13 (autonomous QA + fix loop)
+
+### What shipped this session (chronological)
+
+| Commit | Track | Summary |
+|---|---|---|
+| `997a019b` | T2.1 | finalize populates `goal.kpiId` (from stage-baselines) + `signed_at` (= `finalized_at`) |
+| `a1685229` | T2.3 + T2.4 | mock-core `GET /api/companies/:id/agents` + `POST /trigger-heartbeats` |
+| `f5f8ef68` | T1 + T6 | Stripe webhook RPC COALESCE + trial fallback + Stripe re-fetch; marketplace v2 doc with 8 candidate agents |
+| `30215f11` | T5 | WaveX Ops operator-side reliability cycle + launchd plist + 4 public RPCs |
+| `4a768697` | T4 | `@wavex-os/paperclip-plugin-wavex` scaffold (3 UI slots + 3 worker handlers) |
+| `2e85d7a7` | inception | `pnpm dev` default boots Paperclip; InceptionCTA polls + auto-activates dashboard CTA |
+| `9cd83921` | inception | server-side `/api/paperclip-reachable` probe (kills DevTools spam) |
+| `8f940ebf` | QA loop-1 | 6 fixes from comprehensive E2E QA findings: BUG.PROXY_REWRITE (BLOCKER), BUG.T2_LEDGER (HIGH), BUG.NO_INFERENCE_HEALTH (MED), BUG.WAVEX_PLUGIN_NOT_BUILT (MED), driver-gap (LOW), Avatar clarification (LOW) |
+
+### Final QA verdict
+- **Happy path: PASS** end-to-end on Solo Founder profile (linear.app). Goal KPI `monthly_recurring_revenue` populated, 35-agent fleet created, Mission Control + InceptionCTA + Paperclip dashboard all reachable.
+- **Loop-1 verifications**: 3 of 5 fixes verified live; 2 deferred to next inference-server launchd restart (running binary pre-dates the dist rebuild — expected lifecycle, not a regression).
+
+### Known follow-ups (NOT in scope for this session)
+1. **Paperclip plugin install** — `paperclip-plugin-wavex/dist/` builds clean but Paperclip's plugin loader uses a DB-backed registry (`registry.listInstalled()`), not workspace auto-discovery. Plugin needs a registration call via Paperclip's plugin-install API before its slots appear in `/api/plugins`. This is a dedicated wiring task — the scaffold + capabilities are in place.
+2. **launchd inference-server restart** — picks up `/health` + `/api/health` aliases and the t2-events.jsonl mirror. Operator runs `launchctl kickstart -k gui/$(id -u)/com.wavex-os.inference-server` when ready.
+3. **API-1 (Task #89)** — 4× 404 console errors after Reset (longstanding low-severity).
+4. **T3 — Pool B (BYO Claude Max OAuth)** — still deferred; 2-3d architectural work; biggest remaining Phase H track.
+
