@@ -472,6 +472,26 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         skipInference: parsed.data.skipInference,
         mc: parsed.data.mc,
       });
+
+      // Merge pre-finalize add-agent sidecar additions into the manifest
+      // and re-persist. add-agent.ts wrote these to template_additions.json
+      // because company.manifest.json didn't exist yet during Swarm Studio.
+      // Without this merge they'd be lost when finalize runs.
+      try {
+        const { readFile: rf, writeFile: wf } = await import("node:fs/promises");
+        const sidecarPath = join(getOnboardingDir(parsed.data.companyId), "template_additions.json");
+        const sidecarRaw = await rf(sidecarPath, "utf8").catch(() => null);
+        if (sidecarRaw) {
+          const sidecar = JSON.parse(sidecarRaw) as { template_additions?: Array<unknown> };
+          if (Array.isArray(sidecar.template_additions) && sidecar.template_additions.length > 0) {
+            (result.manifest as { template_additions?: Array<unknown> }).template_additions =
+              sidecar.template_additions;
+            const manifestPath = join(getOnboardingDir(parsed.data.companyId), "company.manifest.json");
+            await wf(manifestPath, JSON.stringify(result.manifest, null, 2), "utf8");
+          }
+        }
+      } catch { /* sidecar merge is best-effort; finalize must not fail because of it */ }
+
       return {
         ok: true,
         manifest: result.manifest,
