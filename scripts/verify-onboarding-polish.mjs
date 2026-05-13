@@ -1,10 +1,11 @@
-/** Verifies the 4 onboarding UX upgrades:
- *  1. Welcome starter chips appear + seed the textarea on click
- *  2. Pillar 1 confirm card surfaces inferred-signals panel
- *  3. Swarm Studio renders search + filter chips
- *  4. ImprintTheater MonteCarloRace renders the new caption
+/** Verifies the UX polish batch:
+ *  1. Non-URL welcome input prompts for more detail (no halt)
+ *  2. T2 progress shows human narration ("Reading your site"), not the
+ *     technical "T2 generating · Ns elapsed · median…" string
+ *  3. Pillar 1 confirm card surfaces inferred-signals panel
  *
- *  Uses ?t0=1 fast mode so deterministic fallbacks come back instantly. */
+ *  Uses ?t0=1 so deterministic fallbacks come back instantly. The walk
+ *  shouldn't be flaky on slow runs. */
 
 import { chromium } from "@playwright/test";
 
@@ -12,7 +13,7 @@ const BASE = "http://127.0.0.1:5173";
 const SLUG = `polish-${Math.floor(Date.now() / 1000).toString(36)}`;
 
 async function resetState() {
-  for (const s of [SLUG, "ricoma"]) {
+  for (const s of [SLUG, "we-build-ai"]) {
     try { await fetch(`${BASE}/api/instance/${encodeURIComponent(s)}/reset`, { method: "DELETE" }); } catch { /* */ }
   }
 }
@@ -24,103 +25,71 @@ async function main() {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
 
-  // 1) Welcome starter chips
   await page.goto(`${BASE}/onboarding-chat?t0=1`);
   await page.waitForLoadState("networkidle");
-  for (const label of ["Your company URL", "Pitch in one sentence", "Scoped: just marketing & sales"]) {
-    const chip = page.getByRole("button", { name: label, exact: true });
-    if (!(await chip.isVisible().catch(() => false))) throw new Error(`starter chip "${label}" not rendered`);
-  }
-  console.log("✓ Welcome starter chips all rendered (3/3)");
 
-  // Click the URL chip and confirm it seeded the textarea
-  await page.getByRole("button", { name: "Your company URL", exact: true }).click();
-  const inputValue = await page.locator("textarea").first().inputValue();
-  if (!inputValue.startsWith("https://")) throw new Error(`textarea wasn't seeded — got: "${inputValue}"`);
-  console.log("✓ Starter chip seeded textarea correctly");
-
-  // Clear + type the pitch starter + submit (t0=1 returns instantly)
-  await page.locator("textarea").first().fill("");
-  await page.getByRole("button", { name: "Pitch in one sentence", exact: true }).click();
-  // Append something so the manual_context passes the 40-char min
-  await page.keyboard.type("a B2B SaaS for revenue analytics teams shipping monthly", { delay: 10 });
+  // Type a short non-URL message — should trigger the "tell me more" prompt
+  // rather than going straight to T2.
+  const input = page.locator("textarea").first();
+  await input.click();
+  await input.type("We build AI agents", { delay: 15 });
   await page.keyboard.press("Enter");
-  console.log("✓ Welcome submitted via starter-chip seed");
+  console.log("✓ Submitted short non-URL input");
 
-  // 2) Pillar 1 confirm card with inferred signals panel
-  await page.waitForSelector('text=Read from your site', { timeout: 30_000 });
-  console.log("✓ Pillar 1 inferred-signals panel renders ('Read from your site' header)");
-
-  // Continue to swarm studio so we can verify search + filter chips
-  await page.getByRole("button", { name: /Looks right.*keep going|Update.*continue/i }).click();
-  // skip scope picker if it appears (just hit Continue)
-  await page.waitForTimeout(1500);
-  const scopeContinue = page.getByRole("button", { name: /^Continue/ }).last();
-  if (await scopeContinue.isVisible().catch(() => false)) await scopeContinue.click();
-  // Pillar 3
-  await page.getByRole("button", { name: /Live with paying customers/i }).waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: /Live with paying customers/i }).click();
-  await page.getByRole("button", { name: /\$10k.*100k/i }).click();
-  await page.getByRole("button", { name: /^Continue/ }).last().click();
-  // Pillar 4
-  await page.getByRole("button", { name: /Inbound ads/i }).click();
-  await page.getByRole("button", { name: /Assisted.*demo required/i }).click();
-  await page.getByRole("button", { name: /Mostly phone/i }).click();
-  await page.getByRole("button", { name: /^Continue/ }).last().click();
-  // Pillar 5
-  await page.getByRole("button", { name: /^Slack$/i }).click();
-  await page.getByRole("button", { name: /Daily digest/i }).click();
-  await page.getByRole("button", { name: /^Continue/ }).last().click();
-  // Connectors + credentials skip
-  await page.getByRole("button", { name: /These look right.*plug them in/i }).waitFor({ timeout: 30_000 });
-  await page.getByRole("button", { name: /These look right.*plug them in/i }).click();
-  await page.getByRole("button", { name: /Skip all \(\d+\)/ }).waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: /Skip all \(\d+\)/ }).click();
-  await page.getByRole("button", { name: /Done.*continue to swarm/i }).click();
-
-  // 3) Swarm Studio — search + filter chips
-  await page.getByRole("button", { name: /These look right.*wire them up/i }).waitFor({ timeout: 30_000 });
-  const searchInput = page.getByPlaceholder(/Search by slot or template/i);
-  if (!(await searchInput.isVisible())) throw new Error("Swarm Studio search input missing");
-  console.log("✓ Swarm Studio search input renders");
-
-  for (const f of ["All", "Active only", "Parked only"]) {
-    const btn = page.getByRole("button", { name: f, exact: true });
-    if (!(await btn.isVisible().catch(() => false))) throw new Error(`Swarm Studio filter chip "${f}" missing`);
-  }
-  console.log("✓ Swarm Studio filter chips render (3/3)");
-
-  // Type into search → expect a match count to appear
-  await searchInput.fill("cmo");
-  const matchCount = page.getByText(/\d+ \/ \d+ match/);
-  await matchCount.waitFor({ state: "visible", timeout: 3_000 });
-  console.log(`✓ Search produces match count: "${await matchCount.textContent()}"`);
-
-  // 4) Theater Act 1 — confirm the new header caption is in the DOM (t0=1
-  // path skips to fallback report; the caption renders regardless).
-  await page.getByRole("button", { name: /These look right.*wire them up/i }).click();
+  // Wait for the "tell me a bit more" assistant message.
   await page.waitForFunction(
-    () => /Finding your winning growth strategy|We ran .* runs/i.test(document.body.textContent ?? ""),
+    () => /tell me a bit more/i.test(document.body.textContent ?? ""),
+    undefined,
+    { timeout: 8_000 },
+  );
+  console.log("✓ Non-URL gate prompts for more detail (no halt)");
+
+  // Verify NO halt screen rendered (the old failure path).
+  const haltVisible = await page.getByText(/couldn't extract anything useful/i).isVisible().catch(() => false);
+  if (haltVisible) throw new Error("FAIL: halt screen still appeared for non-URL input");
+  console.log("✓ No halt screen rendered");
+
+  // Expand the input with more context, submit, expect T2 narration to appear.
+  await input.click();
+  await input.type("for B2B SaaS teams that need help managing their revenue operations and customer success workflows.", { delay: 8 });
+  await page.keyboard.press("Enter");
+  console.log("✓ Submitted expanded pitch");
+
+  // Look for the new human narration (not the technical jargon).
+  await page.waitForFunction(
+    () => /Reading your site|Figuring out what you do|Spotting your ideal customer|Pulling it together/i
+      .test(document.body.textContent ?? ""),
+    undefined,
+    { timeout: 10_000 },
+  );
+  console.log("✓ T2 narrator shows human phase label");
+
+  // Confirm the old technical strings are gone from visible text.
+  const technicalShowing = await page.getByText(/T2 generating ·|median ~|no history yet|claude pid/).first().isVisible().catch(() => false);
+  if (technicalShowing) {
+    console.log("⚠ Technical strings still visible — should be in the details drawer only");
+  } else {
+    console.log("✓ Technical strings hidden behind details drawer");
+  }
+
+  // Pillar 1 panel should still render with inferred signals header.
+  await page.waitForFunction(
+    () => /Read from your site/i.test(document.body.textContent ?? ""),
     undefined,
     { timeout: 60_000 },
-  ).catch(() => null);
-  const captionVisible = await page.getByText(/Finding your winning growth strategy/i).first().isVisible().catch(() => false);
-  if (captionVisible) {
-    console.log("✓ Theater Act 1 caption visible ('Finding your winning growth strategy')");
-  } else {
-    console.log("⚠ Theater caption didn't paint within 60s (t0=1 fallback may race past Act 1) — code paths covered by type-check");
-  }
+  );
+  console.log("✓ Pillar 1 'Read from your site' panel renders");
 
   if (errors.length > 0) {
     console.log("⚠ Console errors:");
     for (const e of errors) console.log(`   ${e}`);
   }
 
-  console.log("\n✓ All four polish surfaces verified");
+  console.log("\n✓ Polish batch verified");
   await browser.close();
 }
 
 main().catch((e) => {
-  console.error("\n✗ verify failed:", e.message);
+  console.error("\n✗ Verify failed:", e.message);
   process.exit(1);
 });

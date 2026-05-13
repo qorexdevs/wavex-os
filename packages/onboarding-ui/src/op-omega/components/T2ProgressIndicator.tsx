@@ -1,12 +1,9 @@
 /** T2 progress indicator — polls the wavex-claude-spawn.sh wrapper status
- *  to show REAL elapsed seconds + alive heartbeat instead of timer-based
- *  fake stages. Falls back to the static "Generating…" label if no wrapper
- *  status is available (e.g. apikey mode).
- *
- *  The wrapper writes start / 2s-heartbeat / complete events to
- *  ~/.wavex-os/state/inference-current.json when WAVEX_INFERENCE_TRACK=1
- *  (default in oauth/dev mode). The /api/inference/current endpoint surfaces
- *  it; we poll every 1500ms while `active`. */
+ *  to show REAL elapsed seconds + alive heartbeat. The visible label is a
+ *  human narrator ("Reading your site", "Mapping your industry", etc.)
+ *  driven by elapsed time so non-technical operators see what's happening
+ *  in their language. Technical detail (T2 phase code, PID, exact median
+ *  ETA, exit code) hides behind a small "•••" toggle for ops/dev. */
 
 import { useEffect, useState } from "react";
 
@@ -31,6 +28,8 @@ interface PhaseEta {
   is_default: boolean;
 }
 
+type PhaseKey = "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize";
+
 /** Map UI phase keys → server PhaseKey used by the eta endpoint. */
 const PHASE_TO_SERVER_KEY: Record<string, string> = {
   "pillar-1": "pillar_1",
@@ -40,18 +39,79 @@ const PHASE_TO_SERVER_KEY: Record<string, string> = {
   finalize: "finalize",
 };
 
+/** Per-phase activity narration table. The label rotates as elapsed time
+ *  crosses each `untilSec` threshold. These aren't guesses about what the
+ *  model is internally doing — they're honest human descriptions of what
+ *  the operator is waiting on, distributed across the median window.
+ *
+ *  Calibrated so the first label shows ~30% of the median, the middle two
+ *  cover the middle, and the last label sits at >85% until the call ends. */
+const PHASE_NARRATION: Record<PhaseKey, string[]> = {
+  "pillar-1": [
+    "Reading your site",
+    "Figuring out what you do",
+    "Spotting your ideal customer",
+    "Pulling it together",
+  ],
+  "phase-2": [
+    "Matching your stack",
+    "Picking the right integrations",
+    "Cross-checking what plugs in where",
+    "Almost ready",
+  ],
+  "phase-3": [
+    "Drafting your team",
+    "Wiring reporting lines",
+    "Setting heartbeats and budgets",
+    "Almost ready",
+  ],
+  "phase-4": [
+    "Mapping your daily routines",
+    "Tuning per-agent playbooks",
+    "Finalizing escalation rules",
+    "Almost ready",
+  ],
+  "finalize": [
+    "Running simulations",
+    "Picking your winning strategy",
+    "Writing your imprint",
+    "Signing the manifest",
+  ],
+};
+
+function narrationFor(phase: PhaseKey, elapsedSec: number, medianSec: number): string {
+  const table = PHASE_NARRATION[phase];
+  // Thresholds split the median into quartiles (30% / 60% / 85% / 100%).
+  // Past 100% of median we hold the last label rather than wrap.
+  const t1 = Math.max(8, medianSec * 0.30);
+  const t2 = Math.max(t1 + 5, medianSec * 0.60);
+  const t3 = Math.max(t2 + 5, medianSec * 0.85);
+  if (elapsedSec < t1) return table[0];
+  if (elapsedSec < t2) return table[1];
+  if (elapsedSec < t3) return table[2];
+  return table[3];
+}
+
+function humanRemaining(remainingSec: number): string {
+  if (remainingSec <= 0) return "wrapping up";
+  if (remainingSec < 10) return "a few seconds left";
+  if (remainingSec < 30) return "under 30 seconds";
+  if (remainingSec < 90) return "about a minute";
+  if (remainingSec < 180) return "a couple of minutes";
+  return "a few minutes";
+}
+
 export function T2ProgressIndicator({
   active, phase,
 }: {
   active: boolean;
-  phase: "phase-2" | "phase-3" | "phase-4" | "pillar-1" | "finalize";
+  phase: PhaseKey;
 }) {
   const [status, setStatus] = useState<InferenceStatus | null>(null);
   const [eta, setEta] = useState<PhaseEta | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
-  // Fetch the historical ETA once when this phase activates. Median + p90
-  // come from past T2 calls for the same phase across all companies (see
-  // packages/op-omega-server/src/lib/token-accounting.ts:getPhaseEta).
+  // Fetch the historical ETA once when this phase activates.
   useEffect(() => {
     if (!active) return;
     const serverPhase = PHASE_TO_SERVER_KEY[phase] ?? phase;
@@ -91,66 +151,133 @@ export function T2ProgressIndicator({
   const p90Sec = Math.max(etaSec, Math.round((eta?.p90_ms ?? etaSec * 1500) / 1000));
   const pct = Math.min(95, Math.round((elapsedSec / etaSec) * 100));
   const overP90 = elapsedSec > p90Sec;
-  const overEta = elapsedSec > etaSec;
   const remainingSec = Math.max(0, etaSec - elapsedSec);
 
-  // States we render distinctly:
   const isIdle = !status || status.idle;
   const isAlive = status?.alive && !status.stale;
   const isCompleted = status?.completed;
   const isStale = status?.stale;
 
-  // Suffix shows the source of the ETA so operators understand it's history-
-  // backed when samples > 0, or a default when not.
+  // Human-facing label — what's happening, in operator language.
+  let humanLabel: string;
+  let barColor = "var(--accent)";
+  let dotColor = "var(--accent)";
+  if (isCompleted) {
+    humanLabel = "Done";
+  } else if (isStale) {
+    humanLabel = "Looks stuck — checking on it";
+    barColor = "var(--warning)";
+    dotColor = "var(--warning)";
+  } else if (isAlive || isIdle) {
+    humanLabel = narrationFor(phase, elapsedSec, etaSec);
+    if (overP90) {
+      humanLabel = `${humanLabel} (taking longer than usual)`;
+      barColor = "var(--warning)";
+    }
+  } else {
+    humanLabel = "Working on it";
+  }
+
+  // Right-hand soft estimate. Hidden when stale or completed.
+  const rightSide = isCompleted ? `${elapsedSec}s`
+    : isStale ? ""
+    : humanRemaining(remainingSec);
+
+  // Server-side phase label (technical) used in the details drawer.
+  const serverPhaseLabel = PHASE_TO_SERVER_KEY[phase] ?? phase;
   const etaSrc = eta && !eta.is_default
     ? `from ${eta.samples} prior call${eta.samples === 1 ? "" : "s"}`
     : "default — no history yet";
 
-  let label: string;
-  let barColor = "var(--accent)";
-  if (isCompleted) {
-    label = `✓ T2 completed in ${elapsedSec}s`;
-    barColor = "var(--accent)";
-  } else if (isStale) {
-    label = `⚠ T2 process stale (no heartbeat in ${Math.floor((Date.now() - (status?.updated_at_ms ?? 0)) / 1000)}s)`;
-    barColor = "var(--warning)";
-  } else if (isAlive) {
-    if (overP90) {
-      label = `⟲ T2 generating · ${elapsedSec}s elapsed · taking longer than usual (>p90 ${p90Sec}s)`;
-      barColor = "var(--warning)";
-    } else if (overEta) {
-      label = `⟲ T2 generating · ${elapsedSec}s elapsed · ~${remainingSec}s above median (median ~${etaSec}s, ${etaSrc})`;
-    } else {
-      label = `⟲ T2 generating · ${elapsedSec}s elapsed · ~${remainingSec}s remaining (median ~${etaSec}s, ${etaSrc})`;
-    }
-  } else if (isIdle) {
-    label = `⟲ T2 starting… (~${etaSec}s expected)`;
-  } else {
-    label = `⟲ T2 generating…`;
-  }
-
   return (
     <div style={{
-      padding: "0.75rem",
+      padding: "0.75rem 0.85rem",
       background: "var(--bg)",
       border: `1px solid ${isStale ? "var(--warning)" : "var(--border)"}`,
-      borderRadius: 4,
+      borderRadius: 6,
       marginBottom: "1rem",
     }}>
-      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: "0.5rem", color: isStale ? "var(--warning)" : "var(--text-dim)" }}>
-        {label}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "0.6rem",
+        marginBottom: "0.5rem",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0, flex: 1 }}>
+          <span
+            aria-hidden
+            className={isAlive && !isCompleted ? "wavex-pulse-dot" : ""}
+            style={{
+              flex: "0 0 auto",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: dotColor,
+              boxShadow: isAlive && !isCompleted ? `0 0 8px ${dotColor}` : "none",
+            }}
+          />
+          <span style={{
+            fontSize: 13,
+            color: isStale ? "var(--warning)" : "var(--text)",
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            {humanLabel}
+          </span>
+        </div>
+        {rightSide && (
+          <span className="text-dim" style={{ fontSize: 12, flex: "0 0 auto" }}>
+            {rightSide}
+          </span>
+        )}
       </div>
-      <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", marginBottom: "0.25rem" }}>
+      <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
         <div style={{
           height: "100%",
-          width: `${pct}%`,
+          width: `${isCompleted ? 100 : pct}%`,
           background: barColor,
           transition: "width 0.5s ease-out",
         }} />
       </div>
-      {(isAlive || isCompleted) && status?.pid !== undefined && (
-        <div className="text-dim" style={{ fontSize: 10, marginTop: "0.25rem" }}>
-          claude pid {status.pid}{isCompleted && status?.exit_code !== undefined ? ` · exit ${status.exit_code}` : ""}
+
+      {/* Technical detail — collapsed by default, toggle via "•••" */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.4rem" }}>
+        <button
+          type="button"
+          onClick={() => setShowDetails((v) => !v)}
+          aria-label={showDetails ? "Hide technical detail" : "Show technical detail"}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--text-dim)",
+            fontSize: 11,
+            cursor: "pointer",
+            padding: "0.1rem 0.3rem",
+            letterSpacing: "0.1em",
+          }}
+        >
+          {showDetails ? "− hide" : "•••"}
+        </button>
+      </div>
+      {showDetails && (
+        <div className="text-dim" style={{
+          fontSize: 10,
+          marginTop: "0.25rem",
+          lineHeight: 1.55,
+          fontFamily: "ui-monospace, SF Mono, monospace",
+        }}>
+          <div>phase: {serverPhaseLabel}</div>
+          <div>elapsed: {elapsedSec}s · remaining: ~{remainingSec}s</div>
+          <div>median: {etaSec}s · p90: {p90Sec}s · {etaSrc}</div>
+          {status?.pid !== undefined && (
+            <div>
+              claude pid {status.pid}
+              {isCompleted && status?.exit_code !== undefined ? ` · exit ${status.exit_code}` : ""}
+            </div>
+          )}
         </div>
       )}
     </div>

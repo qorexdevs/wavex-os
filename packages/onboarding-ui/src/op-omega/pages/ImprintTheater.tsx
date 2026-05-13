@@ -247,18 +247,36 @@ function ImprintAct({ companyId, manifest, workflowManifest, sha256, source, sho
   const [refineMode, setRefineMode] = useState(false);
   const [showWorkflow, setShowWorkflow] = useState(false);
   return (
-    <div style={{ maxWidth: 760, width: "100%", display: "flex", flexDirection: "column", gap: "1.25rem", alignItems: "center" }}>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
-        Your imprint {source === "fallback" && <span style={{ color: "var(--warning)" }}>(quick draft)</span>}
+    <div style={{ maxWidth: 720, width: "100%", display: "flex", flexDirection: "column", gap: "1.5rem", alignItems: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.35rem" }}>
+        <div style={{
+          fontSize: 11,
+          color: "var(--text-dim)",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+          fontWeight: 600,
+        }}>
+          Your imprint
+        </div>
+        {source === "fallback" && (
+          <span style={{ color: "var(--warning)", fontSize: 11 }}>(quick draft)</span>
+        )}
       </div>
       <div style={{
-        fontSize: 15,
-        lineHeight: 1.6,
+        fontSize: 16,
+        lineHeight: 1.75,
         color: "var(--text)",
-        padding: "0 0.5rem",
+        padding: "0 0.25rem",
         wordBreak: "break-word",
         overflowWrap: "anywhere",
         width: "100%",
+        // White-space pre-line so paragraph breaks ('\n\n') in the imprint
+        // render with proper spacing instead of collapsing to a wall.
+        whiteSpace: "pre-line",
+        // A subtle left rail visually separates the imprint from the buttons
+        // below and signals "this is the artifact."
+        borderLeft: "2px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+        paddingLeft: "1.25rem",
       }}>
         {/* key forces StreamingText to remount when the imprint changes
          *  (e.g. operator applied a refinement that regenerated the imprint),

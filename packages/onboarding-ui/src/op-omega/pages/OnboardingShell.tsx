@@ -49,6 +49,21 @@ function deriveSlug(rawInput: string): string {
   return slugifyCompanyId(words || "company");
 }
 
+/** Does the welcome input contain a URL-shaped token? Used to decide
+ *  whether to send it to Pillar 1 as `raw_input` (the server will fetch
+ *  and read the site) or treat it as a self-described pitch (manual_context,
+ *  no URL fetch). Without this gate, typing something like "we build AI
+ *  agents" trips a halt screen because the server tries to fetch it as
+ *  a URL and fails. */
+function inputLooksLikeUrl(text: string): boolean {
+  return /(?:https?:\/\/)?[a-z0-9-]+\.[a-z]{2,}/i.test(text);
+}
+
+/** Minimum chars required by Pillar 1's manual_context validator. Mirrors
+ *  the server-side schema; doing the check on the client lets us nudge the
+ *  operator for more detail before submitting (better UX than a 400). */
+const MANUAL_CONTEXT_MIN_CHARS = 40;
+
 export function OnboardingShell() {
   const { companyId, setCompanyId } = useCompany();
   const qc = useQueryClient();
@@ -62,6 +77,10 @@ export function OnboardingShell() {
   // phase to whatever's next. Operators get a sense of "I'm picking up at
   // the right place" instead of a wall of nothing.
   const seededRef = useRef(false);
+  // Buffers a short non-URL welcome message while we wait for the operator
+  // to expand it. When their next message arrives, we concatenate before
+  // submitting so their first attempt isn't lost.
+  const pendingPitchRef = useRef<string | null>(null);
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
@@ -262,11 +281,44 @@ export function OnboardingShell() {
     if (!trimmed) return;
 
     if (state.phase.kind === "welcome") {
-      const slug = deriveSlug(trimmed);
+      const hasUrl = inputLooksLikeUrl(trimmed);
       dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
-      dispatch({ type: "WELCOME_SUBMIT", rawInput: trimmed });
+
+      // Non-URL path: accumulate pitch fragments until we have enough for
+      // a useful T2 call. Each new submission appends to the buffer (with
+      // " — " separator) so the operator's earlier attempts are never
+      // dropped. URL inputs short-circuit this and submit straight through.
+      const accumulated = !hasUrl && pendingPitchRef.current
+        ? `${pendingPitchRef.current} — ${trimmed}`
+        : trimmed;
+
+      if (!hasUrl && accumulated.length < MANUAL_CONTEXT_MIN_CHARS) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            role: "assistant",
+            text: "Got it — tell me a bit more so I can sketch the right team. What do you build, who buys it, and where are you in the journey? (Even one or two sentences works.)",
+          },
+        });
+        pendingPitchRef.current = accumulated;
+        return;
+      }
+
+      // Have enough now (URL or accumulated pitch). Clear buffer and submit.
+      const slug = deriveSlug(accumulated);
+      pendingPitchRef.current = null;
+      dispatch({ type: "WELCOME_SUBMIT", rawInput: accumulated });
       setCompanyId(slug);
-      await runPillar1(slug, trimmed);
+
+      if (hasUrl) {
+        // URL path: server fetches the site, no manual_context needed.
+        await runPillar1(slug, accumulated);
+      } else {
+        // Pitch path: skip URL fetch entirely by passing the input as
+        // manual_context and raw_input="no product yet" (the upstream
+        // convention for pre-product / self-described entries).
+        await runPillar1(slug, "no product yet", accumulated);
+      }
       return;
     }
 
@@ -917,11 +969,7 @@ interface SlotContext {
 
 function ChatThread({ thread, slotContext, onUncollapse }: { thread: ChatMessage[]; slotContext: SlotContext; onUncollapse: (id: string) => void }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [thread.length, thread[thread.length - 1]?.text, thread[thread.length - 1]?.collapsed]);
+  const activeRef = useRef<HTMLDivElement | null>(null);
 
   // The most recent bubble that carries an interactive slot AND isn't yet
   // collapsed is the "active" card — gets a subtle accent border + glow so
@@ -935,6 +983,21 @@ function ChatThread({ thread, slotContext, onUncollapse }: { thread: ChatMessage
     return -1;
   })();
 
+  // Keep the active card in the viewport's natural sight line as the thread
+  // grows. Without this, new content pins to the bottom edge of the
+  // container and the operator has to read up to find the live card.
+  // Falls back to scroll-to-bottom when no active card exists (e.g.,
+  // assistant-only chitchat).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (activeRef.current && activeIdx >= 0) {
+      activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [thread.length, thread[thread.length - 1]?.text, thread[thread.length - 1]?.collapsed, activeIdx]);
+
   return (
     <div
       ref={scrollRef}
@@ -945,9 +1008,18 @@ function ChatThread({ thread, slotContext, onUncollapse }: { thread: ChatMessage
       }}
     >
       <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {thread.map((m, i) => (
-          <ChatBubble key={m.id} message={m} slotContext={slotContext} active={i === activeIdx} onUncollapse={onUncollapse} />
-        ))}
+        {thread.map((m, i) => {
+          const isActive = i === activeIdx;
+          return (
+            <div key={m.id} ref={isActive ? activeRef : null}>
+              <ChatBubble message={m} slotContext={slotContext} active={isActive} onUncollapse={onUncollapse} />
+            </div>
+          );
+        })}
+        {/* Tail spacer — keeps the active card centerable even when it's the
+         *  last item in the thread (otherwise scrollIntoView block:center
+         *  can't move past the container's natural bottom). */}
+        <div style={{ height: "30vh", flex: "0 0 auto" }} aria-hidden />
       </div>
     </div>
   );

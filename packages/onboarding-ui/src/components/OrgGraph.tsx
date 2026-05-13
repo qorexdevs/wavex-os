@@ -76,6 +76,23 @@ function statusColor(status: OrgAgentStatus): string {
   return "var(--text-dim)";
 }
 
+/** Outer box-shadow glow for each node, colored by status. Replaces the
+ *  status dot in the corner — easier to scan because the whole card
+ *  "lights up" rather than the operator hunting for a 6px circle. */
+function statusGlow(status: OrgAgentStatus): string {
+  if (status === "active" || status === "ready") {
+    return "0 0 0 1px rgba(78, 201, 176, 0.45), 0 0 14px rgba(78, 201, 176, 0.28)";
+  }
+  if (status === "spawning") {
+    return "0 0 0 1px rgba(232, 178, 90, 0.4), 0 0 12px rgba(232, 178, 90, 0.22)";
+  }
+  if (status === "disabled" || status === "failed") {
+    return "0 0 0 1px rgba(232, 90, 100, 0.4), 0 0 10px rgba(232, 90, 100, 0.2)";
+  }
+  // standby / parked / pending — no glow, just the dimmed border
+  return "none";
+}
+
 const NODE_W = 180;
 const NODE_H = 64;
 
@@ -87,7 +104,6 @@ function makeNode(
   opts: { dimmedByFilter?: boolean; hoverTitle?: string } = {},
 ): Node {
   const tpl = TEMPLATES_BY_ID[a.templateId];
-  const dotColor = statusColor(a.status);
   const origin = originLabel(tpl?.origin);
   const displayName = templateIdToDisplayName(a.templateId);
   // Inactive agents (parked/disabled/failed) render dimmer so the scope
@@ -97,6 +113,9 @@ function makeNode(
   const dimByStatus = a.status === "parked" || a.status === "disabled" || a.status === "failed";
   const dimByFilter = opts.dimmedByFilter === true;
   const finalOpacity = dimByFilter ? 0.15 : dimByStatus ? 0.4 : 1;
+  // Glow is suppressed when filter-dimmed so an unselected match doesn't
+  // distract from the active filter set.
+  const glow = dimByFilter ? "none" : statusGlow(a.status);
   return {
     id: a.id,
     position: { x, y },
@@ -106,11 +125,6 @@ function makeNode(
           style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35, opacity: finalOpacity, transition: "opacity 0.18s ease-out" }}
           title={opts.hoverTitle}
         >
-          <div style={{
-            position: "absolute", top: 6, right: 6,
-            width: 6, height: 6, borderRadius: "50%",
-            background: dotColor,
-          }} />
           <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text)" }}>
             {displayName}
           </div>
@@ -129,6 +143,8 @@ function makeNode(
       borderRadius: 6,
       width: NODE_W,
       padding: 0,
+      boxShadow: glow,
+      transition: "box-shadow 0.25s ease-out",
       // NB: do NOT set `position: relative` here — it overrides reactflow's
       // `position: absolute` rule and breaks node layout (every node ends up
       // stacking vertically in normal flow instead of being positioned by
@@ -187,14 +203,21 @@ function buildLayout(
   const Y_T2 = NODE_H + T1_T2_GAP;
   const Y_T3 = Y_T2 + NODE_H + T2_T3_GAP;
 
-  // Tier 1 (CEO + any kernel agents like Chief of Staff) — lay out in a
-  // row at the top, centered. With one tier-1 agent the row sits at x=0;
-  // with two it spreads them ±NODE_W so they're visible side-by-side.
-  const t1Width = tier1.length * NODE_W + Math.max(0, tier1.length - 1) * COL_GAP;
-  const t1StartX = -t1Width / 2 + NODE_W / 2;
-  tier1.forEach((agent, i) => {
-    const x = t1StartX + i * (NODE_W + COL_GAP);
-    nodes.push(makeNode(agent, x, Y_T1, 1, nodeOpts(agent)));
+  // Tier 1 placement: identify the primary CEO and anchor it at x=0. Any
+  // kernel companions (Chief of Staff, Recovery Engineer) drop just below
+  // and slightly right of the CEO so they read visually as the CEO's
+  // "right hand" rather than as a sibling-row peer. Avoids the 2025-05
+  // bug where CoS rendered on the far right and looked orphaned.
+  const primaryCeo = tier1.find((a) => a.slot === "ceo.orchestrator" || a.slot === "ceo")
+    ?? tier1[0];
+  const kernelCompanions = tier1.filter((a) => a !== primaryCeo);
+  if (primaryCeo) {
+    nodes.push(makeNode(primaryCeo, 0, Y_T1, 1, nodeOpts(primaryCeo)));
+  }
+  const Y_KERNEL = Y_T1 + Math.round((NODE_H + T1_T2_GAP) * 0.45);
+  kernelCompanions.forEach((agent, i) => {
+    const x = NODE_W * 1.15 + i * (NODE_W + COL_GAP);
+    nodes.push(makeNode(agent, x, Y_KERNEL, 1, nodeOpts(agent)));
   });
 
   // Tier 2 chiefs + their tier-3 children stacked below.
