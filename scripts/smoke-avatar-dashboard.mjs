@@ -17,6 +17,12 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // Phase 7-B — pre-dismiss the coachmark walkthrough so the existing
+  // selectors aren't blocked by the overlay.
+  await page.addInitScript(() => {
+    localStorage.setItem("coachmark-avatar-v1", "1");
+    localStorage.setItem("coachmark-mission-v1", "1");
+  });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (msg) => {

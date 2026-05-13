@@ -321,6 +321,20 @@ export const opOmegaOnboardingApi = {
       } | null;
     }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/trust`),
 
+  // Phase 7-C — edit profile fields after onboarding. All optional.
+  updateAvatarProfile: (
+    avatarId: string,
+    fields: { name?: string; role?: string; workingHours?: [string, string]; tz?: string },
+  ) =>
+    call<{
+      ok: true;
+      profile: { name: string; role: string; working_hours: [string, string]; tz: string; created_at: string };
+    }>("PATCH", `/api/avatar/${encodeURIComponent(avatarId)}/profile`, fields),
+
+  // Phase 7-C — delete the entire avatar record on disk.
+  deleteAvatar: (avatarId: string) =>
+    call<{ ok: true; removed: string }>("DELETE", `/api/avatar/${encodeURIComponent(avatarId)}`),
+
   graduateAvatar: (avatarId: string) =>
     call<{
       ok: true;

@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../op-omega/lib/api";
 import { humanizeBadge, humanizeAction, humanizeRunResult } from "../op-omega/lib/humanize";
+import { CoachmarkOverlay, type CoachmarkStep } from "../op-omega/components/Coachmark";
+import { useCoachmark } from "../op-omega/lib/coachmarks";
 
 interface Avatar {
   avatarId: string;
@@ -47,6 +49,41 @@ export function AvatarDashboard() {
   const [avatar, setAvatar] = useState<Avatar | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
+  // Phase 7-B — first-run coachmark walkthrough. Dismissed via a
+  // localStorage flag; once set, never shown again on this device.
+  const tour = useCoachmark("coachmark-avatar-v1");
+  const tourSteps: CoachmarkStep[] = useMemo(() => [
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='avatar-inbox-tab']"),
+      title: "Your approval inbox",
+      body: "This is where I leave drafts for you. Approve, edit, or reject — every choice teaches me your style.",
+      onEnter: () => setTab("inbox"),
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='avatar-run-menu']"),
+      title: "Bring me up to date anytime",
+      body: "Click 'Process now' to read fresh mail, review pending invites, or sweep Slack mentions. By default I run every 15 minutes on my own.",
+      onEnter: () => setTab("inbox"),
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='avatar-autonomy-chip']"),
+      title: "Trust me with more over time",
+      body: "Right now I wait for your approval on every draft. When you're comfortable with the quality, click here to graduate me one level.",
+      onEnter: () => setTab("inbox"),
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='avatar-memory-tab']"),
+      title: "Patterns I learn from you",
+      body: "When you approve and tweak drafts, I notice patterns and turn them into rules I apply to every future draft. Check this tab to see what I've picked up.",
+      onEnter: () => setTab("memory"),
+    },
+    {
+      target: () => document.querySelector<HTMLElement>("[data-tour='avatar-kill-switch']"),
+      title: "Stop me anytime",
+      body: "Pause any skill — Gmail, Slack, Calendar — with a single click. Nothing irreversible. Flip it back on when you're ready.",
+      onEnter: () => setTab("inbox"),
+    },
+  ], []);
 
   useEffect(() => {
     if (!id) return;
@@ -97,6 +134,9 @@ export function AvatarDashboard() {
           avatar <code>{avatar.avatarId}</code>
         </div>
       </div>
+      {!tour.dismissed && (
+        <CoachmarkOverlay steps={tourSteps} onDone={tour.dismiss} />
+      )}
     </Shell>
   );
 }
@@ -127,12 +167,26 @@ function Header({ avatar }: { avatar: Avatar }) {
           {avatar.profile!.tz}
         </div>
       </div>
-      <Link to="/" style={{
-        padding: "0.4rem 0.8rem", borderRadius: 6, border: "1px solid var(--border)",
-        color: "var(--text-dim)", textDecoration: "none", fontSize: 12,
-      }}>
-        Mission Control →
-      </Link>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <Link
+          to={`/avatar/${avatar.avatarId}/settings`}
+          title="Settings"
+          aria-label="Avatar settings"
+          style={{
+            padding: "0.4rem 0.6rem", borderRadius: 6, border: "1px solid var(--border)",
+            color: "var(--text-dim)", textDecoration: "none", fontSize: 14,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          ⚙
+        </Link>
+        <Link to="/" style={{
+          padding: "0.4rem 0.8rem", borderRadius: 6, border: "1px solid var(--border)",
+          color: "var(--text-dim)", textDecoration: "none", fontSize: 12,
+        }}>
+          Mission Control →
+        </Link>
+      </div>
     </header>
   );
 }
@@ -153,6 +207,7 @@ function Tabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
           key={t.id}
           type="button"
           onClick={() => setTab(t.id)}
+          data-tour={t.id === "inbox" ? "avatar-inbox-tab" : t.id === "memory" ? "avatar-memory-tab" : undefined}
           style={{
             padding: "0.55rem 0.9rem",
             background: "transparent",
@@ -395,6 +450,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
           {preset && (
             <button
               type="button"
+              data-tour="avatar-autonomy-chip"
               onClick={() => void graduate()}
               disabled={graduating || preset === "aggressive"}
               title={
@@ -422,14 +478,16 @@ function InboxTab({ avatarId }: { avatarId: string }) {
                     : "I send confident replies — fully trusted"}
             </button>
           )}
-          <RunMenu skills={skills} disabled={running} onRun={(skill) => void triggerRun(skill)} />
+          <div data-tour="avatar-run-menu">
+            <RunMenu skills={skills} disabled={running} onRun={(skill) => void triggerRun(skill)} />
+          </div>
           {running && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Running…</span>}
         </div>
         {runMessage && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.6rem" }}>{runMessage}</div>}
       </section>
 
       {skills.length > 0 && (
-        <section style={{ ...card, padding: "0.7rem 1rem" }}>
+        <section data-tour="avatar-kill-switch" style={{ ...card, padding: "0.7rem 1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginRight: "0.5rem" }}>
               Skills

@@ -11,6 +11,12 @@ const BASE = "http://127.0.0.1:5173";
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // Phase 7-B — pre-dismiss the coachmark walkthroughs so they don't
+  // intercept the post-finalize "Dashboard sections render" assertion.
+  await page.addInitScript(() => {
+    localStorage.setItem("coachmark-avatar-v1", "1");
+    localStorage.setItem("coachmark-mission-v1", "1");
+  });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
 

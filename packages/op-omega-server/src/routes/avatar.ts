@@ -368,6 +368,16 @@ const finalizeSchema = z.object({
   enabledAutomationIds: z.array(z.string()).default([]),
 });
 
+// Phase 7-C — edit-profile schema. Every field optional so the settings
+// page can save just what changed. created_at + identity are preserved
+// on the server side.
+const editProfileSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  role: z.string().min(1).max(120).optional(),
+  workingHours: z.tuple([z.string().regex(/^\d{2}:\d{2}$/), z.string().regex(/^\d{2}:\d{2}$/)]).optional(),
+  tz: z.string().min(1).max(60).optional(),
+});
+
 // Phase 3 — Trust & boundaries step. Captures autonomy preset, VIP table,
 // privacy zones, and notification preferences. Written to trust.json.
 // The runner reads this defensively (absent → existing behavior).
@@ -613,6 +623,44 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       voice,
       automations,
     };
+  });
+
+  // Phase 7-C — partial edit of profile fields after onboarding.
+  // Preserves created_at and any unspecified fields. Returns the merged
+  // profile so the dashboard can refresh from one response.
+  app.patch<{ Params: { id: string } }>("/api/avatar/:id/profile", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const id = req.params.id;
+    const dir = avatarDir(id);
+    if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+    const parsed = editProfileSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    const current = await readJson<AvatarProfile>(join(dir, "profile.json"));
+    if (!current) return reply.status(404).send({ error: "profile.json missing — re-run onboarding" });
+    const next: AvatarProfile = {
+      ...current,
+      ...(parsed.data.name != null ? { name: parsed.data.name } : {}),
+      ...(parsed.data.role != null ? { role: parsed.data.role } : {}),
+      ...(parsed.data.workingHours != null ? { working_hours: parsed.data.workingHours } : {}),
+      ...(parsed.data.tz != null ? { tz: parsed.data.tz } : {}),
+    };
+    await writeJson(join(dir, "profile.json"), next);
+    return { ok: true, profile: next };
+  });
+
+  // Phase 7-C — delete the avatar's entire on-disk record. Idempotent:
+  // returns ok even if the directory is already gone. The mirrored
+  // Paperclip company is intentionally left intact — operator can clean
+  // that up via the existing reset-company route if desired.
+  app.delete<{ Params: { id: string } }>("/api/avatar/:id", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const id = req.params.id;
+    const dir = avatarDir(id);
+    if (existsSync(dir)) {
+      const { rm } = await import("node:fs/promises");
+      await rm(dir, { recursive: true, force: true });
+    }
+    return { ok: true, removed: id };
   });
 
   // Manually trigger inbox-triage runner (dev surface; in prod the
