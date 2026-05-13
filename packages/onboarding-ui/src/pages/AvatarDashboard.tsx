@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { opOmegaOnboardingApi, ApiError } from "../op-omega/lib/api";
+import { humanizeBadge, humanizeAction, humanizeRunResult } from "../op-omega/lib/humanize";
 
 interface Avatar {
   avatarId: string;
@@ -142,7 +143,7 @@ function Tabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const TABS: Array<{ id: Tab; label: string }> = [
     { id: "overview", label: "Overview" },
     { id: "inbox", label: "Approval inbox" },
-    { id: "memory", label: "Memory" },
+    { id: "memory", label: "What it's learned" },
     { id: "audit", label: "Audit log" },
   ];
   return (
@@ -364,15 +365,15 @@ function InboxTab({ avatarId }: { avatarId: string }) {
     try {
       if (skill === "gmail" || skill === "outlook") {
         const r = await opOmegaOnboardingApi.runAvatarMailTriage(avatarId, skill);
-        setRunMessage(`${skill}: ${r.result.processed} processed · ${r.result.drafted} drafted · ${r.result.approvalsCreated} queued`);
+        setRunMessage(humanizeRunResult(skill, r.result));
       } else if (skill === "google_calendar" || skill === "microsoft_calendar") {
         const r = await opOmegaOnboardingApi.runAvatarCalendarTriage(avatarId, skill);
-        setRunMessage(`${skill}: ${r.result.processed} invites · ${r.result.approvalsCreated} queued`);
+        setRunMessage(humanizeRunResult(skill, r.result));
       } else if (skill === "slack") {
         const r = await opOmegaOnboardingApi.runAvatarSlackDigest(avatarId);
-        setRunMessage(`slack: ${r.result.processed} mentions · ${r.result.approvalsCreated} queued`);
+        setRunMessage(humanizeRunResult(skill, r.result));
       } else {
-        setRunMessage(`No runner wired for "${skill}" yet.`);
+        setRunMessage(`I haven't been taught to run "${skill}" yet.`);
       }
       await refresh();
     } catch (e) {
@@ -396,7 +397,13 @@ function InboxTab({ avatarId }: { avatarId: string }) {
               type="button"
               onClick={() => void graduate()}
               disabled={graduating || preset === "aggressive"}
-              title={preset === "aggressive" ? "Maxed out" : `Graduate to ${preset === "cautious" ? "balanced" : "aggressive"}`}
+              title={
+                preset === "cautious"
+                  ? "Right now I wait for your approval on every draft. Click to let me handle obvious FYI mail on my own."
+                  : preset === "balanced"
+                    ? "Right now I clear obvious FYI on my own. Click to let me send confident replies on your behalf too."
+                    : "Maxed out — I send confident replies on my own; you still review anything I'm unsure about."
+              }
               style={{
                 padding: "0.35rem 0.7rem",
                 borderRadius: 999,
@@ -404,10 +411,15 @@ function InboxTab({ avatarId }: { avatarId: string }) {
                 background: preset === "aggressive" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
                 color: preset === "aggressive" ? "var(--accent)" : "var(--text-dim)",
                 fontSize: 11, fontWeight: 600, cursor: graduating || preset === "aggressive" ? "default" : "pointer",
-                textTransform: "capitalize",
               }}
             >
-              {graduating ? "Graduating…" : preset === "aggressive" ? `Autonomy: ${preset}` : `Autonomy: ${preset} — graduate?`}
+              {graduating
+                ? "Trusting more…"
+                : preset === "cautious"
+                  ? "I wait for your approval — trust me with more?"
+                  : preset === "balanced"
+                    ? "I clear FYI on my own — trust me with more?"
+                    : "I send confident replies — fully trusted"}
             </button>
           )}
           <RunMenu skills={skills} disabled={running} onRun={(skill) => void triggerRun(skill)} />
@@ -548,10 +560,10 @@ function ApprovalCard({
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
         {tag && (
           <span style={{
-            padding: "0.1rem 0.45rem", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
-            textTransform: "uppercase", color: tagColor, border: `1px solid ${tagColor}`, borderRadius: 999,
+            padding: "0.1rem 0.5rem", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+            color: tagColor, border: `1px solid ${tagColor}`, borderRadius: 999,
           }}>
-            {tag}
+            {humanizeBadge(kind, tag)}
           </span>
         )}
         <span style={{
@@ -717,12 +729,14 @@ function AuditTab({ avatarId }: { avatarId: string }) {
             <span style={{ color: "var(--text-dim)", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 10 }}>
               {new Date(e.createdAt).toLocaleString()}
             </span>
-            <span style={{ color: "var(--text)" }}>
-              <code style={{ color: "var(--accent)", marginRight: "0.5rem" }}>{e.action}</code>
-              <span className="text-dim">{e.entityType} <code>{e.entityId.slice(0, 16)}…</code></span>
+            <span style={{ color: "var(--text)" }} title={e.action}>
+              {humanizeAction(e.action, e.details)}
+              <span className="text-dim" style={{ fontSize: 10, marginLeft: "0.5rem" }}>
+                {e.entityType}
+              </span>
             </span>
             <span style={{ color: "var(--text-dim)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {e.actorType}
+              {e.actorType === "user" ? "you" : e.actorType}
             </span>
           </li>
         ))}
@@ -761,8 +775,8 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
     try {
       const r = await opOmegaOnboardingApi.distillAvatarMemory(avatarId);
       setDistillMsg(r.count > 0
-        ? `Learned ${r.count} new rule${r.count === 1 ? "" : "s"}.`
-        : "No new rules — your recent activity didn't surface a confident pattern yet.");
+        ? `Picked up ${r.count} new pattern${r.count === 1 ? "" : "s"}.`
+        : "Nothing new yet — keep approving and tweaking; patterns will appear here.");
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -778,10 +792,10 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
       <section style={{ ...card, padding: "0.85rem 1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.85rem", flexWrap: "wrap" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-            What I've learned
+            Patterns from your decisions
           </div>
           <span className="text-dim" style={{ fontSize: 11 }}>
-            {preferences.length} active rule{preferences.length === 1 ? "" : "s"} · {episodic.length} recent event{episodic.length === 1 ? "" : "s"}
+            {preferences.length} rule{preferences.length === 1 ? "" : "s"} from you · {episodic.length} recent decision{episodic.length === 1 ? "" : "s"}
           </span>
           <div style={{ flex: 1 }} />
           <button
@@ -795,7 +809,7 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
               fontSize: 12, cursor: distilling ? "wait" : "pointer",
             }}
           >
-            {distilling ? "Re-distilling…" : "Re-distill from recent activity"}
+            {distilling ? "Looking…" : "Find new patterns"}
           </button>
         </div>
         {distillMsg && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.5rem" }}>{distillMsg}</div>}
@@ -803,11 +817,12 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
       </section>
 
       <section style={card}>
-        <SectionTitle>Active preferences</SectionTitle>
+        <SectionTitle>Rules from you</SectionTitle>
         {preferences.length === 0 ? (
           <p className="text-dim" style={{ margin: 0, fontSize: 12 }}>
-            No preferences distilled yet. Decide a few approvals (especially with edits) and click
-            <em> Re-distill</em> — your avatar will produce rules it then applies to every future draft.
+            Once you approve and tweak a few drafts, your avatar starts noticing patterns. Click
+            <em> Find new patterns</em> to scan recent activity and surface rules it will then
+            apply to every future draft.
           </p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
@@ -832,7 +847,7 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
 
       <section style={{ ...card, padding: 0 }}>
         <div style={{ padding: "0.7rem 1rem", borderBottom: "1px solid var(--border)" }}>
-          <SectionTitle>Recent operator events</SectionTitle>
+          <SectionTitle>Your recent decisions</SectionTitle>
         </div>
         {episodic.length === 0 ? (
           <p className="text-dim" style={{ margin: 0, padding: "0.85rem 1rem", fontSize: 12 }}>
@@ -908,7 +923,7 @@ function RunMenu({
           fontSize: 12, cursor: disabled ? "wait" : "pointer",
         }}
       >
-        Run triage ▾
+        Process now ▾
       </button>
       {open && (
         <div

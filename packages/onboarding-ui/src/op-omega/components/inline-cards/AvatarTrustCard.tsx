@@ -91,9 +91,9 @@ export function AvatarTrustCard({ avatarId, onDone }: Props) {
           value={preset}
           onChange={setPreset}
           options={[
-            { value: "cautious", label: "Cautious", description: "Every draft holds for approval. Recommended for week one." },
-            { value: "balanced", label: "Balanced", description: "Auto-approve FYI drafts at confidence ≥ 0.9. Now and Soon still hold." },
-            { value: "aggressive", label: "Aggressive", description: "Auto-send Now + Soon at confidence ≥ 0.85. Lower-confidence still holds." },
+            { value: "cautious", label: "Cautious", description: "Every draft waits for your approval. Recommended for the first week so you can see what I'm doing." },
+            { value: "balanced", label: "Balanced", description: "I clear obvious FYI mail on my own when I'm very confident. Anything that needs a reply still waits for you." },
+            { value: "aggressive", label: "Aggressive", description: "I send replies on your behalf when I'm mostly sure. You still review anything I'm unsure about." },
           ]}
         />
       </div>
