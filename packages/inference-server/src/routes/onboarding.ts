@@ -25,6 +25,7 @@ import { createClient } from "@supabase/supabase-js";
 import { incrementCounter, getCounter, setAdd } from "../lib/rate-limit.js";
 import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
 import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
+import { prefetchUrlsInPrompt } from "../lib/url-prefetch.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -233,6 +234,29 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
       const chosenModel = model ?? DEFAULT_MODEL;
       const maxOut = Math.min(max_output_tokens ?? 4000, MAX_OUTPUT_TOKENS_HARD);
 
+      // Grounding: server-side fetch any URLs in the prompt and inject the
+      // actual page text as [FETCHED] blocks. Without this Claude has no
+      // fetch tool when called via raw messages.create and either says
+      // "Could not fetch:" or — worse, given the vendored Pillar-1 prompt's
+      // "essentially always enough" directive — hallucinates a plausible
+      // company that doesn't match the customer's real site. This was the
+      // root cause of "I entered my real URL and the wizard described a
+      // totally different company in another country." With the fetched
+      // body inline, Claude is grounded in actual page content.
+      let groundedPrompt = prompt;
+      try {
+        const r = await prefetchUrlsInPrompt(prompt);
+        groundedPrompt = r.prompt;
+        if (r.results.length > 0) {
+          req.log.info({ urls: r.results.map((x) => ({ url: x.url, status: x.status, reason: x.reason })) }, "url_prefetch");
+        }
+      } catch (e) {
+        // Pre-fetch is best-effort. If it fails we fall back to the raw
+        // prompt — Claude will likely say "Could not fetch:" rather than
+        // invent content because we no longer rely on its memory.
+        req.log.warn({ err: e }, "url_prefetch_failed");
+      }
+
       try {
         let respId: string;
         let content: string;
@@ -247,7 +271,7 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
           const r = await callAnthropicOAuth({
             model: chosenModel,
             max_tokens: maxOut,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: groundedPrompt }],
           });
           respId = r.id;
           content = r.content.map((c) => (c.type === "text" ? (c as { text: string }).text : "")).join("");
@@ -257,7 +281,7 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
           const r = await anthropic!.messages.create({
             model: chosenModel,
             max_tokens: maxOut,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: groundedPrompt }],
           });
           respId = r.id;
           content = r.content.map((c) => (c.type === "text" ? c.text : "")).join("");
