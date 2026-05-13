@@ -80,8 +80,28 @@ Write-Note "pnpm install (this can take 3-8 min on first run)..."
 pnpm install
 Write-Ok "deps installed"
 
-# ── 4. Start dev server + open browser ───────────────────────────────────
-Write-Bold "[4/4] Starting dev server"
+# ── 4. Configure inference + start dev server ────────────────────────────
+Write-Bold "[4/4] Configuring inference + starting dev server"
+
+# Default: route Pool A through the WaveX-hosted inference hub. Customers
+# don't need their own Claude Max - the operator's subscription serves
+# their onboarding inference. Override by editing %USERPROFILE%\.wavex-os\inference.env.
+$HubUrl = if ($env:WAVEX_INFERENCE_HUB_URL) { $env:WAVEX_INFERENCE_HUB_URL } else { "https://catalogue-sea-such-manchester.trycloudflare.com" }
+$InferenceDir = Join-Path $HOME ".wavex-os"
+$InferenceEnv = Join-Path $InferenceDir "inference.env"
+if (-not (Test-Path $InferenceDir)) { New-Item -ItemType Directory -Path $InferenceDir | Out-Null }
+if (-not (Test-Path $InferenceEnv)) {
+@"
+# wavex-os Pool A inference config (written by install.ps1).
+# Edit to change hub URL or switch to local-OAuth/api-key mode.
+WAVEX_INFERENCE_MODE=hosted
+WAVEX_INFERENCE_HUB_URL=$HubUrl
+"@ | Set-Content -Path $InferenceEnv -Encoding UTF8
+  Write-Ok "wrote $InferenceEnv (hosted mode, hub=$HubUrl)"
+} else {
+  Write-Ok "$InferenceEnv already present - keeping existing config"
+}
+
 Write-Note "Vite UI on http://localhost:5173"
 Write-Note "mock-core API on http://localhost:3101"
 Write-Note ""

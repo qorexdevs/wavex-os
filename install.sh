@@ -91,7 +91,28 @@ note "pnpm install (this can take 3–8 min on first run)…"
 pnpm install
 ok "deps installed"
 
-bold "[4/4] Starting dev server"
+bold "[4/4] Configuring inference + starting dev server"
+
+# Default: route Pool A (wizard's T2 enrichment) through the WaveX-hosted
+# inference hub. Customers don't need their own Claude Max — the operator's
+# subscription serves their onboarding inference under a session token.
+# Override by editing ~/.wavex-os/inference.env or exporting env vars.
+HUB_URL="${WAVEX_INFERENCE_HUB_URL:-https://catalogue-sea-such-manchester.trycloudflare.com}"
+INFERENCE_ENV="$HOME/.wavex-os/inference.env"
+mkdir -p "$(dirname "$INFERENCE_ENV")"
+if [ ! -f "$INFERENCE_ENV" ]; then
+  cat > "$INFERENCE_ENV" <<EOF
+# wavex-os Pool A inference config (written by install.sh).
+# Edit to change hub URL or switch to local-OAuth/api-key mode.
+WAVEX_INFERENCE_MODE=hosted
+WAVEX_INFERENCE_HUB_URL=$HUB_URL
+EOF
+  chmod 600 "$INFERENCE_ENV"
+  ok "wrote $INFERENCE_ENV (hosted mode, hub=$HUB_URL)"
+else
+  ok "$INFERENCE_ENV already present — keeping existing config"
+fi
+
 note "Vite UI on http://localhost:5173"
 note "mock-core API on http://localhost:3101"
 note ""
