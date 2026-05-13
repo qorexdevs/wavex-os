@@ -22,7 +22,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
-import { incrementCounter, getCounter } from "../lib/rate-limit.js";
+import { incrementCounter, getCounter, setAdd } from "../lib/rate-limit.js";
 import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
 import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
 
@@ -117,13 +117,21 @@ export async function registerOnboarding(app: FastifyInstance): Promise<void> {
 
       const finalInstallId = install_id ?? randomInstallId();
 
-      // Per-email throttle: 3 install_ids per email per 30 days
+      // Per-email throttle: cap DISTINCT install_ids per email per 30 days.
+      // Onboarding inference is a customer-acquisition cost — we WANT customers
+      // to try the wizard, get stuck, reset, retry. Counting every session-mint
+      // (as the old incrementCounter did) penalized legitimate retries with the
+      // same install_id. We now track distinct install_ids in a set, and the
+      // ceiling is intentionally generous — 25 is well above any real customer
+      // pattern (one Mac mini + a few VMs + multiple resets) and abuse vectors
+      // are caught by the $/day global cap and per-install lifetime limit.
+      const EMAIL_INSTALL_CEILING = 25;
       const emailKey = `pool-a:email-installs:${email.toLowerCase()}`;
-      const emailCount = await incrementCounter(emailKey, 30 * 24 * 3600);
-      if (emailCount > 3) {
+      const { size: emailDistinctCount } = await setAdd(emailKey, finalInstallId, 30 * 24 * 3600);
+      if (emailDistinctCount > EMAIL_INSTALL_CEILING) {
         return reply.code(429).send({
           error: "email_rate_limit",
-          message: "More than 3 install_ids per email per 30 days. If this is a mistake, email support.",
+          message: `More than ${EMAIL_INSTALL_CEILING} distinct install_ids per email per 30 days. If this is a mistake, email support.`,
         });
       }
 

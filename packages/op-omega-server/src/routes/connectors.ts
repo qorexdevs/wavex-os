@@ -41,27 +41,40 @@ import { getInferenceMode } from "@wavex-os/inference-adapter";
  *  OAuth initiate to the hub so the customer's local environment doesn't
  *  need a COMPOSIO_API_KEY. Returns null if hosted mode isn't on, in
  *  which case the caller falls back to local composio-shim. */
+/** Mint a Pool-A session token from the hub. Reused by initiate + list proxies. */
+async function hubSessionToken(args: { installId: string; email: string }): Promise<{ hub: string; token: string } | null> {
+  if (getInferenceMode() !== "hosted") return null;
+  const hub = (process.env.WAVEX_INFERENCE_HUB_URL ?? "").replace(/\/+$/, "");
+  if (!hub) return null;
+  try {
+    const sessResp = await fetch(`${hub}/v1/onboarding/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: args.email, install_id: args.installId }),
+    });
+    if (!sessResp.ok) return null;
+    const { token } = (await sessResp.json()) as { token: string };
+    return { hub, token };
+  } catch {
+    return null;
+  }
+}
+
 async function proxyToHubInitiate(args: {
   toolkitSlug: string;
   installId: string;
   email: string;
   redirectBackUrl?: string;
 }): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean } | null> {
-  if (getInferenceMode() !== "hosted") return null;
-  const hub = (process.env.WAVEX_INFERENCE_HUB_URL ?? "").replace(/\/+$/, "");
-  if (!hub) return null;
+  const session = await hubSessionToken(args);
+  if (!session) {
+    if (getInferenceMode() !== "hosted") return null;
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+  }
   try {
-    // Mint a Pool A session token by calling the hub.
-    const sessResp = await fetch(`${hub}/v1/onboarding/session`, {
+    const initResp = await fetch(`${session.hub}/v1/connectors/oauth/initiate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: args.email, install_id: args.installId }),
-    });
-    if (!sessResp.ok) return { url: null, pendingConnectionId: null, needsLiveWiring: true };
-    const { token } = (await sessResp.json()) as { token: string };
-    const initResp = await fetch(`${hub}/v1/connectors/oauth/initiate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
       body: JSON.stringify({
         toolkit_slug: args.toolkitSlug,
         redirect_back_url: args.redirectBackUrl,
@@ -69,8 +82,6 @@ async function proxyToHubInitiate(args: {
     });
     if (!initResp.ok) {
       const body = (await initResp.json().catch(() => ({}))) as { error?: string };
-      // If hub itself reports composio unavailable, surface as needs-wiring
-      // so the UI shows the right callout (manual paste fallback).
       return {
         url: null,
         pendingConnectionId: null,
@@ -81,6 +92,32 @@ async function proxyToHubInitiate(args: {
     return { url: r.redirect_url, pendingConnectionId: r.pending_connection_id };
   } catch {
     return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+  }
+}
+
+interface HubConnection {
+  id: string | null;
+  toolkit_slug: string | undefined;
+  display_name: string | null;
+  status: string;
+  connected_at: string | null;
+}
+
+/** Forward the customer's local request to the hub's /v1/connectors/list,
+ *  so the wizard can poll a single endpoint and we keep the per-customer
+ *  userId namespacing on the hub. Returns null when not hosted. */
+async function proxyToHubList(args: { installId: string; email: string }): Promise<{ connections: HubConnection[] } | null> {
+  const session = await hubSessionToken(args);
+  if (!session) return null;
+  try {
+    const resp = await fetch(
+      `${session.hub}/v1/connectors/list?install_id=${encodeURIComponent(args.installId)}&email=${encodeURIComponent(args.email)}`,
+      { headers: { Authorization: `Bearer ${session.token}` } },
+    );
+    if (!resp.ok) return { connections: [] };
+    return (await resp.json()) as { connections: HubConnection[] };
+  } catch {
+    return { connections: [] };
   }
 }
 
@@ -201,6 +238,23 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
       }
 
       return reply.send(result);
+    },
+  );
+
+  // ── 1b. List the customer's hub-tracked connections (hosted mode only) ─
+  //
+  // Used by the wizard's Credential Concierge to poll for "pending → active"
+  // transitions after it opens the OAuth popup. In non-hosted mode this is
+  // a no-op (returns []) — the local composio-shim already exposes its own
+  // list via the avatar tools.json + listConnections() health-check route.
+  app.get<{ Querystring: { userId?: string; email?: string } }>(
+    "/op-omega/onboarding/connectors/list",
+    async (req, reply) => {
+      const installId = installIdFromState();
+      const email = (req.query.email ?? req.query.userId ?? "").trim() || "anon@wavex-os.local";
+      const hub = await proxyToHubList({ installId, email });
+      if (hub) return reply.send(hub);
+      return reply.send({ connections: [] });
     },
   );
 

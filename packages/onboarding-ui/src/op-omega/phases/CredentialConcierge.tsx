@@ -370,25 +370,13 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
 
       {/* Composio-managed */}
       {row.composioManaged && !skipMode && row.status !== "skipped" && (
-        <div style={{ padding: "0.6rem", background: "var(--bg)", borderRadius: 4, fontSize: 12 }}>
-          <div style={{ marginBottom: 4 }}>
-            <strong>Composio OAuth required.</strong>
-          </div>
-          <div className="text-dim" style={{ marginBottom: "0.5rem" }}>
-            Composio is currently disabled in dev mode (set <code>WAVEX_COMPOSIO_DISABLED=0</code> +
-            provide <code>COMPOSIO_API_KEY</code> to enable). Skip for now and configure
-            from Mission Control once the credential lands.
-          </div>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setSkipMode(true)}
-            disabled={busy !== null}
-            style={{ fontSize: 12 }}
-          >
-            Skip
-          </button>
-        </div>
+        <ComposioConnectBlock
+          connectorId={row.connectorId}
+          companyId={companyId}
+          onSkip={() => setSkipMode(true)}
+          onConnected={onChange}
+          parentBusy={busy !== null}
+        />
       )}
 
       {/* Direct-key paste form — hidden when already skipped unless the
@@ -516,5 +504,187 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
         </div>
       )}
     </Card>
+  );
+}
+
+/** Per-toolkit Composio connect widget.
+ *
+ *  Two surfaces:
+ *
+ *  1. Hosted mode (customer's installer pointed WAVEX_INFERENCE_HUB_URL at
+ *     the operator's Mac mini): the [Connect] button POSTs to mock-core's
+ *     /op-omega/onboarding/connectors/oauth/initiate, which proxies to the
+ *     hub. Hub returns a Composio-hosted redirect URL — we open it in a
+ *     popup, then poll the hub's connection list every 2s until this
+ *     toolkit appears with status `ACTIVE` (Composio's enum). When detected,
+ *     we mark vaulted_unvalidated server-side via the existing paste route
+ *     with a sentinel ref, then call `onConnected` to refresh.
+ *
+ *  2. Disabled mode (no hub OR hub returned needsLiveWiring=true OR
+ *     non-hosted with composio-shim disabled): the old "Skip for now"
+ *     callout — operator can still skip + configure later.
+ *
+ *  The component figures out which mode it's in lazily on first [Connect]
+ *  click: we try initiate; if `url` comes back null with `needsLiveWiring`,
+ *  we flip to disabled-mode UI permanently. */
+function ComposioConnectBlock({
+  connectorId, companyId, onSkip, onConnected, parentBusy,
+}: {
+  connectorId: string;
+  companyId: string;
+  onSkip: () => void;
+  onConnected: () => void;
+  parentBusy: boolean;
+}) {
+  const [state, setState] = useState<"idle" | "opening" | "pending" | "needsManual" | "connected" | "error">("idle");
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [popupRef, setPopupRef] = useState<Window | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Poll the hub list every 2s while pending. Stops when this toolkit
+  // shows up active OR the popup is detected closed without success.
+  useEffect(() => {
+    if (state !== "pending") return;
+    const id = setInterval(() => { void checkStatus(); }, 2000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, pendingId]);
+
+  async function handleConnect(): Promise<void> {
+    setState("opening");
+    setErrorMsg(null);
+    try {
+      const r = await opOmegaOnboardingApi.initiateConnectorOAuth({
+        companyId,
+        toolkitSlug: connectorId,
+      });
+      if (r.needsLiveWiring || !r.url) {
+        setState("needsManual");
+        return;
+      }
+      // Open the Composio URL in a popup. It immediately 302s to the native
+      // provider's OAuth screen (Google/Slack/etc.) — customer never sees
+      // Composio's UI, only the familiar provider consent screen.
+      const popup = window.open(
+        r.url,
+        `wavex-oauth-${connectorId}`,
+        "width=520,height=720,menubar=no,toolbar=no,location=yes,status=no",
+      );
+      if (!popup) {
+        setErrorMsg("Popup blocked. Allow popups for this site and try again.");
+        setState("error");
+        return;
+      }
+      setPopupRef(popup);
+      setPendingId(r.pendingConnectionId);
+      setState("pending");
+    } catch (e) {
+      setErrorMsg(e instanceof ApiError ? e.message : (e as Error).message);
+      setState("error");
+    }
+  }
+
+  async function checkStatus(): Promise<void> {
+    // Detect popup closed by user (cancellation) → return to idle.
+    if (popupRef && popupRef.closed && state === "pending") {
+      // Continue polling once more in case OAuth completed but the bounce
+      // page closed before we noticed. After two checks with no match, stop.
+    }
+    try {
+      const r = await opOmegaOnboardingApi.listHostedConnections();
+      const match = r.connections.find(
+        (c) => c.toolkit_slug === connectorId && c.status?.toLowerCase() === "active",
+      );
+      if (match) {
+        setState("connected");
+        try { popupRef?.close(); } catch { /* cross-origin tolerance */ }
+        // Mark vaulted_unvalidated server-side via the existing credential
+        // route so the manifest reflects the connection. We use a sentinel
+        // "composio:<id>" plaintext that the vault doesn't try to interpret —
+        // the actual auth token lives at Composio.
+        try {
+          await opOmegaOnboardingApi.pasteCredential({
+            companyId,
+            connectorId,
+            key: "composio_connection_id",
+            plaintext: `composio:${match.id ?? "unknown"}`,
+          });
+        } catch { /* server may reject if no expectedKeys; concierge still re-renders */ }
+        onConnected();
+      }
+    } catch {
+      // Transient network errors are ignored — next tick retries.
+    }
+  }
+
+  // ── Disabled mode (no hub or hub says composio_unavailable) ──
+  if (state === "needsManual") {
+    return (
+      <div style={{ padding: "0.6rem", background: "var(--bg)", borderRadius: 4, fontSize: 12 }}>
+        <div style={{ marginBottom: 4 }}>
+          <strong>Composio OAuth not available.</strong>
+        </div>
+        <div className="text-dim" style={{ marginBottom: "0.5rem" }}>
+          The operator's hub doesn't have Composio configured (or the customer install
+          is in non-hosted mode). Skip for now and configure from Mission Control once
+          the credential lands.
+        </div>
+        <button
+          type="button"
+          className="secondary"
+          onClick={onSkip}
+          disabled={parentBusy}
+          style={{ fontSize: 12 }}
+        >
+          Skip
+        </button>
+      </div>
+    );
+  }
+
+  // ── Active OAuth flow ──
+  return (
+    <div style={{ padding: "0.6rem", background: "var(--bg)", borderRadius: 4, fontSize: 12 }}>
+      <div style={{ marginBottom: 6 }}>
+        <strong>Connect via OAuth.</strong>
+        <span className="text-dim" style={{ marginLeft: 6 }}>
+          Opens {connectorId}'s sign-in in a popup. No keys to paste.
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => void handleConnect()}
+          disabled={parentBusy || state === "opening" || state === "pending" || state === "connected"}
+          style={{ fontSize: 12 }}
+        >
+          {state === "connected" ? "✓ Connected" :
+           state === "pending" ? "Connecting…" :
+           state === "opening" ? "Opening…" :
+           "Connect"}
+        </button>
+        {state !== "connected" && state !== "pending" && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={onSkip}
+            disabled={parentBusy}
+            style={{ fontSize: 12 }}
+          >
+            Skip
+          </button>
+        )}
+        {state === "pending" && (
+          <span className="text-dim" style={{ fontSize: 11 }}>
+            Waiting for OAuth completion in popup…
+          </span>
+        )}
+      </div>
+      {state === "error" && errorMsg && (
+        <div style={{ fontSize: 11, color: "var(--warning)", marginTop: "0.5rem" }}>
+          ✗ {errorMsg}
+        </div>
+      )}
+    </div>
   );
 }

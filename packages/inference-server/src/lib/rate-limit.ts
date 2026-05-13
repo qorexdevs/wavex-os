@@ -82,6 +82,72 @@ export async function setIfAbsent(key: string, ttlSec: number): Promise<boolean>
   return true;
 }
 
+const memSetStore = new Map<string, { values: Set<string>; expiresAt: number }>();
+
+function memSetAdd(key: string, member: string, ttlSec: number): { added: boolean; size: number } {
+  const now = Date.now();
+  let entry = memSetStore.get(key);
+  if (!entry || entry.expiresAt <= now) {
+    entry = { values: new Set(), expiresAt: now + ttlSec * 1000 };
+    memSetStore.set(key, entry);
+  }
+  const before = entry.values.size;
+  entry.values.add(member);
+  return { added: entry.values.size > before, size: entry.values.size };
+}
+
+function memSetSize(key: string): number {
+  const now = Date.now();
+  const e = memSetStore.get(key);
+  if (!e || e.expiresAt <= now) return 0;
+  return e.values.size;
+}
+
+/** Add `member` to the set at `key` with TTL. Returns whether the member
+ *  was newly added and the resulting set size. This is the correct way to
+ *  enforce "N distinct values per key per window" — `incrementCounter`
+ *  over-counts because it bumps on every call, even repeated members.
+ *
+ *  Used by Pool A to enforce "N distinct install_ids per email per 30d":
+ *  the same install_id calling session-mint twice should not consume two
+ *  slots, only one. */
+export async function setAdd(key: string, member: string, ttlSec: number): Promise<{ added: boolean; size: number }> {
+  const r = await getRedis();
+  if (r) {
+    const beforeRaw = await r.scard(key);
+    const before = typeof beforeRaw === "number" ? beforeRaw : parseInt(String(beforeRaw ?? "0"), 10);
+    await r.sadd(key, member);
+    const sizeRaw = await r.scard(key);
+    const size = typeof sizeRaw === "number" ? sizeRaw : parseInt(String(sizeRaw ?? "0"), 10);
+    if (before === 0 && size > 0) await r.expire(key, ttlSec);
+    return { added: size > before, size };
+  }
+  return memSetAdd(key, member, ttlSec);
+}
+
+export async function setSize(key: string): Promise<number> {
+  const r = await getRedis();
+  if (r) {
+    const v = await r.scard(key);
+    return typeof v === "number" ? v : parseInt(String(v ?? "0"), 10);
+  }
+  return memSetSize(key);
+}
+
+/** Drop a counter or set entry. Used by admin routes to clear stale
+ *  rate-limit state without restarting the server. Returns true if
+ *  something was deleted. */
+export async function dropKey(key: string): Promise<boolean> {
+  const r = await getRedis();
+  if (r) {
+    const deleted = await r.del(key);
+    return deleted > 0;
+  }
+  const a = memoryStore.delete(key);
+  const b = memSetStore.delete(key);
+  return a || b;
+}
+
 export async function getStatus(): Promise<{ backend: "redis" | "memory"; ready: boolean }> {
   const r = await getRedis();
   return r ? { backend: "redis", ready: true } : { backend: "memory", ready: false };

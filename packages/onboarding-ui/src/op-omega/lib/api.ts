@@ -57,6 +57,10 @@ export interface ProbeResponse {
     version?: string;
     test_output?: string;
     error?: string;
+    /** Set by the hosted-mode probe to "wavex_pool_a" when the customer's
+     *  inference is served by the operator's hub. The UI uses this to skip
+     *  the Claude-plan picker on Pillar 2 (the customer has no local CLI). */
+    billing_type?: string;
   };
   error?: string;
 }
@@ -191,6 +195,40 @@ export const opOmegaOnboardingApi = {
   skipCredential: (input: { companyId: string; connectorId: string; reason: string }) =>
     call<{ ok: true }>(
       "POST", "/op-omega/onboarding/credentials/skip", input,
+    ),
+
+  /** Mint a Composio-hosted OAuth URL for `toolkitSlug`. In hosted-inference
+   *  mode the customer's mock-core proxies this to the operator's hub, which
+   *  uses the operator's COMPOSIO_API_KEY — the customer never holds it.
+   *  The wizard opens `url` in a popup; `pendingConnectionId` becomes the
+   *  watch-key for /connectors/list polling. */
+  initiateConnectorOAuth: (input: {
+    companyId: string;
+    userId?: string;
+    avatarId?: string;
+    toolkitSlug: string;
+  }) =>
+    call<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean }>(
+      "POST",
+      "/op-omega/onboarding/connectors/oauth/initiate",
+      input,
+    ),
+
+  /** Hub-tracked connections for the current installId+email (hosted mode).
+   *  Wizard polls this every ~2s after opening the OAuth popup to detect
+   *  when the toolkit flips to `active`. Returns [] in non-hosted mode. */
+  listHostedConnections: (email?: string) =>
+    call<{
+      connections: Array<{
+        id: string | null;
+        toolkit_slug: string | undefined;
+        display_name: string | null;
+        status: string;
+        connected_at: string | null;
+      }>;
+    }>(
+      "GET",
+      `/op-omega/onboarding/connectors/list${email ? `?email=${encodeURIComponent(email)}` : ""}`,
     ),
 
   // Probes
