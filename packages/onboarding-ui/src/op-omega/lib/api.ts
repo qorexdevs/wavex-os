@@ -210,6 +210,13 @@ export const opOmegaOnboardingApi = {
         /** Label of the MCP source ("Claude Desktop", "Claude Code", "Cursor")
          *  shown when mcpManaged is true. Null otherwise. */
         mcpSourcedFrom: string | null;
+        /** True when an official MCP server exists for this connector
+         *  whether or not the customer has installed it. UI uses this to
+         *  surface "Install MCP" as a third option below OAuth/paste. */
+        mcpAvailable: boolean;
+        /** One-liner + docs link for installing the MCP. Null if no
+         *  documented install path exists for this connector. */
+        mcpInstallHint: { docs: string; install_hint: string } | null;
       }>;
       progress: { requiredCount: number; requiredReady: number; allRequiredAddressed: boolean };
     }>("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`),

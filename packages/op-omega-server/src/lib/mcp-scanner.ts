@@ -50,6 +50,59 @@ const MCP_NAME_FRAGMENTS: Record<string, string[]> = {
   // claude-code (handled upstream), telegram (bot tokens, not MCP).
 };
 
+/** Per-connector official MCP install commands. Surfaced as a hint when
+ *  the connector has a known MCP available but the customer hasn't
+ *  installed it yet — gives them a third option beyond OAuth and paste:
+ *  "install the MCP and skip credentials entirely". */
+export const MCP_INSTALL_HINTS: Record<string, { docs: string; install_hint: string }> = {
+  supabase: {
+    docs: "https://supabase.com/docs/guides/getting-started/mcp",
+    install_hint: "Add the Supabase MCP server to Claude Desktop/Cursor — your fleet uses your existing project without keys.",
+  },
+  github: {
+    docs: "https://github.com/github/github-mcp-server",
+    install_hint: "Add the GitHub MCP server (Docker or remote) — skips PAT paste entirely.",
+  },
+  linear: {
+    docs: "https://linear.app/changelog/2025-05-01-mcp",
+    install_hint: "Linear ships an official MCP — add it to Claude Desktop, no API key needed.",
+  },
+  notion: {
+    docs: "https://www.notion.so/integrations/mcp",
+    install_hint: "Notion's MCP server connects via OAuth on first run — no integration token paste.",
+  },
+  slack: {
+    docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+    install_hint: "Add the Slack MCP server — your fleet reads channels you have access to.",
+  },
+  hubspot: {
+    docs: "https://developers.hubspot.com/docs/api/mcp",
+    install_hint: "HubSpot's MCP server avoids the paste flow.",
+  },
+  stripe: {
+    docs: "https://docs.stripe.com/agents/mcp",
+    install_hint: "Stripe ships an official MCP — wires your account via Stripe's own auth flow.",
+  },
+  posthog: {
+    docs: "https://posthog.com/docs/api/mcp",
+    install_hint: "PostHog ships an MCP — no project-API-key paste.",
+  },
+};
+
+/** Does this connector have a known MCP server available, regardless of
+ *  whether the customer has installed it yet? Returns the install hint
+ *  on a positive match so the UI can surface "Install MCP" as a third
+ *  option below OAuth + paste. */
+export function mcpAvailableFor(connectorId: string): { available: boolean; install?: { docs: string; install_hint: string } } {
+  const hint = MCP_INSTALL_HINTS[connectorId];
+  if (hint) return { available: true, install: hint };
+  // Some connectors have MCP fragments registered (so we scan for them)
+  // but don't have a documented install hint yet — still useful to flag
+  // them as "MCP-trackable".
+  if (connectorId in MCP_NAME_FRAGMENTS) return { available: true };
+  return { available: false };
+}
+
 interface McpScanLocation {
   label: string;            // human-readable source name shown to the customer
   path: string;             // absolute file path

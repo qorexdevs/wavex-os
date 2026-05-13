@@ -386,6 +386,34 @@ function ConnectorCard({ row, companyId, onChange }: { row: ConnectorRow; compan
         </div>
       )}
 
+      {/* MCP-install hint — third option below MCP-detected / OAuth / paste.
+          Renders when an official MCP is available but the customer hasn't
+          installed it, so they can pick: install MCP → no credentials needed. */}
+      {!row.mcpManaged && row.mcpAvailable && row.mcpInstallHint && row.status !== "skipped" && (
+        <div style={{
+          marginBottom: "0.5rem",
+          padding: "0.5rem 0.65rem",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          background: "var(--surface-2)",
+          border: "1px dashed var(--border)",
+          borderRadius: 4,
+          lineHeight: 1.5,
+        }}>
+          <span style={{ color: "var(--accent)" }}>◇</span>
+          {" "}{row.mcpInstallHint.install_hint}
+          {" "}
+          <a
+            href={row.mcpInstallHint.docs}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
+            Install MCP ↗
+          </a>
+        </div>
+      )}
+
       {/* Composio-managed (only when no MCP available) */}
       {!row.mcpManaged && row.composioManaged && !skipMode && row.status !== "skipped" && (
         <ComposioConnectBlock

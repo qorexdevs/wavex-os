@@ -241,7 +241,16 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
         </div>
       )}
 
-      {!isVaulted && !isSkipped && !skipMode && !mcpManaged && !composio && (
+      {/* Pre-vaulted: connector has no expected keys (e.g. claude-code in
+          hosted mode, telegram from Pillar 5). Skip the paste form entirely
+          — the connector is already configured upstream. */}
+      {!isVaulted && !isSkipped && !mcpManaged && !composio && c.expectedKeys.length === 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: "0.2rem" }}>
+          ✓ Configured upstream — no additional credentials needed.
+        </div>
+      )}
+
+      {!isVaulted && !isSkipped && !skipMode && !mcpManaged && !composio && c.expectedKeys.length > 0 && (
         <>
           {c.expectedKeys.map((k) => (
             <input
@@ -288,6 +297,35 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
           onSkip={() => setSkipMode(true)}
           onConnected={refresh}
         />
+      )}
+
+      {/* MCP-install hint — third option below MCP-detected / OAuth / paste.
+          Surfaces when the connector has a known MCP server available but
+          the customer hasn't installed it. Gives them a path to skip
+          credentials entirely by installing the official MCP. */}
+      {!isVaulted && !isSkipped && !mcpManaged && c.mcpAvailable && c.mcpInstallHint && (
+        <div style={{
+          marginTop: "0.4rem",
+          padding: "0.35rem 0.55rem",
+          fontSize: 10,
+          color: "var(--text-dim)",
+          background: "var(--surface-2)",
+          border: "1px dashed var(--border)",
+          borderRadius: 4,
+          lineHeight: 1.45,
+        }}>
+          <span style={{ color: "var(--accent)" }}>◇</span>
+          {" "}{c.mcpInstallHint.install_hint}
+          {" "}
+          <a
+            href={c.mcpInstallHint.docs}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
+            Install MCP ↗
+          </a>
+        </div>
       )}
 
       {skipMode && (

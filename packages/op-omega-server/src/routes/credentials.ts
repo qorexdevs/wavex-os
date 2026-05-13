@@ -25,7 +25,7 @@ import { listConnections } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { listConnectorStates, writeCredential, recordTestResult, skipConnector } from "../vault/service.js";
 import { runProbe, hasProbe } from "../vault/probes.js";
-import { scanInstalledMcpServersMap, type DetectedMcp } from "../lib/mcp-scanner.js";
+import { scanInstalledMcpServersMap, mcpAvailableFor, type DetectedMcp } from "../lib/mcp-scanner.js";
 
 function authReq(req: FastifyRequest) {
   return { method: req.method, headers: req.headers as Record<string, string> };
@@ -86,6 +86,14 @@ interface ConciergeRow {
   /** Source label shown to the operator when mcpManaged=true, e.g. "Claude
    *  Desktop" or "Cursor". Null when mcpManaged=false. */
   mcpSourcedFrom: string | null;
+  /** True when this connector has an official MCP server available (whether
+   *  or not the customer has installed it yet). Lets the UI surface
+   *  "Install MCP — skip credentials entirely" as a third option below
+   *  OAuth and paste. */
+  mcpAvailable: boolean;
+  /** Operator-facing one-liner + docs link for installing the MCP, when
+   *  available. Null when we don't have a documented install hint. */
+  mcpInstallHint: { docs: string; install_hint: string } | null;
 }
 
 /** Per-connector deep links to where the operator gets their API keys.
@@ -136,14 +144,25 @@ const CONNECTOR_KEYS_URL: Record<string, string> = {
 
 /** Per-connector schema of expected vault keys + whether Composio handles
  *  the OAuth handshake. Direct-key connectors expose paste fields; Composio
- *  ones surface the OAuth init button. */
+ *  ones surface the OAuth init button.
+ *
+ *  Composio coverage was empirically probed via /v1/connectors/oauth/initiate
+ *  — supabase / github / stripe etc. all return a valid OAuth redirect URL,
+ *  so they're flipped to composio:true. Connectors Composio rejects
+ *  (mixpanel, twilio, sendgrid, etc.) stay paste-only.
+ *
+ *  Some connectors expose BOTH paths today: composio:true + non-empty keys
+ *  means the wizard renders OAuth as primary; the customer can still vault
+ *  API keys later from Mission Control if their OAuth path fails. */
 const CONNECTOR_KEY_SCHEMA: Record<string, { keys: string[]; composio: boolean }> = {
   // Already-configured upstream
   "claude-code":     { keys: [],                            composio: false },
 
-  // Direct-key (paste vault flow) — comms / inference / data substrate
-  supabase:          { keys: ["url", "anon_key"],           composio: false },
-  github:            { keys: ["pat"],                       composio: false },
+  // Data substrate / dev infra — Composio supports these via OAuth (verified).
+  supabase:          { keys: ["url", "anon_key"],           composio: true  },
+  github:            { keys: ["pat"],                       composio: true  },
+
+  // Direct-key only (Composio does NOT support these as OAuth toolkits).
   telegram:          { keys: ["telegram_bot_token", "telegram_chat_id"], composio: false },
   whatsapp:          { keys: ["business_account_id", "access_token"], composio: false },
   "twilio-sms":      { keys: ["account_sid", "auth_token", "from_number"], composio: false },
@@ -155,8 +174,8 @@ const CONNECTOR_KEY_SCHEMA: Record<string, { keys: string[]; composio: boolean }
   posthog:           { keys: ["host", "project_api_key", "personal_api_key"], composio: false },
   segment:           { keys: ["write_key"],                 composio: false },
 
-  // Commerce direct-key
-  stripe:            { keys: ["secret_key"],                composio: false },
+  // Stripe via Composio OAuth (verified); paste secret_key fallback retained.
+  stripe:            { keys: ["secret_key"],                composio: true  },
   "stripe-connect":  { keys: ["secret_key", "platform_account_id"], composio: false },
   shopify:           { keys: ["shop_domain", "admin_api_token"], composio: false },
   bigcommerce:       { keys: ["store_hash", "access_token"], composio: false },
@@ -247,6 +266,8 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
           keysUrl: CONNECTOR_KEYS_URL[e.id] ?? null,
           mcpManaged: Boolean(mcp),
           mcpSourcedFrom: mcp?.sourcedFrom ?? null,
+          mcpAvailable: mcpAvailableFor(e.id).available,
+          mcpInstallHint: mcpAvailableFor(e.id).install ?? null,
         });
       }
     }
