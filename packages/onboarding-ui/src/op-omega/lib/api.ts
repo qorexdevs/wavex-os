@@ -242,6 +242,51 @@ export const opOmegaOnboardingApi = {
     call<{ ok: true; scope: { mode: "full" | "focused"; departments: string[]; custom_labels?: string[]; set_at: string } | null }>(
       "GET", `/op-omega/onboarding/scope?companyId=${encodeURIComponent(companyId)}`),
 
+  // Avatar onboarding (parallel track to the company pillars)
+  createAvatar: (input: { name: string; role: string; workingHours: [string, string]; tz: string }) =>
+    call<{ ok: true; avatarId: string }>("POST", "/op-omega/onboarding/avatar", input),
+
+  connectAvatarTool: (avatarId: string, provider: string) =>
+    call<{
+      ok: true;
+      connected: Array<{ provider: string; ref: string; status: "stub" | "connected"; connected_at: string }>;
+      total: number;
+    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/tools`, { provider }),
+
+  analyzeAvatarVoice: (avatarId: string, samples: [string, string, string], skipInference?: boolean) =>
+    call<{
+      ok: true;
+      profile: { tone: string; formality: string; structure: string; delegates: string[] };
+      source: "t2" | "stub";
+    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/voice`, { samples, skipInference }),
+
+  getAvatarSuggestions: (avatarId: string) =>
+    call<{
+      ok: true;
+      suggestions: Array<{ id: string; title: string; body: string; needs: string[] }>;
+    }>("GET", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/suggestions`),
+
+  finalizeAvatar: (avatarId: string, enabledAutomationIds: string[]) =>
+    call<{ ok: true; avatarId: string; url: string }>(
+      "POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/finalize`,
+      { enabledAutomationIds },
+    ),
+
+  getAvatar: (avatarId: string) =>
+    call<{
+      ok: true;
+      avatarId: string;
+      profile: { name: string; role: string; working_hours: [string, string]; tz: string; created_at: string } | null;
+      tools: Array<{ provider: string; ref: string; status: "stub" | "connected"; connected_at: string }>;
+      tools_skipped: boolean;
+      voice: {
+        samples: string[];
+        profile?: { tone: string; formality: string; structure: string; delegates: string[] };
+        source?: "t2" | "stub";
+      } | null;
+      automations: { enabled: string[]; suggested: Array<{ id: string; title: string; body: string; needs: string[] }> } | null;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}`),
+
   // Monte Carlo report (full per-strategy breakdown, written by finalize)
   getMcReport: (companyId: string) =>
     call<{

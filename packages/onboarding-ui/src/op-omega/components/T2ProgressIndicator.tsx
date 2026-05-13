@@ -28,7 +28,7 @@ interface PhaseEta {
   is_default: boolean;
 }
 
-type PhaseKey = "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize";
+type PhaseKey = "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize" | "avatar-voice";
 
 /** Map UI phase keys → server PhaseKey used by the eta endpoint. */
 const PHASE_TO_SERVER_KEY: Record<string, string> = {
@@ -37,6 +37,7 @@ const PHASE_TO_SERVER_KEY: Record<string, string> = {
   "phase-3": "swarm_manifest",
   "phase-4": "workflow_manifest",
   finalize: "finalize",
+  "avatar-voice": "avatar_voice",
 };
 
 /** Per-phase activity narration table. The label rotates as elapsed time
@@ -76,6 +77,12 @@ const PHASE_NARRATION: Record<PhaseKey, string[]> = {
     "Picking your winning strategy",
     "Writing your imprint",
     "Signing the manifest",
+  ],
+  "avatar-voice": [
+    "Reading how you write",
+    "Picking up your tone",
+    "Spotting what you delegate first",
+    "Wrapping up your profile",
   ],
 };
 

@@ -28,8 +28,41 @@ export interface ChatMessage {
   collapsed?: boolean;
 }
 
+export type AccountType = "avatar" | "solo_founder" | "hybrid";
+
+/** First-class Avatar phases — the Avatar branch is a parallel flow to the
+ *  company-onboarding pillars, mounted by the same shell so it inherits the
+ *  chat-card visuals + scrolling behavior. Solo Founder / Hybrid continue
+ *  to use the existing pillar phases; only the entry gateway is shared. */
+export interface AvatarProfile {
+  name: string;
+  role: string;
+  workingHours: [string, string]; // ["09:00", "17:00"]
+  tz: string;                     // IANA timezone, e.g. "America/New_York"
+}
+
+export interface AvatarToolConnection {
+  provider: string;               // "gmail" | "slack" | ...
+  ref: string;                    // credential vault reference id
+  status: "stub" | "connected";   // "stub" until v2 wires real OAuth
+}
+
+export interface AvatarVoiceProfile {
+  tone: string;
+  formality: string;
+  structure: string;
+  delegates: string[];
+}
+
+export interface AvatarAutomationSuggestion {
+  id: string;
+  title: string;
+  body: string;
+  needs: string[];                // providers required
+}
+
 export type ChatSlot =
-  | { kind: "thinking"; phase: "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize" }
+  | { kind: "thinking"; phase: "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize" | "avatar-voice" }
   | { kind: "pillar1-confirm"; response: Pillar1Response }
   | { kind: "pillar1-halt"; operatorMessage: string }
   | { kind: "scope-prompt"; detected: string[] }
@@ -38,7 +71,12 @@ export type ChatSlot =
   | { kind: "pillar5-prompt" }
   | { kind: "connector-picker"; manifest: ConnectorManifest }
   | { kind: "verify-fail"; fixHint: string }
-  | { kind: "transition-pill"; label: string };
+  | { kind: "transition-pill"; label: string }
+  | { kind: "account-type-select" }
+  | { kind: "avatar-profile" }
+  | { kind: "avatar-tools"; connected: AvatarToolConnection[] }
+  | { kind: "avatar-voice"; samples: string[] }
+  | { kind: "avatar-suggestions"; suggestions: AvatarAutomationSuggestion[] };
 
 // ── Top-level phase machine ───────────────────────────────────────────────
 
@@ -50,6 +88,9 @@ export interface ActivateSlotProgress {
 
 export type OnboardingPhase =
   | { kind: "welcome" }
+  // Gateway shown to fresh visitors before any onboarding state exists.
+  // Resuming operators (?companyId= or ?avatarId= in URL) bypass this.
+  | { kind: "account_type_select" }
   | { kind: "pillars"; stage: 1 | 2 | 3 | 4 | 5; thinking: boolean }
   | { kind: "connectors"; manifest?: ConnectorManifest; loading: boolean }
   | { kind: "credentials"; drawerOpen: boolean }
@@ -58,7 +99,14 @@ export type OnboardingPhase =
   | { kind: "imprint_theater"; act: 1 | 2 | 3; finalize?: { manifest: CompanyManifest; sha256: string; source: "t2" | "fallback" }; workflowReady: boolean }
   | { kind: "pricing" }
   | { kind: "activate"; progress: ActivateSlotProgress[]; paperclipUrl: string | null }
-  | { kind: "handed_off"; paperclipUrl: string | null };
+  | { kind: "handed_off"; paperclipUrl: string | null }
+  // Avatar branch — runs entirely inside the chat shell, doesn't touch
+  // pillar / connector / swarm phases. Lands on /avatar/:id when finalized.
+  | { kind: "avatar_profile" }
+  | { kind: "avatar_tools"; connected: AvatarToolConnection[] }
+  | { kind: "avatar_voice"; samples: string[]; analyzing: boolean }
+  | { kind: "avatar_suggestions"; suggestions: AvatarAutomationSuggestion[]; enabled: string[] }
+  | { kind: "avatar_done"; avatarId: string };
 
 export interface OnboardingState {
   phase: OnboardingPhase;
@@ -73,6 +121,17 @@ export interface OnboardingState {
     swarmManifest?: SwarmManifest;
     workflowManifest?: WorkflowManifest;
     connectorManifest?: ConnectorManifest;
+    /** Account type chosen at the gateway. Drives whether the operator
+     *  enters the Avatar branch or the existing pillar flow, and (for
+     *  Hybrid / Solo Founder) the default scope mode the pillar flow
+     *  seeds when it eventually reaches the scope picker. */
+    accountType?: AccountType;
+    avatarId?: string;
+    avatarProfile?: AvatarProfile;
+    avatarTools?: AvatarToolConnection[];
+    avatarVoice?: { samples: string[]; profile?: AvatarVoiceProfile };
+    avatarSuggestions?: AvatarAutomationSuggestion[];
+    avatarEnabledAutomations?: string[];
   };
 }
 
@@ -105,7 +164,18 @@ export type Action =
   | { type: "OPEN_PRICING" }
   | { type: "PRICING_DONE" }
   | { type: "ACTIVATE_PROGRESS"; progress: ActivateSlotProgress[]; paperclipUrl?: string | null }
-  | { type: "HANDED_OFF"; paperclipUrl: string | null };
+  | { type: "HANDED_OFF"; paperclipUrl: string | null }
+  // Avatar branch actions
+  | { type: "ACCOUNT_TYPE_SELECTED"; accountType: AccountType }
+  | { type: "AVATAR_PROFILE_DONE"; profile: AvatarProfile; avatarId: string }
+  | { type: "AVATAR_TOOL_CONNECTED"; connection: AvatarToolConnection }
+  | { type: "AVATAR_TOOLS_DONE" }
+  | { type: "AVATAR_VOICE_SAMPLE"; index: 0 | 1 | 2; text: string }
+  | { type: "AVATAR_VOICE_ANALYZING" }
+  | { type: "AVATAR_VOICE_DONE"; profile: AvatarVoiceProfile }
+  | { type: "AVATAR_SUGGESTIONS_LOADED"; suggestions: AvatarAutomationSuggestion[] }
+  | { type: "AVATAR_AUTOMATION_TOGGLED"; suggestionId: string }
+  | { type: "AVATAR_FINALIZED"; avatarId: string };
 
 let msgCounter = 0;
 function newId(): string {
@@ -303,6 +373,85 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
     case "HANDED_OFF":
       return { ...state, phase: { kind: "handed_off", paperclipUrl: action.paperclipUrl } };
 
+    case "ACCOUNT_TYPE_SELECTED": {
+      // Solo Founder + Hybrid fall back into the existing pillar flow via
+      // the welcome textarea, so the gateway just records the choice and
+      // restores the welcome phase. Avatar starts the parallel branch.
+      const nextDraft = { ...state.draft, accountType: action.accountType };
+      if (action.accountType === "avatar") {
+        return { ...state, phase: { kind: "avatar_profile" }, draft: nextDraft };
+      }
+      return { ...state, phase: { kind: "welcome" }, draft: nextDraft };
+    }
+
+    case "AVATAR_PROFILE_DONE":
+      return {
+        ...state,
+        phase: { kind: "avatar_tools", connected: [] },
+        draft: { ...state.draft, avatarProfile: action.profile, avatarId: action.avatarId },
+      };
+
+    case "AVATAR_TOOL_CONNECTED": {
+      if (state.phase.kind !== "avatar_tools") return state;
+      // Dedupe by provider — re-clicking Connect after success is a no-op.
+      const without = state.phase.connected.filter((c) => c.provider !== action.connection.provider);
+      const connected = [...without, action.connection];
+      return {
+        ...state,
+        phase: { ...state.phase, connected },
+        draft: { ...state.draft, avatarTools: connected },
+      };
+    }
+
+    case "AVATAR_TOOLS_DONE":
+      return { ...state, phase: { kind: "avatar_voice", samples: ["", "", ""], analyzing: false } };
+
+    case "AVATAR_VOICE_SAMPLE": {
+      if (state.phase.kind !== "avatar_voice") return state;
+      const samples: string[] = [...state.phase.samples];
+      samples[action.index] = action.text;
+      return { ...state, phase: { ...state.phase, samples } };
+    }
+
+    case "AVATAR_VOICE_ANALYZING":
+      return state.phase.kind === "avatar_voice"
+        ? { ...state, phase: { ...state.phase, analyzing: true } }
+        : state;
+
+    case "AVATAR_VOICE_DONE":
+      return {
+        ...state,
+        phase: { kind: "avatar_suggestions", suggestions: [], enabled: [] },
+        draft: {
+          ...state.draft,
+          avatarVoice: {
+            samples: state.phase.kind === "avatar_voice" ? state.phase.samples : [],
+            profile: action.profile,
+          },
+        },
+      };
+
+    case "AVATAR_SUGGESTIONS_LOADED":
+      return state.phase.kind === "avatar_suggestions"
+        ? { ...state, phase: { ...state.phase, suggestions: action.suggestions },
+            draft: { ...state.draft, avatarSuggestions: action.suggestions } }
+        : state;
+
+    case "AVATAR_AUTOMATION_TOGGLED": {
+      if (state.phase.kind !== "avatar_suggestions") return state;
+      const enabled = state.phase.enabled.includes(action.suggestionId)
+        ? state.phase.enabled.filter((id) => id !== action.suggestionId)
+        : [...state.phase.enabled, action.suggestionId];
+      return {
+        ...state,
+        phase: { ...state.phase, enabled },
+        draft: { ...state.draft, avatarEnabledAutomations: enabled },
+      };
+    }
+
+    case "AVATAR_FINALIZED":
+      return { ...state, phase: { kind: "avatar_done", avatarId: action.avatarId } };
+
     default:
       return state;
   }
@@ -321,6 +470,12 @@ export function phaseToUrlKey(phase: OnboardingPhase): string {
     case "pricing": return "pricing";
     case "activate": return "activate";
     case "handed_off": return "handed-off";
+    case "account_type_select": return "account-type";
+    case "avatar_profile": return "avatar-profile";
+    case "avatar_tools": return "avatar-tools";
+    case "avatar_voice": return "avatar-voice";
+    case "avatar_suggestions": return "avatar-suggestions";
+    case "avatar_done": return "avatar-done";
   }
 }
 
@@ -336,15 +491,23 @@ export function urlKeyToPhase(key: string): OnboardingPhase {
   if (key === "pricing") return { kind: "pricing" };
   if (key === "activate") return { kind: "activate", progress: [], paperclipUrl: null };
   if (key === "handed-off") return { kind: "handed_off", paperclipUrl: null };
-  // swarm-studio and theater require manifest data we don't have at URL parse;
-  // return welcome and let hydration figure it out.
+  if (key === "account-type") return { kind: "account_type_select" };
+  if (key === "avatar-profile") return { kind: "avatar_profile" };
+  if (key === "avatar-tools") return { kind: "avatar_tools", connected: [] };
+  if (key === "avatar-voice") return { kind: "avatar_voice", samples: ["", "", ""], analyzing: false };
+  if (key === "avatar-suggestions") return { kind: "avatar_suggestions", suggestions: [], enabled: [] };
+  // swarm-studio, theater, and avatar-done require backing data we don't have
+  // at URL parse; return welcome and let hydration figure it out.
   return { kind: "welcome" };
 }
 
-/** Phase completion percentage for the top progress bar (0-100). */
+/** Phase completion percentage for the top progress bar (0-100). The Avatar
+ *  branch is a separate 4-step sequence with its own progress ramp; both
+ *  branches end at 100% once they hand off to their respective dashboard. */
 export function phaseProgressPct(phase: OnboardingPhase): number {
   switch (phase.kind) {
     case "welcome": return 0;
+    case "account_type_select": return 2;
     case "pillars": return 5 + (phase.stage - 1) * 8; // 5, 13, 21, 29, 37
     case "connectors": return 45;
     case "credentials": return 55;
@@ -354,5 +517,10 @@ export function phaseProgressPct(phase: OnboardingPhase): number {
     case "pricing": return 92;
     case "activate": return 96;
     case "handed_off": return 100;
+    case "avatar_profile": return 20;
+    case "avatar_tools": return 45;
+    case "avatar_voice": return 70;
+    case "avatar_suggestions": return 90;
+    case "avatar_done": return 100;
   }
 }

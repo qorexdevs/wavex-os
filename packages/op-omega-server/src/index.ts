@@ -33,6 +33,7 @@ import { registerRedundancyRoutes } from "./routes/redundancy.js";
 import { registerHelpChatRoute } from "./routes/help-chat.js";
 import { registerTiersRoutes } from "./routes/tiers.js";
 import { registerBillingRoutes } from "./routes/billing.js";
+import { registerAvatarRoutes } from "./routes/avatar.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -69,6 +70,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerHelpChatRoute(app);
   registerTiersRoutes(app);
   void registerBillingRoutes(app);
+  registerAvatarRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

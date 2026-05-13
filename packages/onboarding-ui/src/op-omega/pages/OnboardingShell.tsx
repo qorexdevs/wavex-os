@@ -26,13 +26,18 @@ import { Pillar4PromptCard } from "../components/inline-cards/Pillar4PromptCard"
 import { Pillar5PromptCard } from "../components/inline-cards/Pillar5PromptCard";
 import { ConnectorPickerCard } from "../components/inline-cards/ConnectorPickerCard";
 import { ScopePromptCard } from "../components/inline-cards/ScopePromptCard";
+import { AccountTypeSelectCard } from "../components/inline-cards/AccountTypeSelectCard";
+import { AvatarProfileCard } from "../components/inline-cards/AvatarProfileCard";
+import { AvatarToolsCard } from "../components/inline-cards/AvatarToolsCard";
+import { AvatarVoiceCard } from "../components/inline-cards/AvatarVoiceCard";
+import { AvatarSuggestionsCard } from "../components/inline-cards/AvatarSuggestionsCard";
 import { CredentialDrawer } from "../components/CredentialDrawer";
 import { detectScope, type Department } from "../lib/scope-detect";
 import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
 import { Pricing } from "../pricing/Pricing";
-import { reducer, initialState, phaseProgressPct, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
+import { reducer, initialState, phaseProgressPct, type AccountType, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
@@ -139,6 +144,14 @@ export function OnboardingShell() {
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
+    // No companyId in URL = fresh visit. Show the account-type gateway
+    // instead of dropping straight into the welcome textarea so operators
+    // pick their track first. Operators with an avatarId param (handled
+    // by a sibling Avatar resume effect) also bypass this.
+    if (!companyId && state.thread.length === 0 && state.phase.kind === "welcome") {
+      dispatch({ type: "SET_PHASE", phase: { kind: "account_type_select" } });
+      return;
+    }
     if (!companyId || state.thread.length > 0) return;
 
     void (async () => {
@@ -256,7 +269,13 @@ export function OnboardingShell() {
     })();
   }, [companyId, state.thread.length]);
 
-  const showEmptyState = state.thread.length === 0 && state.phase.kind === "welcome";
+  const showEmptyState =
+    state.thread.length === 0
+    && (state.phase.kind === "welcome" || state.phase.kind === "account_type_select");
+  const showAccountTypeGateway = state.phase.kind === "account_type_select";
+  const handleAccountTypeSelected = useCallback((accountType: AccountType) => {
+    dispatch({ type: "ACCOUNT_TYPE_SELECTED", accountType });
+  }, []);
 
   /** Run Pillar 1 inference end-to-end. Emits a thinking bubble, awaits the
    *  T2 call, then emits either an inline confirm card (success) or an
@@ -675,7 +694,14 @@ export function OnboardingShell() {
     state.phase.kind === "imprint_theater" ||
     state.phase.kind === "pricing" ||
     state.phase.kind === "activate" ||
-    state.phase.kind === "handed_off";
+    state.phase.kind === "handed_off" ||
+    // Avatar branch — single-card centered overlay per step, no chat thread
+    // / input bar underneath since the Avatar flow isn't conversational.
+    state.phase.kind === "avatar_profile" ||
+    state.phase.kind === "avatar_tools" ||
+    state.phase.kind === "avatar_voice" ||
+    state.phase.kind === "avatar_suggestions" ||
+    state.phase.kind === "avatar_done";
 
   return (
     <div style={{
@@ -692,7 +718,12 @@ export function OnboardingShell() {
         />
       )}
       {showEmptyState ? (
-        <EmptyState onSubmit={handleSubmit} t0={t0} />
+        <EmptyState
+          onSubmit={handleSubmit}
+          t0={t0}
+          mode={showAccountTypeGateway ? "gateway" : "input"}
+          onAccountTypeSelected={handleAccountTypeSelected}
+        />
       ) : !isFullScreenPhase ? (
       <ChatThread
         thread={state.thread}
@@ -772,13 +803,147 @@ export function OnboardingShell() {
           swarmManifest={state.draft.swarmManifest}
         />
       )}
+
+      {/* ── Avatar branch ─────────────────────────────────────────────────
+       *  Each step renders a single centered card on top of the bg layer.
+       *  No chat thread, no input bar — the Avatar flow is form-shaped,
+       *  not conversational, so we use full-screen overlays instead.
+       */}
+      {state.phase.kind === "avatar_profile" && (
+        <AvatarPhaseLayout
+          step={1}
+          title="Tell me about you"
+          subtitle="Your avatar uses this to time itself to your day."
+        >
+          <AvatarProfileCard
+            onSubmitted={(profile, avatarId) =>
+              dispatch({ type: "AVATAR_PROFILE_DONE", profile, avatarId })
+            }
+          />
+        </AvatarPhaseLayout>
+      )}
+
+      {state.phase.kind === "avatar_tools" && state.draft.avatarId && (
+        <AvatarPhaseLayout
+          step={2}
+          title="Connect your tools"
+          subtitle="Pick the ones you live in. You can wire more later."
+        >
+          <AvatarToolsCard
+            avatarId={state.draft.avatarId}
+            initialConnected={state.phase.connected}
+            onConnected={(connection) =>
+              dispatch({ type: "AVATAR_TOOL_CONNECTED", connection })
+            }
+            onDone={() => dispatch({ type: "AVATAR_TOOLS_DONE" })}
+          />
+        </AvatarPhaseLayout>
+      )}
+
+      {state.phase.kind === "avatar_voice" && state.draft.avatarId && (
+        <AvatarPhaseLayout
+          step={3}
+          title="Show me your voice"
+          subtitle="Three short prompts. Your avatar uses them to mirror you."
+        >
+          <AvatarVoiceCard
+            avatarId={state.draft.avatarId}
+            onAnalyzing={() => dispatch({ type: "AVATAR_VOICE_ANALYZING" })}
+            onDone={(profile) => dispatch({ type: "AVATAR_VOICE_DONE", profile })}
+          />
+        </AvatarPhaseLayout>
+      )}
+
+      {state.phase.kind === "avatar_suggestions" && state.draft.avatarId && (
+        <AvatarPhaseLayout
+          step={4}
+          title="First automations"
+          subtitle="Pick what your avatar should start doing on day one."
+        >
+          <AvatarSuggestionsCard
+            avatarId={state.draft.avatarId}
+            suggestions={state.phase.suggestions}
+            enabled={state.phase.enabled}
+            onSuggestionsLoaded={(suggestions) =>
+              dispatch({ type: "AVATAR_SUGGESTIONS_LOADED", suggestions })
+            }
+            onToggle={(suggestionId) =>
+              dispatch({ type: "AVATAR_AUTOMATION_TOGGLED", suggestionId })
+            }
+            onFinalized={(avatarId) =>
+              dispatch({ type: "AVATAR_FINALIZED", avatarId })
+            }
+          />
+        </AvatarPhaseLayout>
+      )}
+    </div>
+  );
+}
+
+/** Shared chrome for every Avatar step: top-left wordmark, hero title,
+ *  step badge, then the card content centered in a 720-px column. */
+function AvatarPhaseLayout({
+  step, title, subtitle, children,
+}: {
+  step: number;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 50,
+      background: "var(--bg)",
+      overflowY: "auto",
+      padding: "5rem 1.5rem 3rem",
+    }}>
+      <div style={{ position: "absolute", top: "1.25rem", left: "1.5rem" }}>
+        <Wordmark size="compact" />
+      </div>
+      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--accent)",
+            marginBottom: "0.5rem",
+          }}>
+            Avatar setup · Step {step} of 4
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>
+            {title}
+          </h1>
+          <p className="text-dim" style={{ fontSize: 13, margin: "0.5rem 0 0", lineHeight: 1.55 }}>
+            {subtitle}
+          </p>
+        </div>
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: "1rem 1.25rem",
+        }}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Empty state (hero) ────────────────────────────────────────────────────
 
-function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: boolean }) {
+function EmptyState({
+  onSubmit, t0, mode = "input", onAccountTypeSelected,
+}: {
+  onSubmit: (text: string) => void;
+  t0: boolean;
+  mode?: "gateway" | "input";
+  onAccountTypeSelected?: (type: AccountType) => void;
+}) {
   const [draft, setDraft] = useState("");
   // `submitting` triggers the phase-out animation. We render with reduced
   // opacity + slight upward translate for ~350ms before calling onSubmit
@@ -871,15 +1036,31 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
       }}>
         <div style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: 30, fontWeight: 700, margin: 0, marginBottom: "0.6rem", letterSpacing: "-0.01em" }}>
-            What do you want to build?
+            {mode === "gateway" ? "Welcome to WaveX OS" : "What do you want to build?"}
           </h1>
           <p className="text-dim" style={{ fontSize: 14, margin: 0, lineHeight: 1.55 }}>
-            Drop a URL, describe your company, or tell me what kind of AI team you need.
-            <br />
-            I'll infer your stack, propose a fleet, and walk you to launch.
+            {mode === "gateway" ? (
+              <>
+                Pick how you want to work — a personal Avatar, a full AI company, or
+                <br />
+                a hybrid that fills the gaps in your team.
+              </>
+            ) : (
+              <>
+                Drop a URL, describe your company, or tell me what kind of AI team you need.
+                <br />
+                I'll infer your stack, propose a fleet, and walk you to launch.
+              </>
+            )}
           </p>
         </div>
 
+        {mode === "gateway" && onAccountTypeSelected ? (
+          <div style={{ width: "100%" }}>
+            <AccountTypeSelectCard onChoose={onAccountTypeSelected} />
+          </div>
+        ) : (
+        <>
         <div style={{
           width: "100%",
           background: "var(--surface)",
@@ -963,6 +1144,8 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
             </button>
           ))}
         </div>
+        </>
+        )}
 
       </div>
     </div>
