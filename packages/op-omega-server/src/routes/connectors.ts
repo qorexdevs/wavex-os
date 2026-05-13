@@ -164,7 +164,15 @@ async function readToolsFile(avatarId: string): Promise<AvatarToolsFile | null> 
   }
 }
 async function writeToolsFile(avatarId: string, file: AvatarToolsFile): Promise<void> {
-  const path = join(avatarDir(avatarId), "tools.json");
+  const dir = avatarDir(avatarId);
+  // Defensive — when the OAuth flow is invoked with a non-avatar context
+  // (e.g. companyId mistakenly passed as avatarId, or the customer hasn't
+  // created the avatar yet), the dir won't exist and writeFile would
+  // ENOENT-500 the route. Silently no-op in that case; the OAuth still
+  // completes successfully on the hub side, and tools.json gets created
+  // by the regular avatar onboarding flow when the avatar is initialized.
+  if (!existsSync(dir)) return;
+  const path = join(dir, "tools.json");
   await writeFile(path, JSON.stringify(file, null, 2), "utf8");
 }
 

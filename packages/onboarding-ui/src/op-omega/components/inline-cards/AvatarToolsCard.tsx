@@ -51,19 +51,59 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
     return connected.some((c) => c.provider === id);
   }
 
+  /** Real Composio OAuth — same flow as the credentials concierge.
+   *  Initiates → popup at backend.composio.dev → bounces to provider's
+   *  native OAuth → /list polled for ACTIVE → recorded on tools.json.
+   *  Falls back to the legacy mock recording when Composio doesn't
+   *  support the toolkit (e.g. twilio_sms) or the hub is unavailable. */
   async function connect(provider: string): Promise<void> {
     setBusyProvider(provider);
     setError(null);
     try {
+      // 1. Try real OAuth via Composio.
+      const init = await opOmegaOnboardingApi.initiateConnectorOAuth({
+        companyId: avatarId,  // namespacing key; hub uses install_id+email internally
+        avatarId,
+        toolkitSlug: provider,
+      });
+
+      if (init.url && !init.needsLiveWiring) {
+        const popup = window.open(init.url, `wavex-oauth-${provider}`, "width=520,height=720");
+        if (!popup) {
+          throw new Error("Popup blocked — allow popups and click Connect again.");
+        }
+        // 2. Poll for ACTIVE status, ~2s tick, 90s ceiling.
+        const deadline = Date.now() + 90_000;
+        let activeMatch: { id: string | null } | null = null;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const list = await opOmegaOnboardingApi.listHostedConnections();
+            const m = list.connections.find(
+              (c) => c.toolkit_slug === provider && c.status?.toLowerCase() === "active",
+            );
+            if (m) { activeMatch = { id: m.id ?? null }; break; }
+          } catch { /* transient — keep polling */ }
+          if (popup.closed && Date.now() - (Date.now() - 5000) > 5000) {
+            // popup closed before connection — assume the user cancelled
+            break;
+          }
+        }
+        try { popup.close(); } catch { /* cross-origin */ }
+        if (!activeMatch) {
+          throw new Error("OAuth didn't complete (or timed out). Try again or skip.");
+        }
+      }
+      // 3. Record on the avatar's tools.json. When init.url was null
+      //    (Composio doesn't support this provider) we still record the
+      //    intent — the runner will degrade gracefully and the customer
+      //    can wire real keys later from Mission Control.
       const r = await opOmegaOnboardingApi.connectAvatarTool(avatarId, provider);
       const justAdded = r.connected.find((c) => c.provider === provider);
       if (!justAdded) throw new Error("connect did not record");
       setConnected(r.connected);
       onConnected(justAdded);
       // Auto-open the personalize drawer for mail providers on first connect.
-      // The drawer captures VIPs / privacy zones / signoff that the runner
-      // consumes when classifying threads for this provider. Clear the
-      // shared state so an Outlook drawer doesn't reuse Gmail values.
       if (provider === "gmail" || provider === "outlook") {
         setVips([]);
         setPrivacyZones([]);
@@ -103,16 +143,17 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
       </div>
       <div style={{
         padding: "0.55rem 0.7rem",
-        background: "color-mix(in srgb, var(--warning) 8%, transparent)",
-        border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+        background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
         borderRadius: 6,
         fontSize: 11,
-        color: "var(--warning)",
+        color: "var(--text-dim)",
         lineHeight: 1.55,
       }}>
-        <strong>Beta</strong> · OAuth is mocked in this build. Clicking Connect
-        registers your intent and unlocks the next step. Real authentication
-        wires in from the dashboard.
+        <strong style={{ color: "var(--accent)" }}>Real OAuth.</strong>{" "}
+        Clicking Connect opens the provider's sign-in in a popup — your avatar
+        gets a scoped connection via the operator's hub, no keys to paste.
+        Twilio SMS still uses the legacy intent-only flow.
       </div>
       <div style={{
         display: "grid",
