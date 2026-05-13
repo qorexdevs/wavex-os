@@ -39,7 +39,7 @@ function CompanyPicker() {
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
       </select>
-      <Link to="/onboarding" style={{ fontSize: 12 }}>+ New</Link>
+      <Link to="/onboarding-chat" style={{ fontSize: 12 }}>+ New</Link>
     </div>
   );
 }
@@ -123,7 +123,7 @@ export default function MissionControl() {
               <strong>No company selected.</strong>{" "}
               <span className="text-dim">Pick one from the dropdown or start onboarding for a new one.</span>
             </div>
-            <Link to="/onboarding">
+            <Link to="/onboarding-chat">
               <button>Start onboarding →</button>
             </Link>
           </div>
