@@ -101,20 +101,65 @@ async function upsertSubscriptionFromStripe(
 
   // Stripe 2025-09 API moved `current_period_*` from the subscription root
   // onto each line item. Read root first (older subs), fall back to items[0].
+  // For trialing subs the event payload sometimes lacks both — fall back to
+  // trial_start/trial_end (the effective billing period during trial).
+  // Last resort: re-fetch from Stripe (handles transient race conditions on
+  // customer.subscription.created where the in-event payload hasn't fully
+  // hydrated yet — see evt_1TWf673IuKBdXit2rxPmeQAw which failed this way).
   const subAny = stripeSub as unknown as {
     current_period_start?: number;
     current_period_end?: number;
+    trial_start?: number;
+    trial_end?: number;
+    start_date?: number;
   };
   const itemAny = item as unknown as {
     current_period_start?: number;
     current_period_end?: number;
   };
-  const periodStart =
+  let periodStart =
     subAny.current_period_start ?? itemAny?.current_period_start ?? null;
-  const periodEnd =
+  let periodEnd =
     subAny.current_period_end ?? itemAny?.current_period_end ?? null;
+
+  if ((!periodStart || !periodEnd) && stripeSub.status === "trialing"
+      && subAny.trial_start && subAny.trial_end) {
+    periodStart = periodStart ?? subAny.trial_start;
+    periodEnd = periodEnd ?? subAny.trial_end;
+  }
+
   if (!periodStart || !periodEnd) {
-    console.error(`No current_period_* fields on sub ${stripeSub.id} or first item — Stripe API drift?`);
+    // Last-chance: re-fetch with item expansion. Costs a round-trip but only
+    // happens on degenerate event payloads. Failing here means Stripe state
+    // really is incomplete; we log + bail rather than INSERT null.
+    try {
+      const fresh = await stripe.subscriptions.retrieve(stripeSub.id, {
+        expand: ["items.data.price"],
+      });
+      const freshAny = fresh as unknown as {
+        current_period_start?: number; current_period_end?: number;
+        trial_start?: number; trial_end?: number;
+      };
+      const freshItemAny = fresh.items.data[0] as unknown as {
+        current_period_start?: number; current_period_end?: number;
+      };
+      periodStart = periodStart
+        ?? freshAny.current_period_start
+        ?? freshItemAny?.current_period_start
+        ?? (fresh.status === "trialing" ? freshAny.trial_start : undefined)
+        ?? null;
+      periodEnd = periodEnd
+        ?? freshAny.current_period_end
+        ?? freshItemAny?.current_period_end
+        ?? (fresh.status === "trialing" ? freshAny.trial_end : undefined)
+        ?? null;
+    } catch (refetchErr) {
+      console.error(`Re-fetch failed for ${stripeSub.id}`, refetchErr);
+    }
+  }
+
+  if (!periodStart || !periodEnd) {
+    console.error(`No current_period_* (root, items[0], trial_*, or re-fetched) on sub ${stripeSub.id} status=${stripeSub.status} — skipping`);
     return;
   }
 
