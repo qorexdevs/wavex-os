@@ -31,6 +31,27 @@ async function ensureMigrations(): Promise<void> {
 }
 
 export function registerActivateRoute(app: FastifyInstance): void {
+  // GET /api/instance/:companyId/handoff-status — polled by ActivateProgress
+  // during /activate so the UI can paint per-slot hires in real time.
+  // Returns the current handoff-progress.json (written by paperclip-handoff.ts
+  // after each hire) or null when no handoff is in flight / complete.
+  app.get("/api/instance/:companyId/handoff-status", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    try {
+      const path = join(getOnboardingDir(companyId), "..", "handoff-progress.json");
+      const raw = await readFile(path, "utf8");
+      return { ok: true, progress: JSON.parse(raw) };
+    } catch {
+      return { ok: true, progress: null };
+    }
+  });
+
   app.post("/api/instance/:companyId/activate", async (req, reply) => {
     const ar = authReq(req);
     try { assertBoard(ar); } catch (e) {

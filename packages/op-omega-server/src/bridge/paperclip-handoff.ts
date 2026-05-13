@@ -95,6 +95,10 @@ function iconForSlot(slot: string): string {
 
 function humanNameForSlot(slot: string, displayName?: string): string {
   if (displayName) return displayName;
+  // CoS would otherwise render as "CEO / CHIEF-OF-STAFF" — visually a second
+  // CEO. Give it a clean identity so Paperclip's name + urlKey (chief-of-staff)
+  // surface a distinct node.
+  if (slot === "ceo.chief-of-staff") return "Chief of Staff";
   const parts = slot.split(".").map(s => s.toUpperCase());
   return parts.join(" / ");
 }
@@ -159,6 +163,74 @@ async function saveMapping(wavexCompanyId: string, m: PaperclipMapping): Promise
   await writeFile(join(dir, "paperclip-handoff.json"), JSON.stringify(m, null, 2), "utf8");
 }
 
+/** Per-slot live handoff progress. Written after each hire so the UI can
+ *  poll it for a real slot-by-slot reveal during activate, then cleared
+ *  when handoff completes. Lives next to paperclip-handoff.json. */
+interface HandoffProgressSlot {
+  slot: string;
+  status: "pending" | "hiring" | "hired" | "already_mapped" | "skipped" | "failed";
+  agentId?: string;
+  reason?: string;
+}
+interface HandoffProgress {
+  paperclipUrl: string;
+  paperclipCompanyId: string;
+  total: number;
+  completed: number;
+  inFlight: string | null;
+  slots: HandoffProgressSlot[];
+}
+
+function handoffProgressPath(wavexCompanyId: string): string {
+  return join(handoffStateDir(wavexCompanyId), "handoff-progress.json");
+}
+
+async function writeHandoffProgress(wavexCompanyId: string, p: HandoffProgress): Promise<void> {
+  const dir = handoffStateDir(wavexCompanyId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(handoffProgressPath(wavexCompanyId), JSON.stringify(p, null, 2), "utf8");
+}
+
+async function updateHandoffProgress(
+  wavexCompanyId: string,
+  slot: string,
+  patch: Partial<HandoffProgressSlot>,
+  completed: number,
+): Promise<void> {
+  const { readFile } = await import("node:fs/promises");
+  try {
+    const raw = await readFile(handoffProgressPath(wavexCompanyId), "utf8");
+    const p = JSON.parse(raw) as HandoffProgress;
+    p.completed = completed;
+    p.inFlight = patch.status === "hiring" ? slot : null;
+    p.slots = p.slots.map((s) => (s.slot === slot ? { ...s, ...patch } : s));
+    await writeFile(handoffProgressPath(wavexCompanyId), JSON.stringify(p, null, 2), "utf8");
+  } catch { /* file racing or removed — non-fatal */ }
+}
+
+async function clearHandoffProgress(wavexCompanyId: string): Promise<void> {
+  const { unlink } = await import("node:fs/promises");
+  try { await unlink(handoffProgressPath(wavexCompanyId)); } catch { /* already gone */ }
+}
+
+/** Read scope.json so the bridge can honor the operator's sub-fleet
+ *  selection. Lives next to onboarding artifacts; null if unset (treat
+ *  as full-org, no filtering). */
+async function readScopeForBridge(wavexCompanyId: string): Promise<{ mode: "full" | "focused"; departments: string[] } | null> {
+  const { readFile } = await import("node:fs/promises");
+  const path = join(handoffStateDir(wavexCompanyId), "onboarding", "scope.json");
+  try {
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw) as { mode?: string; departments?: string[] };
+    if (parsed.mode === "focused") {
+      return { mode: "focused", departments: parsed.departments ?? [] };
+    }
+    return { mode: "full", departments: [] };
+  } catch {
+    return null;
+  }
+}
+
 async function ensurePaperclipCompany(
   paperclipUrl: string,
   wavexCompanyId: string,
@@ -171,7 +243,11 @@ async function ensurePaperclipCompany(
     if (r && r.ok) return { paperclipCompanyId: existing.paperclipCompanyId, created: false };
   }
   const name = `wavex-os/${wavexCompanyId}`;
-  const description = `Auto-provisioned from wavex-os onboarding finalize. Source manifest hash: ${manifest.signatures?.manifest_hash ?? "unknown"}.`;
+  // Encode the wavex slug into the description so the Paperclip UI can
+  // recover it even if the operator renames the company. The name prefix
+  // is the primary lookup; description is the fallback. See
+  // packages/core/ui/src/lib/wavex-link.ts deriveWavexCompanyId.
+  const description = `Auto-provisioned from wavex-os onboarding finalize. Source manifest hash: ${manifest.signatures?.manifest_hash ?? "unknown"}. wavexCompanyId=${wavexCompanyId}`;
   const r = await fetch(`${paperclipUrl}/api/companies`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -325,22 +401,83 @@ export async function handoffToPaperclip(
     (manifest as unknown as { template_mutes?: string[] }).template_mutes ?? [],
   );
 
+  // Sub-fleet scope filter — only honored when mode === "focused".
+  // In focused mode we skip agents whose department isn't in the
+  // operator's selected set (or, for custom-only scopes, anything
+  // outside "ops" — the same fallback the swarm-manifest route uses).
+  // In full mode we mirror every slot regardless of vendor-parked status,
+  // because the operator didn't ask to scope anything down — they want
+  // the whole intended org in Paperclip.
+  const scope = await readScopeForBridge(wavexCompanyId);
+  const scopeDepts = scope && scope.mode === "focused"
+    ? new Set<string>([
+        ...(scope.departments.length > 0 ? scope.departments : ["ops"]),
+        "ceo", // CEO + chief-of-staff are sacrosanct
+      ])
+    : null; // null = full org, no department filtering
+
   // Full handoff: every slot in the swarm, sorted topologically so parents
   // land before children. The original V1 scope was C-suite only — fine
   // for early dev, but the "wavex-os/<company>" record in Paperclip then
   // hid 27 of 35 agents (every L·IV specialist) which made the dashboard
   // misleading. Now the manifest in Paperclip matches wavex 1:1.
-  for (const [slot, entry] of topoSortSlots(swarm)) {
+  //
+  // Per-slot progress is written to <onboarding-dir>/handoff-progress.json
+  // after each hire so the UI can poll it for a real slot-by-slot reveal
+  // (ActivateProgress component). The file is overwritten on every step
+  // and removed when this function returns.
+  const allSlots = topoSortSlots(swarm);
+  await writeHandoffProgress(wavexCompanyId, {
+    paperclipCompanyId,
+    paperclipUrl,
+    total: allSlots.length,
+    completed: 0,
+    inFlight: null,
+    slots: allSlots.map(([slot]) => ({ slot, status: "pending" as const })),
+  });
+
+  let completed = 0;
+  for (const [slot, entry] of allSlots) {
     if (mutes.has(slot)) {
       report.skipped.push({ slot, reason: "muted-by-operator" });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: "muted-by-operator" }, completed);
       continue;
     }
     if (slotToPaperclipId[slot]) {
       report.skipped.push({ slot, reason: "already-mapped" });
+      completed += 1;
+      // Already-mapped slots are still live in Paperclip from a prior
+      // activate — render them as success in the UI, not as "skipped".
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "already_mapped", reason: "already-mapped" }, completed);
       continue;
     }
-    const role = (slot.split(".")[0]);
-    const bundleMd = await readAgentBundle(role.replace(/_/g, "-"), repoRoot)
+    // Sub-fleet scope filter — skip agents whose department isn't in
+    // the operator's selected set. Only applies when scope.mode is
+    // "focused". CEO + chief-of-staff (department "ceo") always go
+    // through. Vendor-generator-parked agents in scoped departments
+    // still mirror to Paperclip — the bridge defers to the operator's
+    // explicit scope choice, not vendor-parking heuristics.
+    if (scopeDepts) {
+      const dept = (entry as { department?: string }).department ?? "";
+      if (!scopeDepts.has(dept)) {
+        report.skipped.push({ slot, reason: `outside-scope` });
+        completed += 1;
+        await updateHandoffProgress(wavexCompanyId, slot, { status: "skipped", reason: "outside-scope" }, completed);
+        continue;
+      }
+    }
+    await updateHandoffProgress(wavexCompanyId, slot, { status: "hiring" }, completed);
+    // Bundle is normally keyed off slot.split(".")[0] (ceo/cmo/cro/etc.).
+    // CoS is special-cased because its slot starts with "ceo." — without
+    // this guard, the CoS would receive the CEO's AGENTS.md bundle (CEO
+    // operator-management + economic-self-awareness routines) instead of
+    // its own SKILL_FLEET_ALIGNMENT routine. That made the CoS effectively
+    // a duplicate CEO from Paperclip's runtime perspective.
+    const bundleRole = slot === "ceo.chief-of-staff"
+      ? "chief-of-staff"
+      : slot.split(".")[0].replace(/_/g, "-");
+    const bundleMd = await readAgentBundle(bundleRole, repoRoot)
       ?? await readAgentBundle("chief-of-staff", repoRoot)
       ?? `# ${slot}\n\nPlaceholder — bundle file missing.`;
     const reportsToSlot = entry.reports_to ?? null;
@@ -349,10 +486,15 @@ export async function handoffToPaperclip(
       const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd);
       slotToPaperclipId[slot] = out.agentId;
       report.created.push({ slot, agentId: out.agentId, status: out.status });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "hired", agentId: out.agentId }, completed);
     } catch (e) {
       report.errors.push({ slot, message: e instanceof Error ? e.message : String(e) });
+      completed += 1;
+      await updateHandoffProgress(wavexCompanyId, slot, { status: "failed" }, completed);
     }
   }
+  await clearHandoffProgress(wavexCompanyId);
 
   // Persist mapping for idempotency
   await saveMapping(wavexCompanyId, {

@@ -2539,6 +2539,84 @@ export function agentRoutes(
     res.json(agent);
   });
 
+  // Company-wide fleet pause/resume — iterates every active agent for the
+  // company and calls the existing per-agent pause/resume service. Reuses
+  // heartbeat cancellation + activity logging so behavior matches the
+  // single-agent flow exactly. Returns counts so the UI can render
+  // partial-state if some pauses fail.
+  router.post("/companies/:companyId/pause-fleet", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const all = await svc.list(companyId);
+    const paused: string[] = [];
+    const failed: Array<{ agentId: string; error: string }> = [];
+    // Pause anything that isn't already paused/terminated/pending_approval.
+    // wavex-onboarded agents land in "idle" (wakeOnDemand=true) rather than
+    // "active", so a strict active-only filter would no-op the killswitch.
+    const SKIP_STATUSES = new Set(["paused", "terminated", "pending_approval"]);
+    for (const a of all) {
+      if (SKIP_STATUSES.has(a.status)) continue;
+      try {
+        const updated = await svc.pause(a.id);
+        if (!updated) {
+          failed.push({ agentId: a.id, error: "not_found" });
+          continue;
+        }
+        await heartbeat.cancelActiveForAgent(a.id);
+        paused.push(a.id);
+      } catch (e) {
+        failed.push({ agentId: a.id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (paused.length > 0) {
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "fleet.paused",
+        entityType: "company",
+        entityId: companyId,
+        details: { paused: paused.length, failed: failed.length },
+      });
+    }
+    res.json({ ok: true, paused, failed });
+  });
+
+  router.post("/companies/:companyId/resume-fleet", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const all = await svc.list(companyId);
+    const resumed: string[] = [];
+    const failed: Array<{ agentId: string; error: string }> = [];
+    for (const a of all) {
+      if (a.status !== "paused") continue;
+      try {
+        const updated = await svc.resume(a.id);
+        if (!updated) {
+          failed.push({ agentId: a.id, error: "not_found" });
+          continue;
+        }
+        resumed.push(a.id);
+      } catch (e) {
+        failed.push({ agentId: a.id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (resumed.length > 0) {
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "fleet.resumed",
+        entityType: "company",
+        entityId: companyId,
+        details: { resumed: resumed.length, failed: failed.length },
+      });
+    }
+    res.json({ ok: true, resumed, failed });
+  });
+
   router.post("/agents/:id/approve", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;

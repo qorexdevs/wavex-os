@@ -227,6 +227,354 @@ export const opOmegaOnboardingApi = {
     call<{ ok: true; manifest: ConnectorManifest; source: "t2" | "fallback"; warnings: string[] }>(
       "GET", `/op-omega/onboarding/connector-recommendations?companyId=${encodeURIComponent(companyId)}`),
 
+  // Sub-fleet scope — written before swarm-manifest so the route can park
+  // non-selected divisions. mode="full" keeps everything active.
+  setScope: (input: {
+    companyId: string;
+    mode: "full" | "focused";
+    departments: string[];
+    custom_labels?: string[];
+  }) => call<{ ok: true; scope: { mode: string; departments: string[]; custom_labels?: string[]; set_at: string } }>(
+    "POST", "/op-omega/onboarding/scope", input,
+  ),
+
+  getScope: (companyId: string) =>
+    call<{ ok: true; scope: { mode: "full" | "focused"; departments: string[]; custom_labels?: string[]; set_at: string } | null }>(
+      "GET", `/op-omega/onboarding/scope?companyId=${encodeURIComponent(companyId)}`),
+
+  // Avatar onboarding (parallel track to the company pillars)
+  createAvatar: (input: { name: string; role: string; workingHours: [string, string]; tz: string }) =>
+    call<{ ok: true; avatarId: string }>("POST", "/op-omega/onboarding/avatar", input),
+
+  connectAvatarTool: (avatarId: string, provider: string) =>
+    call<{
+      ok: true;
+      connected: Array<{ provider: string; ref: string; status: "stub" | "connected"; connected_at: string }>;
+      total: number;
+    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/tools`, { provider }),
+
+  // Phase 3 — per-provider personalization (VIPs / privacy zones / signoff)
+  setAvatarToolMeta: (
+    avatarId: string, provider: string,
+    meta: { vips?: string[]; privacy_zones?: string[]; signoff?: string },
+  ) =>
+    call<{
+      ok: true; provider: string;
+      meta: { vips?: string[]; privacy_zones?: string[]; signoff?: string };
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/tools/${encodeURIComponent(provider)}/meta`,
+      meta,
+    ),
+
+  // Phase 5 — welcome-hero free-text intro parse (T2 → profile prefill)
+  parseAvatarIntro: (rawIntro: string, skipInference?: boolean) =>
+    call<{
+      ok: true;
+      profile: { name?: string; role?: string; working_hours?: [string, string]; tz?: string };
+      source: "t2" | "stub";
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/parse`,
+      { raw_intro: rawIntro, skipInference },
+    ),
+
+  analyzeAvatarVoice: (
+    avatarId: string,
+    samples: [string, string, string],
+    skipInference?: boolean,
+    extras?: { signoff?: string; guardrails?: string[] },
+  ) =>
+    call<{
+      ok: true;
+      profile: { tone: string; formality: string; structure: string; delegates: string[] };
+      source: "t2" | "stub";
+      signoff?: string;
+      guardrails?: string[];
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/voice`,
+      { samples, skipInference, ...extras },
+    ),
+
+  // Phase 3 — Trust & boundaries step
+  setAvatarTrust: (avatarId: string, trust: {
+    autonomy_preset: "cautious" | "balanced" | "aggressive";
+    vips: Array<{ email: string; label?: string }>;
+    privacy_zones: string[];
+    notify: string[];
+  }) =>
+    call<{
+      ok: true;
+      trust: typeof trust & { set_at: string };
+    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/trust`, trust),
+
+  getAvatarTrust: (avatarId: string) =>
+    call<{
+      ok: true;
+      trust: {
+        autonomy_preset: "cautious" | "balanced" | "aggressive";
+        vips: Array<{ email: string; label?: string }>;
+        privacy_zones: string[];
+        notify: string[];
+        set_at: string;
+      } | null;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/trust`),
+
+  graduateAvatar: (avatarId: string) =>
+    call<{
+      ok: true;
+      trust: {
+        autonomy_preset: "cautious" | "balanced" | "aggressive";
+        vips: Array<{ email: string; label?: string }>;
+        privacy_zones: string[];
+        notify: string[];
+        set_at: string;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/graduate`),
+
+  getAvatarSuggestions: (avatarId: string) =>
+    call<{
+      ok: true;
+      suggestions: Array<{ id: string; title: string; body: string; needs: string[] }>;
+    }>("GET", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/suggestions`),
+
+  finalizeAvatar: (avatarId: string, enabledAutomationIds: string[]) =>
+    call<{
+      ok: true;
+      avatarId: string;
+      url: string;
+      paperclipHandoff: {
+        enabled: boolean;
+        paperclipUrl: string | null;
+        paperclipCompanyId: string | null;
+        conductorAgentId: string | null;
+        created: Array<{ provider: string; agentId: string; status: string }>;
+        skipped: Array<{ provider: string; reason: string }>;
+        errors: Array<{ provider: string; message: string }>;
+      } | null;
+    }>(
+      "POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/finalize`,
+      { enabledAutomationIds },
+    ),
+
+  // Phase 2 — manual triage trigger (dev surface; scheduler fires this
+  // automatically in prod). Returns the runner's report.
+  runAvatarGmailTriage: (avatarId: string, opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; paperclipCompanyId: string; gmailAgentId: string | null;
+        processed: number; drafted: number; approvalsCreated: number;
+        errors: Array<{ threadId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/gmail-triage${qs ? "?" + qs : ""}`);
+  },
+
+  // Phase 6 — provider-agnostic runners
+  runAvatarMailTriage: (avatarId: string, provider: "gmail" | "outlook", opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; providerId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; drafted: number; approvalsCreated: number;
+        errors: Array<{ threadId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/mail-triage/${provider}${qs ? "?" + qs : ""}`);
+  },
+
+  runAvatarCalendarTriage: (avatarId: string, provider: "google_calendar" | "microsoft_calendar", opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; providerId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; approvalsCreated: number;
+        errors: Array<{ eventId: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/calendar-triage/${provider}${qs ? "?" + qs : ""}`);
+  },
+
+  runAvatarSlackDigest: (avatarId: string, opts?: { dryRun?: boolean; skipInference?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.dryRun === false) params.set("dryRun", "false");
+    if (opts?.skipInference === false) params.set("skipInference", "false");
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      result: {
+        avatarId: string; paperclipCompanyId: string; agentId: string | null;
+        processed: number; approvalsCreated: number;
+        errors: Array<{ ts: string; message: string }>;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/run/slack-digest${qs ? "?" + qs : ""}`);
+  },
+
+  getAvatarMemory: (avatarId: string, limit = 50) =>
+    call<{
+      ok: true;
+      preferences: Array<{
+        id: string; rule: string; category: string; confidence: number;
+        learnedAt: string; supportingEventIds: string[]; applyCount: number;
+      }>;
+      episodic: Array<{
+        id: string; ts: string; kind: string; approvalId?: string;
+        approvalType?: string; classification?: string; confidence?: number;
+        decision?: string; edited?: { before?: string; after?: string }; note?: string;
+      }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/memory?limit=${limit}`),
+
+  distillAvatarMemory: (avatarId: string, opts?: { skipInference?: boolean; lookbackHours?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.skipInference) params.set("skipInference", "true");
+    if (opts?.lookbackHours) params.set("lookbackHours", String(opts.lookbackHours));
+    const qs = params.toString();
+    return call<{
+      ok: true;
+      count: number;
+      added: Array<{ id: string; rule: string; category: string; confidence: number }>;
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/memory/distill${qs ? "?" + qs : ""}`);
+  },
+
+  // Phase 2 — approval inbox
+  listAvatarApprovals: (avatarId: string, status: "pending" | "approved" | "rejected" | "all" = "pending") =>
+    call<{
+      ok: true;
+      approvals: Array<{
+        id: string;
+        avatarId: string;
+        type: string;
+        status: "pending" | "approved" | "rejected";
+        createdAt: string;
+        decidedAt?: string;
+        decisionNote?: string;
+        requestedByAgentId: string;
+        // Phase 6 — payload widens across approval kinds (mail draft /
+        // calendar invite_response / slack mention_digest). All fields
+        // optional so the dashboard can render each variant by reading
+        // `type` and picking the right ones. Server enforces the per-
+        // kind shape; this is the union view.
+        payload: {
+          provider?: string;
+          // Mail draft_reply
+          threadId?: string;
+          subject?: string;
+          from?: { name: string; email: string };
+          preview?: string;
+          receivedAt?: string;
+          draftText?: string | null;
+          classification?: "now" | "soon" | "fyi";
+          openQuestion?: string | null;
+          // Calendar invite_response
+          eventId?: string;
+          summary?: string;
+          organizer?: { name: string; email: string };
+          start?: string;
+          end?: string;
+          inside_working_hours?: boolean;
+          suggested?: "accept" | "decline" | "propose-time";
+          proposed_times?: string[] | null;
+          draft_message?: string | null;
+          // Slack mention_digest
+          channel?: string;
+          channelId?: string;
+          author?: { name: string; email?: string };
+          ts?: string;
+          text?: string;
+          permalink?: string;
+          importance?: "urgent" | "info" | "fyi";
+          // Shared
+          confidence?: number;
+          reasoning?: string;
+          body?: string;
+        };
+        editedPayload?: { draftText?: string } | null;
+      }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/approvals?status=${status}`),
+
+  decideAvatarApproval: (
+    avatarId: string,
+    approvalId: string,
+    body: { decision: "approve" | "reject"; decisionNote?: string; editedPayload?: { draftText?: string } },
+  ) =>
+    call<{ ok: true; approval: { id: string; status: string; decidedAt: string } }>(
+      "POST",
+      `/api/avatar/${encodeURIComponent(avatarId)}/approvals/${encodeURIComponent(approvalId)}/decide`,
+      body,
+    ),
+
+  // Phase 2 — audit log
+  getAvatarAudit: (avatarId: string, limit = 50) =>
+    call<{
+      ok: true;
+      entries: Array<{
+        id: string;
+        actorType: string;
+        actorId: string;
+        action: string;
+        entityType: string;
+        entityId: string;
+        agentId: string | null;
+        details: Record<string, unknown> | null;
+        createdAt: string;
+      }>;
+      error?: string;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/audit?limit=${limit}`),
+
+  // Phase 2 — per-skill kill switch (pause/resume one sub-agent on the
+  // mirrored Paperclip company without touching the rest of the fleet)
+  listAvatarSkills: (avatarId: string) =>
+    call<{
+      ok: true;
+      skills: Array<{ skill: string; agentId: string; status: string | null }>;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/skills`),
+
+  controlAvatarSkill: (avatarId: string, skill: string, action: "pause" | "resume") =>
+    call<{ ok: true; skill: string; agentId: string; status: string | null }>(
+      "POST",
+      `/api/avatar/${encodeURIComponent(avatarId)}/skills/${encodeURIComponent(skill)}/control`,
+      { action },
+    ),
+
+  getAvatar: (avatarId: string) =>
+    call<{
+      ok: true;
+      avatarId: string;
+      profile: { name: string; role: string; working_hours: [string, string]; tz: string; created_at: string } | null;
+      tools: Array<{ provider: string; ref: string; status: "stub" | "connected"; connected_at: string }>;
+      tools_skipped: boolean;
+      voice: {
+        samples: string[];
+        profile?: { tone: string; formality: string; structure: string; delegates: string[] };
+        source?: "t2" | "stub";
+      } | null;
+      automations: { enabled: string[]; suggested: Array<{ id: string; title: string; body: string; needs: string[] }> } | null;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}`),
+
+  // Monte Carlo report (full per-strategy breakdown, written by finalize)
+  getMcReport: (companyId: string) =>
+    call<{
+      ok: boolean;
+      report?: {
+        horizon_cycles: number;
+        n_runs_per_strategy: number;
+        strategies: Array<{ strategy_id: string; mean_mrr_growth: number; p_ruin: number; sharpe: number }>;
+        winner: { strategy_id: string; rationale: string };
+      };
+      error?: string;
+    }>("GET", `/op-omega/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`),
+
   // Finalize
   finalize: (input: {
     companyId: string;
@@ -309,6 +657,22 @@ export const opOmegaOnboardingApi = {
 
   listCompanies: () =>
     call<CompaniesResponse>("GET", "/api/companies"),
+
+  // Real-time Paperclip handoff progress — polled by ActivateProgress
+  // while /activate is in flight so the UI can paint per-slot hires
+  // as the bridge actually fires them, not just at the final response.
+  getHandoffStatus: (companyId: string) =>
+    call<{
+      ok: true;
+      progress: null | {
+        paperclipUrl: string;
+        paperclipCompanyId: string;
+        total: number;
+        completed: number;
+        inFlight: string | null;
+        slots: Array<{ slot: string; status: "pending" | "hiring" | "hired" | "skipped" | "failed"; agentId?: string }>;
+      };
+    }>("GET", `/api/instance/${encodeURIComponent(companyId)}/handoff-status`),
 
   // Activate — bridge the signed manifest into runtime DB state. Idempotent.
   activate: (companyId: string) =>

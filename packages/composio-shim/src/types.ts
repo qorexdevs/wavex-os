@@ -25,4 +25,7 @@ export type ApiKeyValidation =
 export interface OAuthInitResult {
   url: string | null;
   pendingConnectionId: string | null;
+  /** Set when live mode is on but real Composio wiring isn't in place
+   *  yet. UI surfaces a "needs setup" callout instead of failing silently. */
+  needsLiveWiring?: boolean;
 }

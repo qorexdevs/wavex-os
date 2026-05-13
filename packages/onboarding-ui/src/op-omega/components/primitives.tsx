@@ -1,7 +1,7 @@
 /** Op-omega-style UI primitives — small reusable components that match
  * the wavex-os dark theme (var(--accent), var(--surface), etc.). */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export function H2({ children }: { children: ReactNode }) {
   return <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 0, marginBottom: "0.5rem" }}>{children}</h2>;
@@ -102,6 +102,95 @@ export function ChipMultiSelect<T extends string>({ values, onChange, options }:
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** Free-form chip input — operator types a value, hits Enter/comma to add
+ *  a chip, clicks × to remove. Distinct from ChipMultiSelect which is for
+ *  fixed option sets. Used by the per-tool drawer (VIPs, privacy zones)
+ *  and the Voice step (guardrails). */
+export function ChipInput({
+  values, onChange, placeholder, max = 20, ariaLabel,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+  max?: number;
+  ariaLabel?: string;
+}) {
+  const [draft, setDraft] = useState<string>("");
+  function add(raw: string): void {
+    const v = raw.trim().replace(/,$/, "").trim();
+    if (!v) return;
+    if (values.includes(v)) { setDraft(""); return; }
+    if (values.length >= max) return;
+    onChange([...values, v]);
+    setDraft("");
+  }
+  function remove(idx: number): void {
+    onChange(values.filter((_, i) => i !== idx));
+  }
+  return (
+    <div
+      style={{
+        display: "flex", flexWrap: "wrap", gap: "0.35rem",
+        padding: "0.4rem 0.5rem",
+        background: "var(--bg)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+        minHeight: 36,
+      }}
+      onClick={(e) => {
+        const tgt = e.currentTarget.querySelector("input");
+        if (tgt instanceof HTMLInputElement) tgt.focus();
+      }}
+    >
+      {values.map((v, i) => (
+        <span
+          key={`${v}-${i}`}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: "0.25rem",
+            padding: "0.15rem 0.5rem",
+            background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+            color: "var(--accent)",
+            border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+            borderRadius: 999, fontSize: 11, fontWeight: 600,
+          }}
+        >
+          {v}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); remove(i); }}
+            aria-label={`Remove ${v}`}
+            style={{
+              background: "transparent", border: "none", color: "var(--accent)",
+              cursor: "pointer", padding: 0, marginLeft: 2, fontSize: 13, lineHeight: 1,
+            }}
+          >×</button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        placeholder={values.length === 0 ? placeholder : ""}
+        aria-label={ariaLabel}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            add(draft);
+          } else if (e.key === "Backspace" && draft === "" && values.length > 0) {
+            remove(values.length - 1);
+          }
+        }}
+        onBlur={() => { if (draft.trim()) add(draft); }}
+        style={{
+          flex: 1, minWidth: 80,
+          background: "transparent", border: "none", outline: "none",
+          color: "var(--text)", fontSize: 12, fontFamily: "inherit",
+        }}
+      />
     </div>
   );
 }

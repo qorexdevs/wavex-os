@@ -10,6 +10,7 @@ export const FEATURED_TOOLKITS: ReadonlyArray<FeaturedToolkit> = [
   { slug: "telegram", displayName: "Telegram", category: "comms" },
   { slug: "discord", displayName: "Discord", category: "comms" },
   { slug: "gmail", displayName: "Gmail", category: "comms" },
+  { slug: "outlook", displayName: "Outlook", category: "comms" },
   { slug: "hubspot", displayName: "HubSpot", category: "crm" },
   { slug: "salesforce", displayName: "Salesforce", category: "crm" },
   { slug: "stripe", displayName: "Stripe", category: "billing" },
@@ -19,5 +20,6 @@ export const FEATURED_TOOLKITS: ReadonlyArray<FeaturedToolkit> = [
   { slug: "linear", displayName: "Linear", category: "dev" },
   { slug: "notion", displayName: "Notion", category: "ops" },
   { slug: "google_calendar", displayName: "Google Calendar", category: "ops" },
+  { slug: "microsoft_calendar", displayName: "Microsoft Calendar", category: "ops" },
   { slug: "google_drive", displayName: "Google Drive", category: "ops" },
 ];

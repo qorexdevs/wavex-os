@@ -6,6 +6,8 @@ import MissionControl from "./pages/MissionControl";
 import Pricing from "./pages/Pricing";
 import { CompanyProvider } from "./op-omega/lib/CompanyContext";
 import { OmegaOnboarding } from "./op-omega/OmegaOnboarding";
+import { OnboardingShell } from "./op-omega/pages/OnboardingShell";
+import { AvatarDashboard } from "./pages/AvatarDashboard";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -20,6 +22,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Routes>
             <Route path="/" element={<MissionControl />} />
             <Route path="/onboarding" element={<OmegaOnboarding />} />
+            <Route path="/onboarding-chat" element={<OnboardingShell />} />
+            <Route path="/avatar/:id" element={<AvatarDashboard />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
