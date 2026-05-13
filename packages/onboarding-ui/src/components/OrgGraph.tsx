@@ -43,6 +43,14 @@ export interface OrgGraphProps {
   /** Optional per-agent hover hint — returned string is set as the node's
    *  `title` attribute, surfacing a native browser tooltip. */
   hoverDetail?: (agent: OrgAgent) => string;
+  /** Optional department label override per tier-2 slot. When provided,
+   *  a small uppercase label is drawn above the corresponding chief
+   *  column. Defaults to the chief slot itself (e.g. "MARKETING") if no
+   *  override is given but the prop is enabled via `showDepartmentLabels`. */
+  departmentLabels?: Record<string, string>;
+  /** Toggle the department label row above tier-2 chiefs. Off by default
+   *  so Mission Control's FleetGraph keeps its existing minimal layout. */
+  showDepartmentLabels?: boolean;
 }
 
 /** Convert "backend-architect" → "Backend Architect", "ceo" → "CEO",
@@ -124,6 +132,7 @@ function makeNode(
         <div
           style={{ textAlign: "center", padding: "0.45rem 0.4rem", lineHeight: 1.35, opacity: finalOpacity, transition: "opacity 0.18s ease-out" }}
           title={opts.hoverTitle}
+          data-slot={a.slot}
         >
           <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text)" }}>
             {displayName}
@@ -134,6 +143,21 @@ function makeNode(
           <div style={{ fontSize: 9, color: origin.color, marginTop: 2, fontWeight: 600 }}>
             {origin.label}
           </div>
+          {dimByStatus && (
+            <div style={{
+              fontSize: 8,
+              marginTop: 3,
+              padding: "1px 5px",
+              display: "inline-block",
+              color: "var(--text-dim)",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+            }}>
+              {a.status}
+            </div>
+          )}
         </div>
       ),
     },
@@ -159,13 +183,50 @@ function makeNode(
  *  approach which produced a 6000px-wide graph with 26 sub-agents. */
 function buildLayout(
   agents: OrgAgent[],
-  opts: { highlightSlots?: Set<string>; hoverDetail?: (a: OrgAgent) => string } = {},
+  opts: {
+    highlightSlots?: Set<string>;
+    hoverDetail?: (a: OrgAgent) => string;
+    showDepartmentLabels?: boolean;
+    departmentLabels?: Record<string, string>;
+  } = {},
 ): { nodes: Node[]; edges: Edge[] } {
   const hasHighlight = opts.highlightSlots !== undefined;
   const nodeOpts = (a: OrgAgent) => ({
     dimmedByFilter: hasHighlight ? !opts.highlightSlots!.has(a.id) : false,
     hoverTitle: opts.hoverDetail?.(a),
   });
+
+  /** Build a label-only node — no border, no background, just text.
+   *  Used for department headers above each tier-2 chief column. */
+  function makeHeaderNode(slot: string, label: string, x: number, y: number): Node {
+    return {
+      id: `__header__${slot}`,
+      position: { x, y },
+      data: {
+        label: (
+          <div style={{
+            textAlign: "center",
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--text-dim)",
+            pointerEvents: "none",
+          }}>
+            {label}
+          </div>
+        ),
+      },
+      style: {
+        background: "transparent",
+        border: "none",
+        width: NODE_W,
+        padding: 0,
+      },
+      selectable: false,
+      draggable: false,
+    };
+  }
   const COL_GAP = 28;
   const T1_T2_GAP = 90;
   const T2_T3_GAP = 60;
@@ -223,6 +284,12 @@ function buildLayout(
   // Tier 2 chiefs + their tier-3 children stacked below.
   tier2.forEach((chief, i) => {
     const x = startX + i * (NODE_W + COL_GAP);
+    if (opts.showDepartmentLabels) {
+      // Default label is the chief slot uppercased (CMO, CRO, ...); operators
+      // who pass a `departmentLabels` map can override with friendlier names.
+      const label = opts.departmentLabels?.[chief.slot] ?? chief.slot.toUpperCase();
+      nodes.push(makeHeaderNode(chief.slot, label, x, Y_T2 - 26));
+    }
     nodes.push(makeNode(chief, x, Y_T2, 2, nodeOpts(chief)));
     const children = leafChildrenBySlot.get(chief.slot) ?? [];
     children.forEach((child, j) => {
@@ -255,10 +322,10 @@ function buildLayout(
   return { nodes, edges };
 }
 
-export function OrgGraph({ agents, height = 540, onAgentClick, highlightSlots, hoverDetail }: OrgGraphProps) {
+export function OrgGraph({ agents, height = 540, onAgentClick, highlightSlots, hoverDetail, showDepartmentLabels, departmentLabels }: OrgGraphProps) {
   const { nodes, edges } = useMemo(
-    () => buildLayout(agents, { highlightSlots, hoverDetail }),
-    [agents, highlightSlots, hoverDetail],
+    () => buildLayout(agents, { highlightSlots, hoverDetail, showDepartmentLabels, departmentLabels }),
+    [agents, highlightSlots, hoverDetail, showDepartmentLabels, departmentLabels],
   );
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
@@ -278,6 +345,8 @@ export function OrgGraph({ agents, height = 540, onAgentClick, highlightSlots, h
         elementsSelectable
         defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
         onNodeClick={onAgentClick ? (_e, node) => {
+          // Skip non-agent decoration nodes (department headers).
+          if (node.id.startsWith("__header__")) return;
           const a = agentsById.get(node.id);
           if (a) onAgentClick(a);
         } : undefined}

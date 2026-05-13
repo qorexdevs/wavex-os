@@ -16,6 +16,20 @@ import { AgentSwapPanel } from "../components/AgentSwapPanel";
 import { AgentAddPanel } from "../components/AgentAddPanel";
 import { templateIdForSlot } from "../../data/slot-to-template";
 
+/** Friendly department headers rendered above each tier-2 chief column.
+ *  Keys are chief slots (cmo, cro, ...); values are the human-readable
+ *  department names shown to operators. Falls back to UPPER(slot) for any
+ *  chief not in this map. */
+const CHIEF_TO_DEPARTMENT: Record<string, string> = {
+  ceo: "Executive",
+  cpo: "Product",
+  cmo: "Marketing",
+  cro: "Revenue",
+  cfo: "Finance",
+  cdo: "Data",
+  coo: "Operations",
+};
+
 interface AddedAgent { slot: string; parent_slot: string; template_id: string; added_at: string }
 interface ManifestWithOverlays {
   template_overlays?: Record<string, string>;
@@ -40,6 +54,9 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
   const [searchTerm, setSearchTerm] = useState("");
   type StatusFilter = "all" | "active" | "parked";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Scope context — focused-mode operators see their selected departments
+  // in the header strip. Hydrated from scope.json on mount.
+  const [scope, setScope] = useState<{ mode: "full" | "focused"; departments: string[] } | null>(null);
 
   // Pull existing overlays + additions from the live company manifest so
   // re-entry preserves prior swaps/adds.
@@ -51,6 +68,13 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
         if (m?.template_overlays) setOverlays(m.template_overlays);
         if (m?.template_additions) setAdditions(m.template_additions);
       } catch { /* first-time entry; nothing to hydrate */ }
+      try {
+        const s = await opOmegaOnboardingApi.getScope(companyId);
+        if (s.scope) setScope({
+          mode: s.scope.mode === "focused" ? "focused" : "full",
+          departments: s.scope.departments ?? [],
+        });
+      } catch { /* scope not set yet; full org by default */ }
     })();
   }, [companyId]);
 
@@ -74,6 +98,14 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
 
   const totalCount = agents.length;
   const swapAgent = swapSlot ? agents.find((a) => a.slot === swapSlot) : null;
+  // Counts powering the header stats line + footer status strip.
+  const activeCount = agents.filter((a) => a.status === "active" || a.status === "standby").length;
+  const parkedCount = agents.filter((a) => a.status === "parked" || a.status === "disabled").length;
+  const swapCount = Object.keys(overlays).length;
+  const addCount = additions.length;
+  const scopeLabel = scope?.mode === "focused"
+    ? `focused (${(scope.departments ?? []).join(" + ") || "no depts"})`
+    : "full org";
 
   // Build highlight set + hover-detail callback for OrgGraph. The set is
   // `undefined` when no filter is active (preserves OrgGraph's default
@@ -122,81 +154,119 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
       flexDirection: "column",
     }}>
       <header style={{
-        padding: "0.75rem 1.25rem",
+        padding: "0.6rem 1.25rem",
         borderBottom: "1px solid var(--border)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         gap: "1rem",
       }}>
-        <div style={{ flex: "0 0 auto" }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Your team</div>
-          <div className="text-dim" style={{ fontSize: 11 }}>
-            Tap any role to swap. Hover for details. Use + to add a specialist.
+        {/* Left block: title + live stats line. The two-line stack keeps the
+         *  header compact while surfacing scope + active/parked context that
+         *  was previously buried in the footer. */}
+        <div style={{ flex: "0 0 auto", minWidth: 0 }}>
+          <div
+            style={{ fontSize: 14, fontWeight: 700 }}
+            title="Tap any role to swap. Hover for details. Use + to add a specialist."
+          >
+            Your team
+          </div>
+          <div className="text-dim" style={{ fontSize: 11, marginTop: 1 }}>
+            <span style={{ color: "var(--accent)" }}>{activeCount} active</span>
+            {" · "}
+            <span>{parkedCount} parked</span>
+            {" · "}
+            <span>{scopeLabel}</span>
           </div>
         </div>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by slot or template…"
-            style={{
-              minWidth: 240,
-              padding: "0.4rem 0.7rem",
-              borderRadius: 6,
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
-              fontSize: 12,
-              outline: "none",
-            }}
-          />
-          <div style={{ display: "flex", gap: "0.3rem" }}>
+        {/* Center cluster: compact search + segmented filter. Both inline on
+         *  one row so the chart canvas keeps its vertical real estate. */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", minWidth: 0 }}>
+          <div style={{
+            position: "relative",
+            width: 320,
+            maxWidth: "40vw",
+          }}>
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 10, top: "50%", transform: "translateY(-50%)",
+                color: "var(--text-dim)", fontSize: 12, pointerEvents: "none",
+              }}
+            >🔍</span>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search agents…"
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.7rem 0.4rem 1.85rem",
+                borderRadius: 6,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                fontSize: 12,
+                outline: "none",
+              }}
+            />
+          </div>
+          <div style={{
+            display: "flex",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            padding: 2,
+          }}>
             {(["all", "active", "parked"] as const).map((f) => (
               <button
                 key={f}
                 type="button"
                 onClick={() => setStatusFilter(f)}
                 style={{
-                  padding: "0.3rem 0.65rem",
-                  borderRadius: 999,
+                  padding: "0.25rem 0.7rem",
+                  borderRadius: 4,
                   fontSize: 11,
                   cursor: "pointer",
-                  background: statusFilter === f ? "var(--accent)" : "transparent",
-                  color: statusFilter === f ? "var(--bg)" : "var(--text-dim)",
-                  border: `1px solid ${statusFilter === f ? "var(--accent)" : "var(--border)"}`,
+                  background: statusFilter === f ? "var(--bg)" : "transparent",
+                  color: statusFilter === f ? "var(--text)" : "var(--text-dim)",
+                  border: "none",
                   fontWeight: statusFilter === f ? 600 : 400,
+                  boxShadow: statusFilter === f ? "0 1px 0 rgba(0,0,0,0.2)" : "none",
                 }}
               >
-                {f === "all" ? "All" : f === "active" ? "Active only" : "Parked only"}
+                {f === "all" ? "All" : f === "active" ? "Active" : "Parked"}
               </button>
             ))}
           </div>
           {hasFilter && (
-            <span className="text-dim" style={{ fontSize: 11 }}>
-              {matchedCount} / {agents.length} match
+            <span className="text-dim" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+              {matchedCount} / {agents.length}
             </span>
           )}
         </div>
 
+        {/* Right: secondary action, deliberately quieter than the footer's
+         *  primary CTA so it doesn't compete visually. */}
         <button
           type="button"
           onClick={() => setAddPanelOpen(true)}
+          title="Add a specialist agent"
           style={{
-            padding: "0.4rem 0.85rem",
+            padding: "0.35rem 0.7rem",
             borderRadius: 6,
             background: "transparent",
-            color: "var(--accent)",
-            border: "1px solid var(--accent)",
-            fontWeight: 600,
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            fontWeight: 500,
             fontSize: 12,
             cursor: "pointer",
             flex: "0 0 auto",
           }}
         >
-          + Add agent
+          + Add
         </button>
       </header>
 
@@ -207,17 +277,20 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
           onAgentClick={(a) => setSwapSlot(a.slot)}
           highlightSlots={highlightSlots}
           hoverDetail={hoverDetailFor}
+          showDepartmentLabels
+          departmentLabels={CHIEF_TO_DEPARTMENT}
         />
       </div>
 
       <footer style={{
-        padding: "0.75rem 1.25rem",
+        padding: "0.6rem 1.25rem",
         borderTop: "1px solid var(--border)",
         background: "color-mix(in srgb, var(--surface) 92%, transparent)",
         backdropFilter: "blur(6px)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        gap: "1rem",
       }}>
         <button
           type="button"
@@ -230,15 +303,39 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
             border: "1px solid var(--border)",
             fontSize: 12,
             cursor: "pointer",
+            flex: "0 0 auto",
           }}
         >
           ← Back to chat
         </button>
-        <span className="text-dim" style={{ fontSize: 12 }}>
-          {totalCount} agents
-          {Object.keys(overlays).length > 0 && ` · ${Object.keys(overlays).length} swap${Object.keys(overlays).length === 1 ? "" : "s"}`}
-          {additions.length > 0 && ` · ${additions.length} added`}
-        </span>
+        {/* Status strip — granular counts so the operator can see their
+         *  edits accumulate. Each segment is muted by default; active +
+         *  edited segments take on accent color so they pop. */}
+        <div style={{
+          flex: 1,
+          display: "flex",
+          justifyContent: "center",
+          gap: "1.1rem",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          flexWrap: "wrap",
+        }}>
+          <span>
+            <span style={{ color: "var(--accent)" }}>●</span> {activeCount} active
+          </span>
+          <span>
+            <span>↷</span> {parkedCount} parked
+          </span>
+          <span style={{ color: swapCount > 0 ? "var(--accent)" : undefined }}>
+            • {swapCount} swap{swapCount === 1 ? "" : "s"}
+          </span>
+          <span style={{ color: addCount > 0 ? "var(--accent)" : undefined }}>
+            + {addCount} added
+          </span>
+          <span className="text-dim" style={{ opacity: 0.7 }}>
+            ({totalCount} total)
+          </span>
+        </div>
         <button
           type="button"
           onClick={onConfirmed}
@@ -251,6 +348,7 @@ export function SwarmStudio({ companyId, manifest, onConfirmed, onBackToChat }: 
             fontWeight: 700,
             fontSize: 13,
             cursor: "pointer",
+            flex: "0 0 auto",
           }}
         >
           These look right — wire them up →
