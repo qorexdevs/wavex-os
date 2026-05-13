@@ -72,6 +72,32 @@ const installId = process.env.WAVEX_INFERENCE_INSTALL_ID ?? loadOrMintInstallId(
 const email = process.env.WAVEX_INFERENCE_EMAIL ?? "anon@wavex-os.local";
 const model = process.env.WAVEX_INFERENCE_MODEL ?? "claude-sonnet-4-5";
 
+// ── inference-status: heartbeat so the UI's T2ProgressIndicator gets a live
+//    elapsed counter instead of freezing on a stale file from a prior run.
+//    The route reads ~/.wavex-os/state/inference-current.json (see
+//    packages/op-omega-server/src/routes/inference-status.ts).
+const STATUS_PATH = join(homedir(), ".wavex-os", "state", "inference-current.json");
+const startedAtMs = Date.now();
+function writeStatus(patch) {
+  try {
+    mkdirSync(join(homedir(), ".wavex-os", "state"), { recursive: true });
+    const now = Date.now();
+    const base = {
+      started_at_ms: startedAtMs,
+      pid: process.pid,
+      alive: true,
+      elapsed_ms: now - startedAtMs,
+      completed: false,
+      updated_at_ms: now,
+    };
+    writeFileSync(STATUS_PATH, JSON.stringify({ ...base, ...patch }, null, 2));
+  } catch { /* status writes are best-effort; never break the inference call */ }
+}
+writeStatus({});
+// Heartbeat while the call is in flight — UI polls every 1.5s, so 1s tick
+// gives a smooth elapsed counter. Cleared in finally{} after the hub returns.
+const heartbeat = setInterval(() => writeStatus({}), 1000);
+
 try {
   log(`hub: ${hubUrl}`);
   log(`install_id: ${installId.slice(0, 8)}...`);
@@ -119,7 +145,11 @@ try {
   } else {
     process.stdout.write(t2.content ?? "");
   }
+  clearInterval(heartbeat);
+  writeStatus({ alive: false, completed: true, exit_code: 0 });
 } catch (err) {
+  clearInterval(heartbeat);
+  writeStatus({ alive: false, completed: true, exit_code: 70 });
   console.error(`claude-hosted-shim: ${err.message ?? err}`);
   process.exit(70);
 }
