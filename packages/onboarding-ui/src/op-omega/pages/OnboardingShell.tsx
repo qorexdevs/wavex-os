@@ -49,6 +49,61 @@ function deriveSlug(rawInput: string): string {
   return slugifyCompanyId(words || "company");
 }
 
+/** The WaveX OS brand wordmark. Two-tone: "Wave" in the foreground text
+ *  color, "X" in the accent with a subtle drop-shadow glow, "OS" trailing
+ *  in a smaller weight. An accent dot pulses softly to the left so the
+ *  brand has a living signature in the corner without dominating the
+ *  screen. `size="hero"` doubles the type for the welcome screen; the
+ *  default `compact` is the size used in the TopBar after onboarding
+ *  starts. */
+function Wordmark({ size = "compact" }: { size?: "hero" | "compact" }) {
+  const isHero = size === "hero";
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: isHero ? "0.6rem" : "0.45rem" }}>
+      <style>{`
+        @keyframes wavex-brand-pulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.95); }
+          50%      { opacity: 1;   transform: scale(1.1);  }
+        }
+      `}</style>
+      <span
+        aria-hidden
+        style={{
+          width: isHero ? 9 : 6,
+          height: isHero ? 9 : 6,
+          borderRadius: "50%",
+          background: "var(--accent)",
+          boxShadow: `0 0 ${isHero ? 12 : 8}px var(--accent)`,
+          animation: "wavex-brand-pulse 2.4s ease-in-out infinite",
+        }}
+      />
+      <span style={{
+        fontWeight: 700,
+        fontSize: isHero ? 22 : 13,
+        letterSpacing: isHero ? "-0.01em" : "0.02em",
+        color: "var(--text)",
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: 0,
+      }}>
+        <span>Wave</span>
+        <span style={{
+          color: "var(--accent)",
+          textShadow: "0 0 12px color-mix(in srgb, var(--accent) 45%, transparent)",
+        }}>X</span>
+        <span style={{
+          marginLeft: isHero ? "0.5rem" : "0.35rem",
+          color: "var(--text-dim)",
+          fontWeight: 500,
+          fontSize: isHero ? 14 : 11,
+          letterSpacing: "0.12em",
+          alignSelf: "center",
+        }}>OS</span>
+      </span>
+    </div>
+  );
+}
+
 /** Does the welcome input contain a URL-shaped token? Used to decide
  *  whether to send it to Pillar 1 as `raw_input` (the server will fetch
  *  and read the site) or treat it as a self-described pitch (manual_context,
@@ -725,15 +780,24 @@ export function OnboardingShell() {
 
 function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: boolean }) {
   const [draft, setDraft] = useState("");
+  // `submitting` triggers the phase-out animation. We render with reduced
+  // opacity + slight upward translate for ~350ms before calling onSubmit
+  // so the welcome content doesn't snap-cut into the chat thread.
+  const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => { ref.current?.focus(); }, []);
 
   function send(text: string): void {
     const t = text.trim();
-    if (!t) return;
-    setDraft("");
-    onSubmit(t);
+    if (!t || submitting) return;
+    setSubmitting(true);
+    // Let the fade-out animation play before we hand the input upstream.
+    // 350ms feels deliberate without dragging.
+    window.setTimeout(() => {
+      setDraft("");
+      onSubmit(t);
+    }, 350);
   }
 
   function handleKey(e: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -773,8 +837,8 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
       padding: "1.5rem",
       gap: "2rem",
     }}>
-      <div style={{ position: "absolute", top: "1rem", left: "1rem", display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
-        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.02em" }}>WaveX OS</span>
+      <div style={{ position: "absolute", top: "1.25rem", left: "1.5rem", display: "flex", alignItems: "center", gap: "0.65rem" }}>
+        <Wordmark size="hero" />
         {t0 && (
           <span
             title="Fast mode (?t0=1): every T2 inference call returns a deterministic fallback. No claude CLI required, no token cost. Drop the ?t0=1 from the URL for real inference."
@@ -791,7 +855,20 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
         )}
       </div>
 
-      <div style={{ maxWidth: 720, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: "2rem" }}>
+      <div style={{
+        maxWidth: 720,
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "2rem",
+        // Phase-out: when submitting, fade + drift up so the welcome
+        // content gracefully steps aside before the chat thread mounts.
+        opacity: submitting ? 0 : 1,
+        transform: submitting ? "translateY(-12px)" : "translateY(0)",
+        transition: "opacity 320ms ease-out, transform 320ms ease-out",
+        pointerEvents: submitting ? "none" : "auto",
+      }}>
         <div style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: 30, fontWeight: 700, margin: 0, marginBottom: "0.6rem", letterSpacing: "-0.01em" }}>
             What do you want to build?
@@ -821,6 +898,7 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
             onKeyDown={handleKey}
             placeholder="Ask anything…"
             rows={1}
+            disabled={submitting}
             style={{
               flex: 1,
               resize: "none",
@@ -839,7 +917,7 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
           <button
             type="button"
             onClick={() => send(draft)}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || submitting}
             style={{
               padding: "0.55rem 0.8rem",
               borderRadius: 10,
@@ -848,7 +926,7 @@ function EmptyState({ onSubmit, t0 }: { onSubmit: (text: string) => void; t0: bo
               border: "none",
               fontWeight: 700,
               fontSize: 13,
-              cursor: draft.trim() ? "pointer" : "not-allowed",
+              cursor: draft.trim() && !submitting ? "pointer" : "not-allowed",
               transition: "background 0.15s, color 0.15s",
             }}
           >
@@ -908,8 +986,8 @@ function TopBar({
       padding: "0.6rem 1.25rem",
       display: "flex", alignItems: "center", gap: "1rem",
     }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", minWidth: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.02em" }}>WaveX OS</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+        <Wordmark size="compact" />
         {companyId && (
           <span className="text-dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             · <code>{companyId}</code>
