@@ -77,7 +77,7 @@ supabase secrets set STRIPE_SECRET_KEY=sk_test_...
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...   # filled in after Step 5
 
 # Deploy
-supabase functions deploy stripe-webhook --no-verify-jwt
+supabase functions deploy wavex-os-subscription-webhook --no-verify-jwt
 supabase functions deploy create-checkout-session
 ```
 
@@ -89,7 +89,7 @@ supabase functions deploy create-checkout-session
 
 In the Stripe Dashboard → Developers → Webhooks → Add endpoint:
 
-- **Endpoint URL:** `https://<YOUR_SUPABASE_PROJECT_REF>.supabase.co/functions/v1/stripe-webhook`
+- **Endpoint URL:** `https://<YOUR_SUPABASE_PROJECT_REF>.supabase.co/functions/v1/wavex-os-subscription-webhook`
 - **Events to send:**
   - `checkout.session.completed`
   - `customer.subscription.created`
@@ -102,7 +102,7 @@ After creation, copy the **Signing secret** (`whsec_...`) and update Supabase:
 
 ```bash
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
-supabase functions deploy stripe-webhook --no-verify-jwt   # redeploy to pick up new secret
+supabase functions deploy wavex-os-subscription-webhook --no-verify-jwt   # redeploy to pick up new secret
 ```
 
 ## Step 6 — Smoke-test with a real card

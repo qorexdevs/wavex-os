@@ -56,7 +56,9 @@ describe("disabled-mode behavior", () => {
 
   it("initOAuth returns null url", async () => {
     const r = await initOAuth({ companyId: "c", toolkitSlug: "slack", callbackUrl: "http://x" });
-    expect(r).toEqual({ url: null, pendingConnectionId: null });
+    expect(r.url).toBeNull();
+    expect(r.pendingConnectionId).toBeNull();
+    expect(r.needsLiveWiring).toBe(true);
   });
 
   it("getFeaturedToolkits is non-empty even in disabled mode", () => {
@@ -76,9 +78,12 @@ describe("live-mode stub behavior (returns empty + warns)", () => {
     expect(warn).toHaveBeenCalled();
   });
 
-  it("validateApiKey returns ok when key present", async () => {
+  it("validateApiKey hits Composio with the supplied key", async () => {
+    // Live wiring now: a fake key fails fast with a real 401 from Composio,
+    // surfaced as composio_api_rejected. Disabled mode is covered above.
     const r = await validateApiKey("ck-test");
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/composio_api_rejected|COMPOSIO_API_KEY/);
   });
 
   it("validateApiKey returns missing-key error when no key", async () => {

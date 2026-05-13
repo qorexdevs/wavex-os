@@ -35,9 +35,12 @@ export function getClaudeBin(): string {
   if (mode === "apikey") {
     return process.env.OP_OMEGA_CLAUDE_BIN ?? "claude";
   }
-  // hosted mode reuses bare claude as a placeholder until the hosted proxy
-  // ships; callers should prefer a fetch-based shim once available.
-  return process.env.OP_OMEGA_CLAUDE_BIN ?? "claude";
+  // Hosted mode: tier-router's `claude -p` subprocess contract is satisfied
+  // by a Node shim that proxies to the Mac mini's inference-server Pool A
+  // endpoint via WAVEX_INFERENCE_HUB_URL. This is the path customers who
+  // don't have their own Claude Max take — flat-rate inference via the
+  // operator's subscription, no local credentials required.
+  return resolve(repoRoot(), "scripts/wrappers/claude-hosted-shim.mjs");
 }
 
 export interface InferenceConfig {

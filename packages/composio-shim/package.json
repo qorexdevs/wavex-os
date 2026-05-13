@@ -15,5 +15,8 @@
     "@types/node": "^20.16.5",
     "typescript": "^5.5.4",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@composio/core": "0.9.1"
   }
 }

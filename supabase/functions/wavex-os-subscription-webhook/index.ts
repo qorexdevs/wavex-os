@@ -10,16 +10,19 @@
  *   - invoice.payment_failed             → status -> past_due
  *
  * Deploy:
- *   supabase functions deploy stripe-webhook --no-verify-jwt
+ *   supabase functions deploy wavex-os-subscription-webhook --no-verify-jwt
  *
- * Env vars required:
- *   STRIPE_SECRET_KEY              — sk_test_... or sk_live_...
- *   STRIPE_WEBHOOK_SECRET          — from `stripe listen` or dashboard webhook
- *   SUPABASE_URL                   — auto-injected
- *   SUPABASE_SERVICE_ROLE_KEY      — auto-injected
+ * Env vars required (READ wavex-os-prefixed names FIRST so this function
+ * does NOT compete with wavexcard's separate `stripe-webhook` function
+ * which uses the unprefixed STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET):
+ *   STRIPE_SECRET_KEY_TEST_ENV        — sk_test_... for the staging run; falls back to STRIPE_SECRET_KEY
+ *   WAVEX_OS_STRIPE_WEBHOOK_SECRET    — Stripe-issued signing secret for THIS endpoint
+ *                                       (different from wavexcard's STRIPE_WEBHOOK_SECRET)
+ *   SUPABASE_URL                      — auto-injected
+ *   SUPABASE_SERVICE_ROLE_KEY         — auto-injected
  *
  * Configure in Stripe dashboard:
- *   Endpoint: https://<project-ref>.supabase.co/functions/v1/stripe-webhook
+ *   Endpoint: https://<project-ref>.supabase.co/functions/v1/wavex-os-subscription-webhook
  *   Events: checkout.session.completed, customer.subscription.*, invoice.paid,
  *           invoice.payment_failed
  */
@@ -28,8 +31,10 @@ import Stripe from "https://esm.sh/stripe@17.5.0?target=denonext";
 // @ts-expect-error — Deno-style import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 
-const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")!;
-const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
+const stripeKey =
+  Deno.env.get("STRIPE_SECRET_KEY_TEST_ENV") ?? Deno.env.get("STRIPE_SECRET_KEY")!;
+const webhookSecret =
+  Deno.env.get("WAVEX_OS_STRIPE_WEBHOOK_SECRET") ?? Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -62,11 +67,20 @@ function isoFromUnix(s: number | null | undefined): string | null {
 }
 
 function tierFromPriceLookupKey(key: string | null): SubRow["tier"] | null {
+  // Accept both the original lookup_key naming and the metadata.tier values
+  // emitted by internal-setup-wavex-stripe (founder/growth/custom).
   switch (key) {
-    case "wavex_os_founder": return "founder";
-    case "wavex_os_growth":  return "growth";
-    case "wavex_os_custom":  return "custom";
-    default: return null;
+    case "wavex_os_founder":
+    case "founder":
+      return "founder";
+    case "wavex_os_growth":
+    case "growth":
+      return "growth";
+    case "wavex_os_custom":
+    case "custom":
+      return "custom";
+    default:
+      return null;
   }
 }
 
@@ -74,55 +88,59 @@ async function upsertSubscriptionFromStripe(
   stripeSub: Stripe.Subscription,
   userId: string | null,
 ): Promise<void> {
-  // Resolve user_id either from passed value (checkout session metadata) or
-  // by looking up an existing row by stripe_customer_id.
-  let resolvedUserId = userId;
-  if (!resolvedUserId) {
-    const { data: prior } = await sb
-      .schema("wavex_os")
-      .from("subscriptions")
-      .select("user_id")
-      .eq("stripe_subscription_id", stripeSub.id)
-      .maybeSingle();
-    resolvedUserId = (prior as { user_id?: string } | null)?.user_id ?? null;
-  }
-  if (!resolvedUserId) {
-    console.error(`No user_id for subscription ${stripeSub.id} — skipping`);
-    return;
-  }
-
-  // Pull lookup_key from the subscription's first item's price.
+  // Resolve tier from lookup_key OR price.metadata.tier (the setup function
+  // populates the latter; lookup_key is a stable Stripe-side convention).
   const item = stripeSub.items.data[0];
   const lookupKey = item?.price?.lookup_key ?? null;
-  const tier = tierFromPriceLookupKey(lookupKey);
+  const metadataTier = (item?.price?.metadata?.tier as string | undefined) ?? null;
+  const tier = tierFromPriceLookupKey(lookupKey) ?? tierFromPriceLookupKey(metadataTier);
   if (!tier) {
-    console.error(`Unknown price lookup_key ${lookupKey} on sub ${stripeSub.id}`);
+    console.error(`Unknown tier (lookup_key=${lookupKey}, metadata.tier=${metadataTier}) on sub ${stripeSub.id}`);
     return;
   }
 
-  const row: SubRow = {
-    user_id: resolvedUserId,
-    stripe_customer_id:
-      typeof stripeSub.customer === "string" ? stripeSub.customer : stripeSub.customer.id,
-    stripe_subscription_id: stripeSub.id,
-    tier,
-    status: stripeSub.status,
-    current_period_start: isoFromUnix((stripeSub as unknown as { current_period_start: number }).current_period_start)!,
-    current_period_end: isoFromUnix((stripeSub as unknown as { current_period_end: number }).current_period_end)!,
-    trial_end: isoFromUnix(stripeSub.trial_end ?? null),
-    cancel_at_period_end: stripeSub.cancel_at_period_end,
-    canceled_at: isoFromUnix(stripeSub.canceled_at ?? null),
-    metadata: stripeSub.metadata as Record<string, unknown>,
+  // Stripe 2025-09 API moved `current_period_*` from the subscription root
+  // onto each line item. Read root first (older subs), fall back to items[0].
+  const subAny = stripeSub as unknown as {
+    current_period_start?: number;
+    current_period_end?: number;
   };
+  const itemAny = item as unknown as {
+    current_period_start?: number;
+    current_period_end?: number;
+  };
+  const periodStart =
+    subAny.current_period_start ?? itemAny?.current_period_start ?? null;
+  const periodEnd =
+    subAny.current_period_end ?? itemAny?.current_period_end ?? null;
+  if (!periodStart || !periodEnd) {
+    console.error(`No current_period_* fields on sub ${stripeSub.id} or first item — Stripe API drift?`);
+    return;
+  }
 
-  const { error } = await sb
-    .schema("wavex_os")
-    .from("subscriptions")
-    .upsert(row, { onConflict: "stripe_subscription_id" });
-
+  // RPC handles user_id resolution + upsert in one round-trip. Pass null
+  // user_id and the RPC will look up the prior row by stripe_subscription_id.
+  const { data, error } = await sb.rpc("wavex_os_subscription_upsert", {
+    p_user_id: userId,
+    p_stripe_customer_id:
+      typeof stripeSub.customer === "string" ? stripeSub.customer : stripeSub.customer.id,
+    p_stripe_subscription_id: stripeSub.id,
+    p_tier: tier,
+    p_status: stripeSub.status,
+    p_current_period_start: isoFromUnix(periodStart),
+    p_current_period_end: isoFromUnix(periodEnd),
+    p_trial_end: isoFromUnix(stripeSub.trial_end ?? null),
+    p_cancel_at_period_end: stripeSub.cancel_at_period_end ?? false,
+    p_canceled_at: isoFromUnix(stripeSub.canceled_at ?? null),
+    p_metadata: stripeSub.metadata ?? {},
+  });
   if (error) {
-    console.error("upsert subscriptions failed", error);
+    console.error("wavex_os_subscription_upsert failed", error);
     throw error;
+  }
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  if (rows.length === 0) {
+    console.error(`Upsert returned no row for sub ${stripeSub.id} — no user_id link could be resolved`);
   }
 }
 
@@ -150,17 +168,13 @@ async function handleSubscriptionEvent(stripeSub: Stripe.Subscription): Promise<
 }
 
 async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription): Promise<void> {
-  const { error } = await sb
-    .schema("wavex_os")
-    .from("subscriptions")
-    .update({
-      status: "canceled",
-      canceled_at: new Date().toISOString(),
-      cancel_at_period_end: stripeSub.cancel_at_period_end,
-    })
-    .eq("stripe_subscription_id", stripeSub.id);
+  const { error } = await sb.rpc("wavex_os_subscription_mark_canceled", {
+    p_stripe_subscription_id: stripeSub.id,
+    p_canceled_at: new Date().toISOString(),
+    p_cancel_at_period_end: stripeSub.cancel_at_period_end ?? false,
+  });
   if (error) {
-    console.error("mark canceled failed", error);
+    console.error("wavex_os_subscription_mark_canceled failed", error);
     throw error;
   }
 }
@@ -179,11 +193,10 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
     ? (invoice as unknown as { subscription: string }).subscription
     : null;
   if (!subId) return;
-  await sb
-    .schema("wavex_os")
-    .from("subscriptions")
-    .update({ status: "past_due" })
-    .eq("stripe_subscription_id", subId);
+  const { error } = await sb.rpc("wavex_os_subscription_mark_past_due", {
+    p_stripe_subscription_id: subId,
+  });
+  if (error) console.error("wavex_os_subscription_mark_past_due failed", error);
 }
 
 Deno.serve(async (req: Request) => {
@@ -203,25 +216,21 @@ Deno.serve(async (req: Request) => {
   }
 
   // Idempotency: skip if already processed.
-  const { error: idemErr } = await sb
-    .schema("wavex_os")
-    .from("stripe_webhook_events")
-    .insert({
-      id: event.id,
-      type: event.type,
-      api_version: event.api_version,
-      payload: event as unknown as Record<string, unknown>,
-    });
-
-  if (idemErr && idemErr.code === "23505") {
-    // Duplicate event id — already processed.
-    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const { data: idemData, error: idemErr } = await sb.rpc("wavex_os_record_webhook_event", {
+    p_id: event.id,
+    p_type: event.type,
+    p_api_version: event.api_version,
+    p_payload: event as unknown as Record<string, unknown>,
+  });
   if (idemErr) {
     console.error("idempotency insert failed", idemErr);
     return new Response("Internal error", { status: 500 });
+  }
+  const isDup = Array.isArray(idemData) ? idemData[0]?.is_duplicate : idemData?.is_duplicate;
+  if (isDup) {
+    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -251,12 +260,10 @@ Deno.serve(async (req: Request) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    // Record processing error against the idempotency row for forensics.
-    await sb
-      .schema("wavex_os")
-      .from("stripe_webhook_events")
-      .update({ processing_error: (err as Error).message })
-      .eq("id", event.id);
+    await sb.rpc("wavex_os_mark_webhook_event_error", {
+      p_id: event.id,
+      p_error: (err as Error).message,
+    });
     console.error("event handler failed", err);
     return new Response("Handler error", { status: 500 });
   }
