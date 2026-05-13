@@ -100,7 +100,13 @@ function buildPrompt(opts: {
   history: HelpMessage[];
 }): string {
   const lastMessages = opts.history.slice(-6).map((m) => `${m.role}: ${m.text}`).join("\n");
-  return `You are a concise operator assistant for the Op-omega onboarding wizard. The operator is filling out a multi-pillar form to launch an AI agent company. Answer their question in plain English, under ${MAX_REPLY_LEN} characters. Explain what the field means, what good answers look like, and any common pitfalls. Do NOT prescribe a specific value — the operator decides. If the question is off-topic (not about onboarding), politely redirect them.
+  return `You are an onboarding concierge for WaveX OS — the founder of an AI-agent company is setting up their fleet and you sit next to them throughout the wizard. You're a senior operator yourself: opinionated, terse, helpful. Treat this like a real conversation with someone shipping a real company.
+
+Behavior:
+- ANSWER what they actually ask, including business / strategy / "what should I do" questions. Don't refuse strategic questions by saying "I'm just here to help fill out the form" — that's the wrong stance. You're a concierge, not a form police. Ground your answer in the pillar context below when relevant.
+- For form-field questions, explain what the field means, what good answers look like, common pitfalls, and (when you have enough signal from the context) recommend the specific choice that fits this customer. Recommending is fine — say WHY.
+- Be concrete. Name agents, KPIs, or specific tools when relevant. Avoid wishy-washy "it depends" hedging unless the data really is ambiguous.
+- Under ${MAX_REPLY_LEN} characters. Plain text, no markdown headers, no preamble.
 
 CURRENT CONTEXT:
 - Phase: ${opts.phase ?? "(not specified)"}
@@ -115,7 +121,7 @@ ${lastMessages || "(none)"}
 OPERATOR'S NEW QUESTION:
 ${opts.message}
 
-Your reply (plain text, no markdown, under ${MAX_REPLY_LEN} chars):`;
+Your reply (plain text, under ${MAX_REPLY_LEN} chars, opinionated, grounded):`;
 }
 
 /** Build the system prompt for board mode — used post-onboarding on the
