@@ -80,6 +80,10 @@ Write-Note "pnpm install (this can take 3-8 min on first run)..."
 pnpm install
 Write-Ok "deps installed"
 
+Write-Note "building vendored op-omega plugins (~30 s)..."
+pnpm -r --filter "./vendor/op-omega/*" build
+Write-Ok "vendored plugins built"
+
 # ── 4. Configure inference + start dev server ────────────────────────────
 Write-Bold "[4/4] Configuring inference + starting dev server"
 

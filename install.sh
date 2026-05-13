@@ -91,6 +91,10 @@ note "pnpm install (this can take 3–8 min on first run)…"
 pnpm install
 ok "deps installed"
 
+note "building vendored op-omega plugins (~30 s)…"
+pnpm -r --filter "./vendor/op-omega/*" build
+ok "vendored plugins built"
+
 bold "[4/4] Configuring inference + starting dev server"
 
 # Default: route Pool A (wizard's T2 enrichment) through the WaveX-hosted
