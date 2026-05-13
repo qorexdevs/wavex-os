@@ -1,58 +1,171 @@
-/** Public surface used by the wavex-os onboarding routes + UI. In disabled
- *  mode every method returns the no-op equivalent (empty array, null, etc.)
- *  so the rest of the onboarding pipeline runs end-to-end. In live mode,
- *  these would dispatch to @composio/core; the live implementation is
- *  intentionally left as a single TODO marker so we can wire it up when
- *  COMPOSIO_API_KEY is available without changing call sites. */
+/** Public surface used by the wavex-os onboarding routes + UI.
+ *
+ *  Live mode: dispatches to @composio/core when COMPOSIO_API_KEY is set
+ *  and WAVEX_COMPOSIO_DISABLED is unset/0. Live OAuth uses
+ *  `composio.toolkits.authorize()` which creates an auth config if absent,
+ *  initiates a connected-account request, and returns a redirect URL the
+ *  UI opens in a new window. Composio handles the OAuth roundtrip.
+ *
+ *  Disabled mode: every method returns the no-op equivalent (empty array,
+ *  null, etc.) so the rest of the onboarding pipeline runs end-to-end
+ *  without a Composio account.
+ */
 
-import type { ApiKeyValidation, FeaturedToolkit, LiveConnectorRow, OAuthInitResult } from "./types.js";
+import type {
+  ApiKeyValidation,
+  FeaturedToolkit,
+  LiveConnectorRow,
+  OAuthInitResult,
+} from "./types.js";
 import { FEATURED_TOOLKITS } from "./featured-toolkits.js";
 import { getComposioApiKey, getComposioMode } from "./mode.js";
+
+// Lazily import @composio/core so disabled mode never loads it.
+let cachedClient: import("@composio/core").Composio | null = null;
+async function getClient(): Promise<import("@composio/core").Composio | null> {
+  if (getComposioMode() === "disabled") return null;
+  const key = getComposioApiKey();
+  if (!key) return null;
+  if (cachedClient) return cachedClient;
+  const { Composio } = await import("@composio/core");
+  cachedClient = new Composio({ apiKey: key });
+  return cachedClient;
+}
 
 export function getFeaturedToolkits(): FeaturedToolkit[] {
   return [...FEATURED_TOOLKITS];
 }
 
-export async function listConnections(_companyId: string): Promise<LiveConnectorRow[]> {
-  if (getComposioMode() === "disabled") return [];
-  // Live mode — wired in STEP 13 when @composio/core is added as a dep + the
-  // connectors Drizzle table is materialized. For now return [] and emit a
-  // breadcrumb so callers know they hit the live branch unimplemented.
-  console.warn("[composio-shim] listConnections: live mode not yet implemented; returning []");
-  return [];
+export async function listConnections(companyId: string): Promise<LiveConnectorRow[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    // Composio scopes connections by userId. We mint a deterministic
+    // userId per wavex-os company so re-listing returns the same set.
+    const userId = composioCompanyUser(companyId);
+    const resp = (await client.connectedAccounts.list({ userIds: [userId] })) as unknown as {
+      items?: Array<{
+        id?: string;
+        toolkit?: { slug?: string; displayName?: string };
+        authConfig?: { id?: string };
+        authConfigId?: string;
+        toolkitSlug?: string;
+        scopes?: string[];
+        createdAt?: string;
+      }>;
+    };
+    return (resp.items ?? []).map((c) => ({
+      toolkitSlug: String(c.toolkit?.slug ?? c.toolkitSlug ?? ""),
+      composioConnectionId: String(c.id ?? ""),
+      composioAuthConfigId: c.authConfig?.id ?? c.authConfigId ?? null,
+      displayName: c.toolkit?.displayName ?? null,
+      scopes: Array.isArray(c.scopes) ? c.scopes : null,
+      connectedAt: c.createdAt ? new Date(c.createdAt) : null,
+    }));
+  } catch (err) {
+    console.warn("[composio-shim] listConnections live call failed:", (err as Error).message);
+    return [];
+  }
 }
 
 export async function validateApiKey(key: string | undefined): Promise<ApiKeyValidation> {
-  if (getComposioMode() === "disabled") {
-    return { ok: false, reason: "disabled", mode: "dev" };
-  }
+  if (getComposioMode() === "disabled") return { ok: false, reason: "disabled", mode: "dev" };
   const effective = key ?? getComposioApiKey();
   if (!effective) return { ok: false, reason: "COMPOSIO_API_KEY missing" };
-  // Live validation deferred to STEP 13 (real Composio probe).
-  return { ok: true };
+  try {
+    const { Composio } = await import("@composio/core");
+    const c = new Composio({ apiKey: effective });
+    // Probe a well-known toolkit. Fails fast on bad key (401), succeeds
+    // on any valid key regardless of plan tier.
+    await (c.toolkits as unknown as { get: (s: string) => Promise<unknown> }).get("gmail");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `composio_api_rejected: ${(err as Error).message}` };
+  }
 }
 
 export async function initOAuth(params: {
   companyId: string;
+  userId?: string;
   toolkitSlug: string;
   callbackUrl: string;
 }): Promise<OAuthInitResult> {
-  if (getComposioMode() === "disabled") {
-    return { url: null, pendingConnectionId: null };
+  const client = await getClient();
+  if (!client) {
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
   }
-  // Live mode — real Composio Connect dance lands when @composio/core is
-  // added as a dep + the connectors Drizzle table is materialized.
-  // Surface a clear breadcrumb so the Avatar bridge / tools UI can show
-  // "needs COMPOSIO_API_KEY + live wiring" instead of silently failing.
-  // For Gmail specifically, the operator can wire credentials via the
-  // existing paste-key path (packages/op-omega-server/src/routes/credentials.ts).
-  console.warn(
-    `[composio-shim] initOAuth(${params.toolkitSlug}): live OAuth not yet wired; ` +
-    `operator should fall back to paste-key path or wait for the @composio/core integration.`,
-  );
-  return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+  try {
+    const userId = composioCompanyUser(params.companyId, params.userId);
+    // toolkits.authorize handles auth-config creation + connected-account
+    // initiation in one call. Returns ConnectionRequest with redirectUrl + id.
+    const tk = client.toolkits as unknown as {
+      authorize: (
+        userId: string,
+        toolkitSlug: string,
+      ) => Promise<{ id: string; status?: string; redirectUrl?: string | null }>;
+    };
+    const conn = await tk.authorize(userId, params.toolkitSlug);
+    return {
+      url: conn.redirectUrl ?? null,
+      pendingConnectionId: conn.id ?? null,
+    };
+  } catch (err) {
+    console.warn(
+      `[composio-shim] initOAuth(${params.toolkitSlug}) failed:`,
+      (err as Error).message,
+    );
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+  }
+}
+
+/** Poll Composio for a pending-connection's status. Returns the bucketed
+ *  status so the caller can update tools.json accordingly. */
+export async function getConnectionStatus(connectionId: string): Promise<{
+  status: "active" | "pending" | "failed" | "unknown";
+  error?: string;
+}> {
+  const client = await getClient();
+  if (!client) return { status: "unknown", error: "composio_disabled" };
+  try {
+    const ca = client.connectedAccounts as unknown as {
+      get: (id: string) => Promise<{ status?: string }>;
+    };
+    const conn = await ca.get(connectionId);
+    const raw = String(conn.status ?? "").toLowerCase();
+    if (["active", "connected", "succeeded"].includes(raw)) return { status: "active" };
+    if (["pending", "initiated", "in_progress", "initializing"].includes(raw)) return { status: "pending" };
+    if (["failed", "error", "expired", "deleted"].includes(raw)) return { status: "failed" };
+    return { status: "unknown", error: `composio_status=${raw}` };
+  } catch (err) {
+    return { status: "unknown", error: (err as Error).message };
+  }
+}
+
+/** Health probe: confirms the connection is still active and Composio
+ *  can reach the third-party. Used by the connector-health-check agent
+ *  during onboarding (and continuously thereafter). */
+export async function pingConnection(args: {
+  connectionId: string;
+  toolkitSlug: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient();
+  if (!client) return { ok: false, error: "composio_disabled" };
+  try {
+    const status = await getConnectionStatus(args.connectionId);
+    if (status.status !== "active") return { ok: false, error: status.error ?? status.status };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }
 
 export function composioUserId(companyId: string, userId: string): string {
   return `wavex/${companyId}/${userId}`;
+}
+
+/** Deterministic Composio userId scoped to a wavex company. When the caller
+ *  doesn't have a stable user id (e.g. avatar onboarding before sign-in),
+ *  fall back to a company-scoped "anon" namespace. */
+function composioCompanyUser(companyId: string, userId?: string): string {
+  return userId ? `wavex/${companyId}/${userId}` : `wavex/${companyId}/anon`;
 }
