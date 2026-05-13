@@ -253,12 +253,73 @@ export const opOmegaOnboardingApi = {
       total: number;
     }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/tools`, { provider }),
 
-  analyzeAvatarVoice: (avatarId: string, samples: [string, string, string], skipInference?: boolean) =>
+  // Phase 3 — per-provider personalization (VIPs / privacy zones / signoff)
+  setAvatarToolMeta: (
+    avatarId: string, provider: string,
+    meta: { vips?: string[]; privacy_zones?: string[]; signoff?: string },
+  ) =>
+    call<{
+      ok: true; provider: string;
+      meta: { vips?: string[]; privacy_zones?: string[]; signoff?: string };
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/tools/${encodeURIComponent(provider)}/meta`,
+      meta,
+    ),
+
+  analyzeAvatarVoice: (
+    avatarId: string,
+    samples: [string, string, string],
+    skipInference?: boolean,
+    extras?: { signoff?: string; guardrails?: string[] },
+  ) =>
     call<{
       ok: true;
       profile: { tone: string; formality: string; structure: string; delegates: string[] };
       source: "t2" | "stub";
-    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/voice`, { samples, skipInference }),
+      signoff?: string;
+      guardrails?: string[];
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/voice`,
+      { samples, skipInference, ...extras },
+    ),
+
+  // Phase 3 — Trust & boundaries step
+  setAvatarTrust: (avatarId: string, trust: {
+    autonomy_preset: "cautious" | "balanced" | "aggressive";
+    vips: Array<{ email: string; label?: string }>;
+    privacy_zones: string[];
+    notify: string[];
+  }) =>
+    call<{
+      ok: true;
+      trust: typeof trust & { set_at: string };
+    }>("POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/trust`, trust),
+
+  getAvatarTrust: (avatarId: string) =>
+    call<{
+      ok: true;
+      trust: {
+        autonomy_preset: "cautious" | "balanced" | "aggressive";
+        vips: Array<{ email: string; label?: string }>;
+        privacy_zones: string[];
+        notify: string[];
+        set_at: string;
+      } | null;
+    }>("GET", `/api/avatar/${encodeURIComponent(avatarId)}/trust`),
+
+  graduateAvatar: (avatarId: string) =>
+    call<{
+      ok: true;
+      trust: {
+        autonomy_preset: "cautious" | "balanced" | "aggressive";
+        vips: Array<{ email: string; label?: string }>;
+        privacy_zones: string[];
+        notify: string[];
+        set_at: string;
+      };
+    }>("POST", `/api/avatar/${encodeURIComponent(avatarId)}/graduate`),
 
   getAvatarSuggestions: (avatarId: string) =>
     call<{

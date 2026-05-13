@@ -61,6 +61,33 @@ interface VoiceProfile {
   delegates?: string[];
 }
 
+interface VoiceFileShape {
+  profile?: VoiceProfile;
+  signoff?: string;
+  guardrails?: string[];
+}
+
+interface ToolsMeta {
+  vips?: string[];
+  privacy_zones?: string[];
+  signoff?: string;
+}
+
+interface TrustFile {
+  autonomy_preset?: "cautious" | "balanced" | "aggressive";
+  vips?: Array<{ email: string; label?: string }>;
+  privacy_zones?: string[];
+  notify?: string[];
+}
+
+interface OperatorContext {
+  vips: Array<{ email: string; label?: string }>;
+  privacy_zones: string[];
+  signoff: string | null;
+  guardrails: string[];
+  autonomy_preset: "cautious" | "balanced" | "aggressive";
+}
+
 function avatarDir(id: string): string {
   const root = process.env.WAVEX_OS_STATE_DIR ?? join(homedir(), ".wavex-os");
   return join(root, "instances", "default", "avatars", id);
@@ -130,8 +157,10 @@ function classifyDryRun(thread: ThreadInput): Classification {
   return STUB_CLASSIFICATIONS[idx] ?? STUB_CLASSIFICATIONS["1"];
 }
 
-/** Build the T2 classifier prompt with the operator's voice baked in. */
-function buildClassifierPrompt(thread: ThreadInput, profile: AvatarProfile, voice: VoiceProfile | null): string {
+/** Build the T2 classifier prompt with the operator's voice + trust signal
+ *  baked in. VIPs + guardrails + signoff come from the Phase 3 onboarding
+ *  steps. All blocks degrade gracefully when fields are missing. */
+function buildClassifierPrompt(thread: ThreadInput, profile: AvatarProfile, voice: VoiceProfile | null, ctx: OperatorContext): string {
   const voiceBlock = voice
     ? `Voice profile:
 - Tone: ${voice.tone ?? "balanced"}
@@ -140,17 +169,33 @@ function buildClassifierPrompt(thread: ThreadInput, profile: AvatarProfile, voic
 - Delegates first: ${(voice.delegates ?? []).join(", ") || "(unknown)"}`
     : "Voice profile not captured.";
 
+  const vipBlock = ctx.vips.length > 0
+    ? `VIP table (always classify as "now" unless content is clearly transactional):
+${ctx.vips.map((v) => `- ${v.email}${v.label ? ` (${v.label})` : ""}`).join("\n")}`
+    : "VIPs: none flagged.";
+
+  const guardrailsBlock = ctx.guardrails.length > 0
+    ? `Draft guardrails — these are hard rules. Never violate them:
+${ctx.guardrails.map((g) => `- ${g}`).join("\n")}`
+    : "";
+
+  const signoffBlock = ctx.signoff
+    ? `Sign every draft exactly with: ${ctx.signoff}`
+    : "";
+
   return `You triage incoming email for ${profile.name} (${profile.role}). Working hours ${profile.working_hours[0]}–${profile.working_hours[1]} ${profile.tz}.
 
 ${voiceBlock}
 
-Thread:
+${vipBlock}
+
+${guardrailsBlock ? guardrailsBlock + "\n\n" : ""}${signoffBlock ? signoffBlock + "\n\n" : ""}Thread:
 - From: ${thread.from.name} <${thread.from.email}>
 - Subject: ${thread.subject}
 - Preview: ${thread.preview}
 
 Classify as one of:
-- "now": VIP, urgent, or deadline <48h
+- "now": VIP-table sender, urgent, or deadline <48h
 - "soon": needs reply but not urgent
 - "fyi": no reply needed (newsletter, transactional)
 
@@ -166,11 +211,38 @@ Return JSON only:
 }`;
 }
 
+/** Apply the autonomy preset → returns the approval status the runner
+ *  should start the row in. Aggressive auto-sends high-confidence Now/Soon;
+ *  Balanced auto-approves only high-confidence FYI; Cautious always
+ *  queues for manual decision. */
+function statusForPreset(
+  preset: OperatorContext["autonomy_preset"],
+  cls: Classification,
+): "pending" | "approved" {
+  if (preset === "aggressive" && (cls.classification === "now" || cls.classification === "soon") && cls.confidence >= 0.85) {
+    return "approved";
+  }
+  if (preset === "balanced" && cls.classification === "fyi" && cls.confidence >= 0.9) {
+    return "approved";
+  }
+  return "pending";
+}
+
+/** Check the operator's privacy_zones list against subject + sender to
+ *  short-circuit triage. Match is case-insensitive substring on either
+ *  the subject or the sender's email. */
+function inPrivacyZone(thread: ThreadInput, zones: string[]): boolean {
+  if (zones.length === 0) return false;
+  const hay = `${thread.subject} ${thread.from.email} ${thread.from.name}`.toLowerCase();
+  return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
+}
+
 async function classifyOne(
   avatarId: string,
   thread: ThreadInput,
   profile: AvatarProfile,
   voice: VoiceProfile | null,
+  ctx: OperatorContext,
   opts: { dryRun: boolean; skipInference: boolean },
 ): Promise<Classification> {
   if (opts.dryRun && opts.skipInference) {
@@ -180,7 +252,7 @@ async function classifyOne(
     const text = await withTokenAccounting(avatarId, "avatar_voice", async () => {
       const resp = await tierRoute({
         agent_id: "avatar.gmail.triage",
-        prompt: buildClassifierPrompt(thread, profile, voice),
+        prompt: buildClassifierPrompt(thread, profile, voice, ctx),
         task_metadata: {
           creativity_required: false,
           customer_facing: false,
@@ -277,14 +349,18 @@ async function createApproval(
   avatarId: string,
   thread: ThreadInput,
   classification: Classification,
+  initialStatus: "pending" | "approved",
 ): Promise<string> {
   const id = `apv_${randomBytes(8).toString("hex")}`;
+  const now = new Date().toISOString();
   const approval: AvatarApproval = {
     id,
     avatarId,
     type: "avatar.gmail.draft_reply",
-    status: "pending",
-    createdAt: new Date().toISOString(),
+    status: initialStatus,
+    createdAt: now,
+    decidedAt: initialStatus === "approved" ? now : undefined,
+    decisionNote: initialStatus === "approved" ? "auto-approved by autonomy preset" : undefined,
     requestedByAgentId: gmailAgentId,
     payload: {
       threadId: thread.threadId,
@@ -306,6 +382,13 @@ async function createApproval(
     classification: classification.classification,
     confidence: classification.confidence,
   });
+  if (initialStatus === "approved") {
+    await logActivity(paperclipUrl, paperclipCompanyId, gmailAgentId, "avatar.approval.auto_approved", {
+      approvalId: id,
+      classification: classification.classification,
+      confidence: classification.confidence,
+    });
+  }
   return id;
 }
 
@@ -322,8 +405,22 @@ export async function runGmailTriage(avatarId: string, opts: { dryRun?: boolean;
 
   const profile = await readJson<AvatarProfile>(join(avatarDir(avatarId), "profile.json"));
   if (!profile) { result.errors.push({ threadId: "<bootstrap>", message: "profile.json missing" }); return result; }
-  const voiceFile = await readJson<{ profile?: VoiceProfile }>(join(avatarDir(avatarId), "voice.json"));
+  const voiceFile = await readJson<VoiceFileShape>(join(avatarDir(avatarId), "voice.json"));
   const voice = voiceFile?.profile ?? null;
+  // Phase 3 — operator context: signoff + guardrails (voice.json), VIPs +
+  // privacy zones + autonomy preset (trust.json, with per-tool meta as a
+  // fallback for vips/privacy_zones if trust wasn't filled).
+  const trust = await readJson<TrustFile>(join(avatarDir(avatarId), "trust.json"));
+  const toolsFile = await readJson<{ meta?: Record<string, ToolsMeta> }>(join(avatarDir(avatarId), "tools.json"));
+  const gmailMeta = toolsFile?.meta?.["gmail"] ?? {};
+  const ctx: OperatorContext = {
+    vips: trust?.vips ?? (gmailMeta.vips ?? []).map((email) => ({ email })),
+    privacy_zones: trust?.privacy_zones ?? gmailMeta.privacy_zones ?? [],
+    signoff: voiceFile?.signoff ?? gmailMeta.signoff ?? null,
+    guardrails: voiceFile?.guardrails ?? [],
+    autonomy_preset: trust?.autonomy_preset ?? "cautious",
+  };
+
   const handoff = await loadHandoff(avatarId);
   if (!handoff) { result.errors.push({ threadId: "<bootstrap>", message: "paperclip-handoff.json missing — finalize first" }); return result; }
   result.paperclipCompanyId = handoff.paperclipCompanyId;
@@ -339,9 +436,19 @@ export async function runGmailTriage(avatarId: string, opts: { dryRun?: boolean;
   for (const thread of threads) {
     result.processed += 1;
     try {
-      const cls = await classifyOne(avatarId, thread, profile, voice, { dryRun, skipInference });
+      // Privacy zone short-circuit — never even classify these threads.
+      if (inPrivacyZone(thread, ctx.privacy_zones)) {
+        await logActivity(handoff.paperclipUrl, handoff.paperclipCompanyId, gmailAgentId, "avatar.gmail.privacy_skip", {
+          approvalId: thread.threadId,                  // reused as entityId for the audit log
+          threadId: thread.threadId,
+          subject: thread.subject,
+        });
+        continue;
+      }
+      const cls = await classifyOne(avatarId, thread, profile, voice, ctx, { dryRun, skipInference });
       if (cls.classification !== "fyi") result.drafted += 1;
-      await createApproval(handoff.paperclipUrl, handoff.paperclipCompanyId, gmailAgentId, avatarId, thread, cls);
+      const status = statusForPreset(ctx.autonomy_preset, cls);
+      await createApproval(handoff.paperclipUrl, handoff.paperclipCompanyId, gmailAgentId, avatarId, thread, cls, status);
       result.approvalsCreated += 1;
     } catch (e) {
       result.errors.push({ threadId: thread.threadId, message: e instanceof Error ? e.message : String(e) });

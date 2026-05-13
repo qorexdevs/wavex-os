@@ -30,6 +30,7 @@ import { AccountTypeSelectCard } from "../components/inline-cards/AccountTypeSel
 import { AvatarProfileCard } from "../components/inline-cards/AvatarProfileCard";
 import { AvatarToolsCard } from "../components/inline-cards/AvatarToolsCard";
 import { AvatarVoiceCard } from "../components/inline-cards/AvatarVoiceCard";
+import { AvatarTrustCard } from "../components/inline-cards/AvatarTrustCard";
 import { AvatarSuggestionsCard } from "../components/inline-cards/AvatarSuggestionsCard";
 import { CredentialDrawer } from "../components/CredentialDrawer";
 import { detectScope, type Department } from "../lib/scope-detect";
@@ -854,9 +855,22 @@ export function OnboardingShell() {
         </AvatarPhaseLayout>
       )}
 
-      {state.phase.kind === "avatar_suggestions" && state.draft.avatarId && (
+      {state.phase.kind === "avatar_trust" && state.draft.avatarId && (
         <AvatarPhaseLayout
           step={4}
+          title="Trust & boundaries"
+          subtitle="How autonomous on day one — and what's off-limits."
+        >
+          <AvatarTrustCard
+            avatarId={state.draft.avatarId}
+            onDone={(trust) => dispatch({ type: "AVATAR_TRUST_DONE", trust })}
+          />
+        </AvatarPhaseLayout>
+      )}
+
+      {state.phase.kind === "avatar_suggestions" && state.draft.avatarId && (
+        <AvatarPhaseLayout
+          step={5}
           title="First automations"
           subtitle="Pick what your avatar should start doing on day one."
         >
@@ -912,7 +926,7 @@ function AvatarPhaseLayout({
             color: "var(--accent)",
             marginBottom: "0.5rem",
           }}>
-            Avatar setup · Step {step} of 4
+            Avatar setup · Step {step} of 5
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>
             {title}

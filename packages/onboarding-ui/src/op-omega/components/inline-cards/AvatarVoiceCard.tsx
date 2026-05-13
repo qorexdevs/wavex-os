@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
 import { T2ProgressIndicator } from "../T2ProgressIndicator";
+import { ChipInput } from "../primitives";
 import { isT0FastMode } from "../../lib/dev-flags";
 import type { AvatarVoiceProfile } from "../../state/onboarding-reducer";
 
@@ -25,6 +26,8 @@ const MIN_LEN = 20;
 
 export function AvatarVoiceCard({ avatarId, onAnalyzing, onDone }: Props) {
   const [samples, setSamples] = useState<[string, string, string]>(["", "", ""]);
+  const [signoff, setSignoff] = useState<string>("");
+  const [guardrails, setGuardrails] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refs = [useRef<HTMLTextAreaElement | null>(null), useRef<HTMLTextAreaElement | null>(null), useRef<HTMLTextAreaElement | null>(null)];
@@ -54,7 +57,10 @@ export function AvatarVoiceCard({ avatarId, onAnalyzing, onDone }: Props) {
     onAnalyzing();
     setError(null);
     try {
-      const r = await opOmegaOnboardingApi.analyzeAvatarVoice(avatarId, samples, isT0FastMode());
+      const r = await opOmegaOnboardingApi.analyzeAvatarVoice(
+        avatarId, samples, isT0FastMode(),
+        { signoff: signoff.trim() || undefined, guardrails: guardrails.length > 0 ? guardrails : undefined },
+      );
       onDone(r.profile);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -108,6 +114,53 @@ export function AvatarVoiceCard({ avatarId, onAnalyzing, onDone }: Props) {
           </div>
         </div>
       ))}
+
+      {ready && (
+        <>
+          <div style={{
+            marginTop: "0.25rem",
+            padding: "0.75rem 0.85rem",
+            background: "color-mix(in srgb, var(--accent) 5%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+            borderRadius: 8,
+            display: "flex", flexDirection: "column", gap: "0.7rem",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>
+              Two quick optional inputs · sharpens drafts
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
+                Your typical sign-off
+              </div>
+              <input
+                type="text"
+                value={signoff}
+                onChange={(e) => setSignoff(e.target.value)}
+                placeholder="— Alex"
+                disabled={analyzing}
+                aria-label="Email sign-off"
+                style={{
+                  width: "100%", padding: "0.45rem 0.6rem",
+                  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6,
+                  color: "var(--text)", fontSize: 12, fontFamily: "inherit", outline: "none",
+                }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
+                Guardrails — anything the avatar should never say in a draft
+              </div>
+              <ChipInput
+                values={guardrails}
+                onChange={setGuardrails}
+                placeholder="no apologies, no promises about timelines"
+                max={5}
+                ariaLabel="Draft guardrails"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {error && <div style={{ color: "var(--warning)", fontSize: 12 }}>✗ {error}</div>}
 

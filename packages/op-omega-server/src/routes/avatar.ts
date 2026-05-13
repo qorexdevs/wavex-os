@@ -53,6 +53,9 @@ interface VoiceFile {
   profile?: VoiceProfile;
   analyzed_at?: string;
   source?: "t2" | "stub";
+  // Phase 3 additions — operator-supplied verbatim, not T2-derived.
+  signoff?: string;
+  guardrails?: string[];
 }
 
 interface AutomationSuggestion {
@@ -146,9 +149,29 @@ const SUGGESTION_RULES: AutomationSuggestion[] = [
   },
 ];
 
-function suggestionsFor(connectedProviders: string[]): AutomationSuggestion[] {
+/** Phase 3 — trust-aware suggestions. If the operator flagged VIPs during
+ *  the Trust step AND Gmail is connected, a personalized "Triage VIP inbox"
+ *  suggestion bubbles to the top with the VIP names cited verbatim. Other
+ *  rules degrade gracefully when trust is absent (matches Phase 2 behavior). */
+function suggestionsFor(
+  connectedProviders: string[],
+  trust?: { vips?: Array<{ email: string; label?: string }> } | null,
+): AutomationSuggestion[] {
   const set = new Set(connectedProviders);
-  return SUGGESTION_RULES.filter((rule) => rule.needs.every((n) => set.has(n))).slice(0, 3);
+  const base = SUGGESTION_RULES.filter((rule) => rule.needs.every((n) => set.has(n)));
+  const vipNames = (trust?.vips ?? []).slice(0, 2).map((v) => v.label || v.email).filter(Boolean);
+  if (vipNames.length > 0 && set.has("gmail")) {
+    const personalized: AutomationSuggestion = {
+      id: "vip-triage",
+      title: "Triage VIP inbox",
+      body: `Hold mail from ${vipNames.join(", ")} to Now and draft replies in your voice. Lower-confidence drafts still queue for approval.`,
+      needs: ["gmail"],
+    };
+    // De-dupe vs the generic inbox-triage rule so we don't show both.
+    const filtered = base.filter((r) => r.id !== "inbox-triage");
+    return [personalized, ...filtered].slice(0, 3);
+  }
+  return base.slice(0, 3);
 }
 
 // ── Voice analysis ───────────────────────────────────────────────────────
@@ -230,14 +253,48 @@ const connectToolSchema = z.object({
   provider: z.enum(["gmail", "google_calendar", "slack", "notion", "linear", "github", "twilio_sms", "hubspot"]),
 });
 
+// Per-provider personalization captured by the onboarding drawer (Phase 3).
+// All fields optional — keeps the drawer skippable. `vips` and
+// `privacy_zones` are free-form chips (emails, domains, label names);
+// `signoff` is a 1-line sig that the runner appends to drafts.
+const toolMetaSchema = z.object({
+  vips: z.array(z.string().max(120)).max(20).optional(),
+  privacy_zones: z.array(z.string().max(120)).max(20).optional(),
+  signoff: z.string().max(120).optional(),
+});
+
 const voiceSchema = z.object({
   samples: z.tuple([z.string().max(2000), z.string().max(2000), z.string().max(2000)]),
   skipInference: z.boolean().optional(),
+  // Phase 3 — verbatim operator inputs, no T2 transform.
+  signoff: z.string().max(120).optional(),
+  guardrails: z.array(z.string().max(120)).max(8).optional(),
 });
 
 const finalizeSchema = z.object({
   enabledAutomationIds: z.array(z.string()).default([]),
 });
+
+// Phase 3 — Trust & boundaries step. Captures autonomy preset, VIP table,
+// privacy zones, and notification preferences. Written to trust.json.
+// The runner reads this defensively (absent → existing behavior).
+const trustSchema = z.object({
+  autonomy_preset: z.enum(["cautious", "balanced", "aggressive"]),
+  vips: z.array(z.object({
+    email: z.string().min(1).max(160),
+    label: z.string().max(60).optional(),
+  })).max(50).default([]),
+  privacy_zones: z.array(z.string().max(120)).max(20).default([]),
+  notify: z.array(z.enum(["now_drafts", "low_confidence", "skill_paused", "daily_digest"])).max(4).default([]),
+});
+
+interface TrustFile {
+  autonomy_preset: "cautious" | "balanced" | "aggressive";
+  vips: Array<{ email: string; label?: string }>;
+  privacy_zones: string[];
+  notify: string[];
+  set_at: string;
+}
 
 // ── Auth helper ──────────────────────────────────────────────────────────
 
@@ -305,6 +362,32 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
     return { ok: true, connected, total: 8 };
   });
 
+  // Per-provider personalization (Phase 3 drawer). Writes
+  // tools.json.meta[provider] = { vips?, privacy_zones?, signoff? }.
+  // The runner reads this at triage time; absent → existing behavior.
+  app.post<{ Params: { id: string; provider: string } }>(
+    "/op-omega/onboarding/avatar/:id/tools/:provider/meta",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const id = req.params.id;
+      const dir = avatarDir(id);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+      const parsed = toolMetaSchema.safeParse(req.body);
+      if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+      const tools = (await readJson<{
+        connected: ToolConnection[]; skipped: boolean;
+        meta?: Record<string, { vips?: string[]; privacy_zones?: string[]; signoff?: string }>;
+      }>(join(dir, "tools.json"))) ?? { connected: [], skipped: false };
+      const meta = { ...(tools.meta ?? {}) };
+      meta[req.params.provider] = {
+        ...(meta[req.params.provider] ?? {}),
+        ...parsed.data,
+      };
+      await writeJson(join(dir, "tools.json"), { ...tools, meta });
+      return { ok: true, provider: req.params.provider, meta: meta[req.params.provider] };
+    },
+  );
+
   // Save voice samples + (optionally) run T2 analysis
   app.post<{ Params: { id: string } }>("/op-omega/onboarding/avatar/:id/voice", async (req, reply) => {
     if (!gateBoard(req, reply)) return;
@@ -319,9 +402,34 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       profile,
       analyzed_at: new Date().toISOString(),
       source,
+      signoff: parsed.data.signoff?.trim() || undefined,
+      guardrails: parsed.data.guardrails && parsed.data.guardrails.length > 0 ? parsed.data.guardrails : undefined,
     };
     await writeJson(join(dir, "voice.json"), out);
-    return { ok: true, profile, source };
+    return { ok: true, profile, source, signoff: out.signoff, guardrails: out.guardrails };
+  });
+
+  // Save the Trust & boundaries step → trust.json
+  app.post<{ Params: { id: string } }>("/op-omega/onboarding/avatar/:id/trust", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const id = req.params.id;
+    const dir = avatarDir(id);
+    if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+    const parsed = trustSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    const out: TrustFile = { ...parsed.data, set_at: new Date().toISOString() };
+    await writeJson(join(dir, "trust.json"), out);
+    return { ok: true, trust: out };
+  });
+
+  // Dashboard helper — surface trust on /api/avatar/:id (read-only)
+  app.get<{ Params: { id: string } }>("/api/avatar/:id/trust", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const id = req.params.id;
+    const dir = avatarDir(id);
+    if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+    const trust = await readJson<TrustFile>(join(dir, "trust.json"));
+    return { ok: true, trust };
   });
 
   // List rule-based suggestions for the avatar's connected tools
@@ -331,7 +439,8 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
     const dir = avatarDir(id);
     if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
     const tools = (await readJson<{ connected: ToolConnection[] }>(join(dir, "tools.json")))?.connected ?? [];
-    const suggestions = suggestionsFor(tools.map((t) => t.provider));
+    const trust = await readJson<TrustFile>(join(dir, "trust.json"));
+    const suggestions = suggestionsFor(tools.map((t) => t.provider), trust);
     // Persist so the dashboard can show what was suggested even if rules change later.
     await writeJson(join(dir, "automations.json"), { enabled: [], suggested: suggestions } satisfies AutomationsFile);
     return { ok: true, suggestions };
@@ -384,7 +493,10 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
     const dir = avatarDir(id);
     if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
     const profile = await readJson<AvatarProfile>(join(dir, "profile.json"));
-    const tools = await readJson<{ connected: ToolConnection[]; skipped: boolean }>(join(dir, "tools.json"));
+    const tools = await readJson<{
+      connected: ToolConnection[]; skipped: boolean;
+      meta?: Record<string, { vips?: string[]; privacy_zones?: string[]; signoff?: string }>;
+    }>(join(dir, "tools.json"));
     const voice = await readJson<VoiceFile>(join(dir, "voice.json"));
     const automations = await readJson<AutomationsFile>(join(dir, "automations.json"));
     return {
@@ -393,6 +505,7 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       profile,
       tools: tools?.connected ?? [],
       tools_skipped: tools?.skipped ?? false,
+      tools_meta: tools?.meta ?? {},
       voice,
       automations,
     };
@@ -531,6 +644,46 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       return { ok: true, approval: updated };
     },
   );
+
+  // Graduate the autonomy preset one tier. cautious → balanced →
+  // aggressive; aggressive is a no-op. The dashboard exposes this so the
+  // operator can grow trust over weeks instead of pre-committing in
+  // onboarding. Logs an activity entry so the audit trail records who
+  // graduated when.
+  app.post<{ Params: { id: string } }>("/api/avatar/:id/graduate", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const id = req.params.id;
+    const dir = avatarDir(id);
+    if (!existsSync(dir)) return reply.status(404).send({ error: "avatar not found" });
+    const trust = await readJson<TrustFile>(join(dir, "trust.json"));
+    if (!trust) return reply.status(409).send({ error: "trust.json not set — finish onboarding first" });
+    const order: TrustFile["autonomy_preset"][] = ["cautious", "balanced", "aggressive"];
+    const idx = order.indexOf(trust.autonomy_preset);
+    const next = order[Math.min(idx + 1, order.length - 1)];
+    const updated: TrustFile = { ...trust, autonomy_preset: next, set_at: new Date().toISOString() };
+    await writeJson(join(dir, "trust.json"), updated);
+
+    const handoff = await readJson<{ paperclipUrl?: string; paperclipCompanyId?: string }>(
+      join(dir, "paperclip-handoff.json"),
+    );
+    if (handoff?.paperclipUrl && handoff?.paperclipCompanyId) {
+      try {
+        await fetch(`${handoff.paperclipUrl}/api/companies/${handoff.paperclipCompanyId}/activity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actorType: "user",
+            actorId: "operator",
+            action: "avatar.autonomy.graduated",
+            entityType: "avatar",
+            entityId: id,
+            details: { from: trust.autonomy_preset, to: next },
+          }),
+        });
+      } catch { /* non-fatal */ }
+    }
+    return { ok: true, trust: updated };
+  });
 
   // Per-skill kill switch — pause/resume a single sub-agent on the
   // mirror Paperclip company. Used by the dashboard to halt the gmail

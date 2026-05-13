@@ -61,6 +61,15 @@ export interface AvatarAutomationSuggestion {
   needs: string[];                // providers required
 }
 
+export type AvatarAutonomyPreset = "cautious" | "balanced" | "aggressive";
+
+export interface AvatarTrust {
+  autonomy_preset: AvatarAutonomyPreset;
+  vips: Array<{ email: string; label?: string }>;
+  privacy_zones: string[];
+  notify: string[];               // "now_drafts" | "low_confidence" | "skill_paused" | "daily_digest"
+}
+
 export type ChatSlot =
   | { kind: "thinking"; phase: "pillar-1" | "phase-2" | "phase-3" | "phase-4" | "finalize" | "avatar-voice" }
   | { kind: "pillar1-confirm"; response: Pillar1Response }
@@ -105,6 +114,7 @@ export type OnboardingPhase =
   | { kind: "avatar_profile" }
   | { kind: "avatar_tools"; connected: AvatarToolConnection[] }
   | { kind: "avatar_voice"; samples: string[]; analyzing: boolean }
+  | { kind: "avatar_trust" }
   | { kind: "avatar_suggestions"; suggestions: AvatarAutomationSuggestion[]; enabled: string[] }
   | { kind: "avatar_done"; avatarId: string };
 
@@ -130,6 +140,7 @@ export interface OnboardingState {
     avatarProfile?: AvatarProfile;
     avatarTools?: AvatarToolConnection[];
     avatarVoice?: { samples: string[]; profile?: AvatarVoiceProfile };
+    avatarTrust?: AvatarTrust;
     avatarSuggestions?: AvatarAutomationSuggestion[];
     avatarEnabledAutomations?: string[];
   };
@@ -173,6 +184,7 @@ export type Action =
   | { type: "AVATAR_VOICE_SAMPLE"; index: 0 | 1 | 2; text: string }
   | { type: "AVATAR_VOICE_ANALYZING" }
   | { type: "AVATAR_VOICE_DONE"; profile: AvatarVoiceProfile }
+  | { type: "AVATAR_TRUST_DONE"; trust: AvatarTrust }
   | { type: "AVATAR_SUGGESTIONS_LOADED"; suggestions: AvatarAutomationSuggestion[] }
   | { type: "AVATAR_AUTOMATION_TOGGLED"; suggestionId: string }
   | { type: "AVATAR_FINALIZED"; avatarId: string };
@@ -421,7 +433,10 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
     case "AVATAR_VOICE_DONE":
       return {
         ...state,
-        phase: { kind: "avatar_suggestions", suggestions: [], enabled: [] },
+        // Phase 3 — voice now hands off to the new Trust & boundaries step
+        // before Suggestions, so the runner has autonomy + VIP signal on
+        // its first triage cycle.
+        phase: { kind: "avatar_trust" },
         draft: {
           ...state.draft,
           avatarVoice: {
@@ -429,6 +444,13 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
             profile: action.profile,
           },
         },
+      };
+
+    case "AVATAR_TRUST_DONE":
+      return {
+        ...state,
+        phase: { kind: "avatar_suggestions", suggestions: [], enabled: [] },
+        draft: { ...state.draft, avatarTrust: action.trust },
       };
 
     case "AVATAR_SUGGESTIONS_LOADED":
@@ -474,6 +496,7 @@ export function phaseToUrlKey(phase: OnboardingPhase): string {
     case "avatar_profile": return "avatar-profile";
     case "avatar_tools": return "avatar-tools";
     case "avatar_voice": return "avatar-voice";
+    case "avatar_trust": return "avatar-trust";
     case "avatar_suggestions": return "avatar-suggestions";
     case "avatar_done": return "avatar-done";
   }
@@ -495,6 +518,7 @@ export function urlKeyToPhase(key: string): OnboardingPhase {
   if (key === "avatar-profile") return { kind: "avatar_profile" };
   if (key === "avatar-tools") return { kind: "avatar_tools", connected: [] };
   if (key === "avatar-voice") return { kind: "avatar_voice", samples: ["", "", ""], analyzing: false };
+  if (key === "avatar-trust") return { kind: "avatar_trust" };
   if (key === "avatar-suggestions") return { kind: "avatar_suggestions", suggestions: [], enabled: [] };
   // swarm-studio, theater, and avatar-done require backing data we don't have
   // at URL parse; return welcome and let hydration figure it out.
@@ -517,10 +541,11 @@ export function phaseProgressPct(phase: OnboardingPhase): number {
     case "pricing": return 92;
     case "activate": return 96;
     case "handed_off": return 100;
-    case "avatar_profile": return 20;
-    case "avatar_tools": return 45;
-    case "avatar_voice": return 70;
-    case "avatar_suggestions": return 90;
+    case "avatar_profile": return 15;
+    case "avatar_tools": return 35;
+    case "avatar_voice": return 55;
+    case "avatar_trust": return 75;
+    case "avatar_suggestions": return 92;
     case "avatar_done": return 100;
   }
 }

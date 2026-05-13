@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
+import { ChipInput } from "../primitives";
 import type { AvatarToolConnection } from "../../state/onboarding-reducer";
 
 interface Provider {
@@ -36,6 +37,13 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
   const [connected, setConnected] = useState<AvatarToolConnection[]>(initialConnected);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Phase 3 — personalization drawer state. Only Gmail in v1; other providers
+  // are no-ops until per-tool drawers land in Phase 2.5.
+  const [drawerOpen, setDrawerOpen] = useState<string | null>(null);
+  const [vips, setVips] = useState<string[]>([]);
+  const [privacyZones, setPrivacyZones] = useState<string[]>([]);
+  const [signoff, setSignoff] = useState<string>("");
+  const [savingMeta, setSavingMeta] = useState(false);
 
   function isConnected(id: string): boolean {
     return connected.some((c) => c.provider === id);
@@ -50,10 +58,29 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
       if (!justAdded) throw new Error("connect did not record");
       setConnected(r.connected);
       onConnected(justAdded);
+      // Auto-open the personalize drawer for Gmail on first connect — the
+      // wedge skill is gmail-triage, and the drawer is where we capture
+      // VIPs / privacy zones / signoff that the runner consumes.
+      if (provider === "gmail") setDrawerOpen("gmail");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
       setBusyProvider(null);
+    }
+  }
+
+  async function saveMeta(provider: string): Promise<void> {
+    setSavingMeta(true);
+    setError(null);
+    try {
+      await opOmegaOnboardingApi.setAvatarToolMeta(avatarId, provider, {
+        vips, privacy_zones: privacyZones, signoff: signoff.trim() || undefined,
+      });
+      setDrawerOpen(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setSavingMeta(false);
     }
   }
 
@@ -127,6 +154,89 @@ export function AvatarToolsCard({ avatarId, initialConnected, onConnected, onDon
           );
         })}
       </div>
+      {drawerOpen === "gmail" && (
+        <div style={{
+          padding: "0.85rem 1rem",
+          background: "color-mix(in srgb, var(--accent) 5%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+          borderRadius: 8,
+          display: "flex", flexDirection: "column", gap: "0.75rem",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>
+              Personalize Gmail · optional
+            </div>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(null)}
+              style={{
+                background: "transparent", border: "none", color: "var(--text-dim)",
+                fontSize: 11, cursor: "pointer", padding: 0,
+              }}
+            >Skip</button>
+          </div>
+          <div className="text-dim" style={{ fontSize: 11, lineHeight: 1.55 }}>
+            Three quick optional inputs make the first triage run smarter — VIPs
+            jump to <em>now</em>, anything in a privacy zone is ignored, drafts use
+            your signoff verbatim. You can change all of this on the dashboard later.
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
+              VIPs (emails or domains, press Enter to add)
+            </div>
+            <ChipInput
+              values={vips}
+              onChange={setVips}
+              placeholder="alex@bigfund.com, @stripe.com"
+              ariaLabel="Gmail VIPs"
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
+              Privacy zones (labels or folders to never touch)
+            </div>
+            <ChipInput
+              values={privacyZones}
+              onChange={setPrivacyZones}
+              placeholder="Personal, Family"
+              ariaLabel="Gmail privacy zones"
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: "0.3rem" }}>
+              Your signoff
+            </div>
+            <input
+              type="text"
+              value={signoff}
+              onChange={(e) => setSignoff(e.target.value)}
+              placeholder="— Alex"
+              aria-label="Gmail signoff"
+              style={{
+                width: "100%", padding: "0.45rem 0.6rem",
+                background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6,
+                color: "var(--text)", fontSize: 12, fontFamily: "inherit", outline: "none",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => void saveMeta("gmail")}
+              disabled={savingMeta}
+              style={{
+                padding: "0.35rem 0.85rem", borderRadius: 6,
+                background: "var(--accent)", color: "var(--bg)", border: "none",
+                fontWeight: 600, fontSize: 12,
+                cursor: savingMeta ? "wait" : "pointer", opacity: savingMeta ? 0.6 : 1,
+              }}
+            >
+              {savingMeta ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <div style={{ color: "var(--warning)", fontSize: 12 }}>✗ {error}</div>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "0.25rem" }}>
         <span className="text-dim" style={{ fontSize: 12 }}>

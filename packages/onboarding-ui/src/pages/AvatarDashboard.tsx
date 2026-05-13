@@ -273,6 +273,9 @@ function InboxTab({ avatarId }: { avatarId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [skills, setSkills] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.listAvatarSkills>>["skills"]>([]);
   const [skillBusy, setSkillBusy] = useState<string | null>(null);
+  // Phase 3 — autonomy preset + graduate button
+  const [preset, setPreset] = useState<"cautious" | "balanced" | "aggressive" | null>(null);
+  const [graduating, setGraduating] = useState(false);
 
   const refresh = async () => {
     try {
@@ -299,6 +302,27 @@ function InboxTab({ avatarId }: { avatarId: string }) {
   };
 
   useEffect(() => { void refreshSkills(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [avatarId]);
+
+  const refreshTrust = async () => {
+    try {
+      const r = await opOmegaOnboardingApi.getAvatarTrust(avatarId);
+      setPreset(r.trust?.autonomy_preset ?? null);
+    } catch { /* non-fatal */ }
+  };
+
+  useEffect(() => { void refreshTrust(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [avatarId]);
+
+  async function graduate() {
+    setGraduating(true);
+    try {
+      const r = await opOmegaOnboardingApi.graduateAvatar(avatarId);
+      setPreset(r.trust.autonomy_preset);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setGraduating(false);
+    }
+  }
 
   async function toggleSkill(skill: string, currentStatus: string | null) {
     setSkillBusy(skill);
@@ -350,6 +374,25 @@ function InboxTab({ avatarId }: { avatarId: string }) {
           <MetricChip label="Approve rate" value={metrics.approveRate != null ? `${metrics.approveRate}%` : "—"} />
           <MetricChip label="~Time saved" value={`${metrics.timeSavedMin}m`} />
           <div style={{ flex: 1 }} />
+          {preset && (
+            <button
+              type="button"
+              onClick={() => void graduate()}
+              disabled={graduating || preset === "aggressive"}
+              title={preset === "aggressive" ? "Maxed out" : `Graduate to ${preset === "cautious" ? "balanced" : "aggressive"}`}
+              style={{
+                padding: "0.35rem 0.7rem",
+                borderRadius: 999,
+                border: `1px solid ${preset === "aggressive" ? "var(--accent)" : "var(--border)"}`,
+                background: preset === "aggressive" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                color: preset === "aggressive" ? "var(--accent)" : "var(--text-dim)",
+                fontSize: 11, fontWeight: 600, cursor: graduating || preset === "aggressive" ? "default" : "pointer",
+                textTransform: "capitalize",
+              }}
+            >
+              {graduating ? "Graduating…" : preset === "aggressive" ? `Autonomy: ${preset}` : `Autonomy: ${preset} — graduate?`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void triggerRun()}

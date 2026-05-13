@@ -37,6 +37,15 @@ async function main() {
   await page.waitForSelector("text=/Run triage now/i", { timeout: 5_000 });
   console.log("✓ Approval inbox tab loaded");
 
+  // Autonomy chip should be visible if trust.json is set on disk.
+  const chip = page.locator("button", { hasText: /Autonomy:/ }).first();
+  if (await chip.count() > 0) {
+    const label = await chip.textContent();
+    console.log(`✓ Autonomy chip: ${label?.trim()}`);
+  } else {
+    console.log("· Autonomy chip absent (no trust.json yet)");
+  }
+
   // List should already contain the seeded approvals (if any pending)
   if (startPending > 0) {
     await page.waitForSelector("text=/Series A|Coffee next week|Stripe digest/i", { timeout: 5_000 });

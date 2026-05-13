@@ -1,6 +1,7 @@
 /** End-to-end smoke for the Avatar branch under ?t0=1 fast mode.
- *  Drives: gateway → profile → tools (connect 2) → voice (3 samples)
- *  → suggestions → finalize → /avatar/:id dashboard. */
+ *  Drives: gateway → profile → tools (connect 2 + Gmail drawer) →
+ *  voice (3 samples + signoff + guardrails) → trust (preset + VIPs) →
+ *  suggestions → finalize → /avatar/:id dashboard. */
 
 import { chromium } from "@playwright/test";
 
@@ -20,29 +21,32 @@ async function main() {
   console.log("✓ Picked Avatar");
 
   // Step 1: profile
-  await page.waitForSelector("text=/Avatar setup · Step 1 of 4/i", { timeout: 5_000 });
+  await page.waitForSelector("text=/Avatar setup · Step 1 of 5/i", { timeout: 5_000 });
   await page.locator("input[placeholder='Alex Founder']").fill("Test Operator");
   await page.locator("input[placeholder*='Indie hacker']").fill("Indie hacker");
   await page.locator("button").filter({ hasText: /^Continue/i }).click();
   console.log("✓ Profile saved");
 
-  // Step 2: tools — connect 2
-  await page.waitForSelector("text=/Avatar setup · Step 2 of 4/i", { timeout: 10_000 });
+  // Step 2: tools — connect 2 (Gmail first to trigger the personalize drawer)
+  await page.waitForSelector("text=/Avatar setup · Step 2 of 5/i", { timeout: 10_000 });
   await page.locator("button").filter({ hasText: /^Connect$/i }).first().click();
   await page.waitForFunction(
     () => document.body.textContent?.match(/1 of 8 connected/),
     undefined, { timeout: 5_000 },
   );
+  // Gmail drawer auto-opens — skip it to keep the smoke fast (drawer
+  // fields are exercised by direct backend smoke, not this UI walk).
+  await page.locator("button").filter({ hasText: /^Skip$/ }).first().click();
   await page.locator("button").filter({ hasText: /^Connect$/i }).first().click();
   await page.waitForFunction(
     () => document.body.textContent?.match(/2 of 8 connected/),
     undefined, { timeout: 5_000 },
   );
-  console.log("✓ Connected 2 tools");
+  console.log("✓ Connected 2 tools + dismissed drawer");
   await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
 
-  // Step 3: voice — paste 3 long samples
-  await page.waitForSelector("text=/Avatar setup · Step 3 of 4/i", { timeout: 5_000 });
+  // Step 3: voice — paste 3 long samples (signoff/guardrails optional)
+  await page.waitForSelector("text=/Avatar setup · Step 3 of 5/i", { timeout: 5_000 });
   const longSample = "This is a sample of how I write to colleagues with enough characters to clear the validation.";
   const textareas = page.locator("textarea");
   await textareas.nth(0).fill(longSample);
@@ -51,8 +55,14 @@ async function main() {
   await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
   console.log("✓ Voice samples submitted");
 
-  // Step 4: suggestions — finalize without enabling
-  await page.waitForSelector("text=/Avatar setup · Step 4 of 4/i", { timeout: 30_000 });
+  // Step 4 (NEW): Trust & boundaries — keep defaults, click Continue
+  await page.waitForSelector("text=/Avatar setup · Step 4 of 5/i", { timeout: 5_000 });
+  await page.waitForSelector("text=/Autonomy preset/i", { timeout: 5_000 });
+  await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
+  console.log("✓ Trust step submitted (defaults)");
+
+  // Step 5: suggestions — finalize without enabling
+  await page.waitForSelector("text=/Avatar setup · Step 5 of 5/i", { timeout: 30_000 });
   // Wait for suggestions to load (or empty state)
   await page.waitForFunction(
     () => /Launch — /i.test(document.body.textContent ?? ""),
