@@ -1220,6 +1220,68 @@ function EmptyState({
 
 // ── Top bar ───────────────────────────────────────────────────────────────
 
+/** Inference-source chip — probes /claude-code-check on mount and surfaces
+ *  to the customer which inference backend is serving their wizard:
+ *
+ *    "✓ WaveX hub · Pool A"  (hosted mode, hub on operator's Mac)
+ *    "✓ Claude Max · oauth"  (customer's own Claude OAuth)
+ *    "✓ API key"              (apikey mode — production deploy)
+ *    "○ Inference offline"    (probe failed)
+ *
+ *  This was the missing piece of the chat-first refactor: the legacy
+ *  wizard's Pillar 2 explicitly verified the inference source and showed
+ *  a "Connected to WaveX hub" card. The new flow auto-skips that pillar
+ *  in hosted mode (see Pillar2.tsx) so the customer otherwise never sees
+ *  the confirmation. This chip restores the transparency without forcing
+ *  a UI step. */
+function HubTransparencyChip() {
+  const [info, setInfo] = useState<{ source: string; sub: string; tone: "ok" | "warn" } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await opOmegaOnboardingApi.claudeCodeCheck();
+        if (cancelled) return;
+        if (r.ok && r.probe?.billing_type === "wavex_pool_a") {
+          setInfo({ source: "WaveX hub", sub: "Pool A", tone: "ok" });
+        } else if (r.ok && r.probe?.installed && r.probe?.authenticated) {
+          setInfo({ source: "Claude", sub: "local", tone: "ok" });
+        } else if (r.ok && r.probe?.installed) {
+          setInfo({ source: "Claude", sub: "not signed in", tone: "warn" });
+        } else {
+          setInfo({ source: "Inference", sub: "offline", tone: "warn" });
+        }
+      } catch {
+        if (!cancelled) setInfo({ source: "Inference", sub: "offline", tone: "warn" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  if (!info) return null;
+  const isOk = info.tone === "ok";
+  return (
+    <span
+      title={
+        info.source === "WaveX hub"
+          ? "Inference is served by the operator's Mac-mini hub via Cloudflare Tunnel. Free for you during onboarding (Pool A) — no Claude plan or API key needed on your machine."
+          : `Inference: ${info.source} · ${info.sub}`
+      }
+      style={{
+        fontSize: 10, padding: "0.1rem 0.45rem",
+        border: `1px solid ${isOk ? "var(--accent)" : "var(--warning)"}`,
+        color: isOk ? "var(--accent)" : "var(--warning)",
+        borderRadius: 999,
+        marginLeft: "0.25rem",
+        cursor: "help",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {isOk ? "✓ " : "○ "}{info.source} · {info.sub}
+    </span>
+  );
+}
+
 function TopBar({
   companyId, progressPct, t0,
 }: {
@@ -1242,6 +1304,7 @@ function TopBar({
             · <code>{companyId}</code>
           </span>
         )}
+        <HubTransparencyChip />
         {t0 && (
           <span
             title="Fast mode (?t0=1): every T2 inference call returns a deterministic fallback. No claude CLI required, no token cost. Drop the ?t0=1 from the URL for real inference."

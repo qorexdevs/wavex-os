@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { HealthStrip } from "../components/mission/HealthStrip";
@@ -55,6 +55,26 @@ export default function MissionControl() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Fresh-install redirect: when the customer has zero companies AND none
+  // selected, the canonical landing is the chat-first onboarding gateway
+  // (Avatar / Solo Founder / Hybrid), not Mission Control's empty state.
+  // Once they finish onboarding their first company, this naturally stops
+  // firing (companies.length > 0). Probing companies via the same query the
+  // CompanyPicker uses keeps cache-coherence; we wait for the result before
+  // deciding (the !isFetching gate avoids a flash of redirect-then-not).
+  const companiesQ = useQuery<CompaniesPayload>({
+    queryKey: ["companies"],
+    queryFn: async () => {
+      const r = await fetch("/api/companies");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+  });
+  const hasZeroCompanies = companiesQ.isSuccess && (companiesQ.data?.companies ?? []).length === 0;
+  if (!companyId && hasZeroCompanies) {
+    return <Navigate to="/onboarding-chat" replace />;
+  }
 
   // Phase 7-B — first-run walkthrough for Mission Control.
   const tour = useCoachmark("coachmark-mission-v1");
