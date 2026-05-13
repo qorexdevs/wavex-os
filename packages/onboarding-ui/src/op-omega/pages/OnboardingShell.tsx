@@ -713,16 +713,36 @@ export function OnboardingShell() {
     if (!companyId || connectorRanRef.current) return;
     connectorRanRef.current = true;
     void (async () => {
-      try {
-        const loaded = await opOmegaOnboardingApi.loadConnector(companyId);
-        let manifest: ConnectorManifest | null = loaded.exists ? (loaded.manifest as ConnectorManifest) : null;
-        if (!manifest) {
+      // Generate-connector occasionally hits a hub timeout or a transient
+      // upstream blip. Auto-retry up to 2 times with backoff before giving
+      // up — the customer was previously dead-ended on "HTTP 500" with no
+      // path forward. This kills the most-reported "stuck on Got it. Let
+      // me figure out what to plug in…" failure.
+      let manifest: ConnectorManifest | null = null;
+      let lastError: unknown = null;
+      const MAX_ATTEMPTS = 3;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          if (attempt === 1) {
+            const loaded = await opOmegaOnboardingApi.loadConnector(companyId);
+            if (loaded.exists) {
+              manifest = loaded.manifest as ConnectorManifest;
+              break;
+            }
+          }
           const generated = await opOmegaOnboardingApi.generateConnector(companyId, t0);
           manifest = generated.manifest;
+          break;
+        } catch (e) {
+          lastError = e;
+          if (attempt < MAX_ATTEMPTS) {
+            // 1.5s, then 3s — gives the hub time to recover from a transient.
+            await new Promise((r) => setTimeout(r, attempt * 1500));
+          }
         }
-        // Collapse the Phase 2 thinking bubble so we don't end up with
-        // two T2 progress indicators racing for the global inference
-        // status (the T2ProgressIndicator polls one endpoint).
+      }
+
+      if (manifest) {
         dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
         dispatch({ type: "CONNECTORS_LOADED", manifest });
         dispatch({
@@ -733,15 +753,24 @@ export function OnboardingShell() {
             slot: { kind: "connector-picker", manifest },
           },
         });
-      } catch (e) {
-        dispatch({
-          type: "ADD_MESSAGE",
-          message: {
-            role: "assistant",
-            text: `Couldn't generate connector manifest: ${e instanceof Error ? e.message : String(e)}`,
-          },
-        });
+        return;
       }
+
+      // All 3 attempts failed. Surface a useful, retry-suggesting message
+      // instead of the opaque "HTTP 500". The thinking pill is collapsed so
+      // the customer isn't stuck on "Done · 20s" with no recourse.
+      dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "thinking" });
+      const detail = lastError instanceof Error ? lastError.message : String(lastError);
+      const isTransient = /HTTP 5\d\d|timeout|fetch|network|ECONN/i.test(detail);
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: isTransient
+            ? `Our hub blipped while picking your connectors (${detail}). I retried twice — still no luck. Refresh the page to try again, or skip to credentials manually.`
+            : `Couldn't generate connector manifest: ${detail}. Refresh to try again.`,
+        },
+      });
     })();
   }, [state.phase, companyId, t0]);
 

@@ -161,7 +161,19 @@ function bodyError(reply: FastifyReply, e: unknown) {
       budget: { used: e.used, cap: e.cap, companyId: e.companyId },
     });
   }
-  throw e;
+  // Previously re-threw unknown errors → Fastify default handler emitted a
+  // generic { error: "internal" } 500 with no usable detail. Customer saw
+  // "Couldn't generate ... HTTP 500" with no path forward. Now return the
+  // underlying message + class so the chat can render an inference-grounded
+  // recovery suggestion (e.g. "Looks like the hub timed out — retry?").
+  reply.log.error({ err: e }, "phase route failed");
+  const message = e instanceof Error ? e.message : String(e);
+  return reply.status(500).send({
+    ok: false,
+    error: message,
+    error_class: e instanceof Error ? e.constructor.name : "Unknown",
+    retryable: /timeout|fetch|network|ECONN|503|429/i.test(message),
+  });
 }
 
 function gateBoard(req: FastifyRequest, reply: FastifyReply): boolean {

@@ -4,7 +4,7 @@
  *  connector is either vaulted-or-skipped; the chat then advances to the
  *  swarm phase. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import { ResponseChips } from "./ResponseChips";
@@ -155,6 +155,8 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
   const isVaulted = c.status === "vaulted_valid" || c.status === "vaulted_unvalidated";
   const isSkipped = c.status === "skipped";
   const composio = c.composioManaged;
+  const mcpManaged = c.mcpManaged;
+  const mcpSourcedFrom = c.mcpSourcedFrom;
 
   async function handleVaultAll(): Promise<void> {
     setVaulting(true);
@@ -218,7 +220,28 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
         {c.rationale}
       </div>
 
-      {!isVaulted && !isSkipped && !skipMode && !composio && (
+      {/* MCP-first: highest priority. Customer already has an MCP server
+          installed for this connector — skip every other surface, just
+          confirm they're set. No paste, no popup. */}
+      {!isVaulted && !isSkipped && mcpManaged && (
+        <div style={{
+          padding: "0.5rem 0.6rem",
+          background: "var(--surface)",
+          border: "1px solid var(--accent)",
+          borderRadius: 4,
+          fontSize: 11,
+          marginTop: "0.25rem",
+        }}>
+          <div style={{ color: "var(--accent)", fontWeight: 600, marginBottom: 3 }}>
+            ✓ Connected via your existing {mcpSourcedFrom} MCP
+          </div>
+          <div className="text-dim">
+            We detected the <code>{c.connectorId}</code> MCP server on your machine — no keys to paste.
+          </div>
+        </div>
+      )}
+
+      {!isVaulted && !isSkipped && !skipMode && !mcpManaged && !composio && (
         <>
           {c.expectedKeys.map((k) => (
             <input
@@ -258,11 +281,13 @@ function ConnectorCard({ companyId, c, refresh }: { companyId: string; c: Connec
         </>
       )}
 
-      {!isVaulted && !isSkipped && composio && !skipMode && (
-        <div style={{ display: "flex", gap: "0.35rem", marginTop: "0.25rem" }}>
-          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Connect via Composio from Mission Control later.</span>
-          <button type="button" onClick={() => setSkipMode(true)} style={miniBtn(false)}>Skip</button>
-        </div>
+      {!isVaulted && !isSkipped && composio && !mcpManaged && !skipMode && (
+        <DrawerComposioConnect
+          connectorId={c.connectorId}
+          companyId={companyId}
+          onSkip={() => setSkipMode(true)}
+          onConnected={refresh}
+        />
       )}
 
       {skipMode && (
@@ -349,4 +374,115 @@ function miniBtn(primary: boolean): React.CSSProperties {
     fontWeight: primary ? 600 : 400,
     cursor: "pointer",
   };
+}
+
+/** Composio popup OAuth — same state machine as the Concierge page's
+ *  ComposioConnectBlock, sized for the drawer's tighter layout.
+ *  Click Connect → initiate → popup at backend.composio.dev → bounces
+ *  to provider native OAuth → /list polled every 2s for ACTIVE → mark
+ *  vaulted_unvalidated + refresh. */
+function DrawerComposioConnect({
+  connectorId, companyId, onSkip, onConnected,
+}: {
+  connectorId: string;
+  companyId: string;
+  onSkip: () => void;
+  onConnected: () => void;
+}) {
+  const [state, setState] = useState<"idle" | "opening" | "pending" | "needsManual" | "connected" | "error">("idle");
+  const [popupRef, setPopupRef] = useState<Window | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state !== "pending") return;
+    const id = setInterval(() => { void checkStatus(); }, 2000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  async function handleConnect(): Promise<void> {
+    setState("opening");
+    setErrorMsg(null);
+    try {
+      const r = await opOmegaOnboardingApi.initiateConnectorOAuth({
+        companyId, toolkitSlug: connectorId,
+      });
+      if (r.needsLiveWiring || !r.url) {
+        setState("needsManual");
+        return;
+      }
+      const popup = window.open(r.url, `wavex-oauth-${connectorId}`, "width=520,height=720,menubar=no,toolbar=no");
+      if (!popup) {
+        setErrorMsg("Popup blocked. Allow popups + retry.");
+        setState("error");
+        return;
+      }
+      setPopupRef(popup);
+      setState("pending");
+    } catch (e) {
+      setErrorMsg(e instanceof ApiError ? e.message : (e as Error).message);
+      setState("error");
+    }
+  }
+
+  async function checkStatus(): Promise<void> {
+    try {
+      const r = await opOmegaOnboardingApi.listHostedConnections();
+      const match = r.connections.find(
+        (c) => c.toolkit_slug === connectorId && c.status?.toLowerCase() === "active",
+      );
+      if (match) {
+        setState("connected");
+        try { popupRef?.close(); } catch { /* cross-origin tolerance */ }
+        try {
+          await opOmegaOnboardingApi.pasteCredential({
+            companyId, connectorId,
+            key: "composio_connection_id",
+            plaintext: `composio:${match.id ?? "unknown"}`,
+          });
+        } catch { /* server may reject if no expectedKeys; the refresh below still shows progress */ }
+        onConnected();
+      }
+    } catch { /* transient — next tick retries */ }
+  }
+
+  if (state === "needsManual") {
+    return (
+      <div style={{ padding: "0.4rem 0.55rem", fontSize: 11, color: "var(--text-dim)", marginTop: "0.25rem" }}>
+        Composio not configured on the hub right now —{" "}
+        <button type="button" onClick={onSkip} style={miniBtn(false)}>Skip</button>{" "}
+        and wire it from Mission Control later.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.25rem" }}>
+      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+        Connect via OAuth — opens {connectorId}'s sign-in in a popup. No keys to paste.
+      </div>
+      <div style={{ display: "flex", gap: "0.35rem" }}>
+        <button
+          type="button"
+          onClick={() => void handleConnect()}
+          disabled={state === "opening" || state === "pending" || state === "connected"}
+          style={miniBtn(true)}
+        >
+          {state === "connected" ? "✓ Connected" :
+           state === "pending" ? "Connecting…" :
+           state === "opening" ? "Opening…" :
+           "Connect"}
+        </button>
+        {state !== "connected" && state !== "pending" && (
+          <button type="button" onClick={onSkip} style={miniBtn(false)}>Skip</button>
+        )}
+      </div>
+      {state === "pending" && (
+        <span style={{ fontSize: 10, color: "var(--text-dim)" }}>Waiting for OAuth completion…</span>
+      )}
+      {state === "error" && errorMsg && (
+        <span style={{ fontSize: 11, color: "var(--warning)" }}>✗ {errorMsg}</span>
+      )}
+    </div>
+  );
 }
