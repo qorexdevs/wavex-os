@@ -1,7 +1,8 @@
 /** Inline prompt card for Pillar 5 — board communication channel +
  *  conditional urgency routing + conditional Telegram credentials. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePillarSuggestion } from "../../lib/use-pillar-suggestion";
 import type { Pillar5Response, CommChannel, UrgencyRouting } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
 import { ResponseChips } from "../ResponseChips";
@@ -26,6 +27,31 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
+
+  // Inference-grounded suggestion for comm_channel + urgency_routing,
+  // based on Pillar 1/3/4 context. Auto-preselects when Claude has a
+  // confident pick; operator can override freely.
+  const suggestion = usePillarSuggestion(5, companyId);
+  const suggestedComm = typeof suggestion.recommended.comm_channel === "string"
+    ? (suggestion.recommended.comm_channel as string)
+    : null;
+  const suggestedUrgency = typeof suggestion.recommended.urgency_routing === "string"
+    ? (suggestion.recommended.urgency_routing as string)
+    : null;
+  useEffect(() => {
+    if (!suggestion.loaded) return;
+    if (commCanon.length > 0 || commCustom.length > 0) return;
+    if (suggestedComm && COMM_OPTS.some((o) => o.value === suggestedComm)) {
+      setCommCanon([suggestedComm]);
+    }
+  }, [suggestion.loaded, suggestedComm]);
+  useEffect(() => {
+    if (!suggestion.loaded) return;
+    if (urgencyCanon.length > 0 || urgencyCustom.length > 0) return;
+    if (suggestedUrgency && URGENCY_OPTS.some((o) => o.value === suggestedUrgency)) {
+      setUrgencyCanon([suggestedUrgency]);
+    }
+  }, [suggestion.loaded, suggestedUrgency]);
 
   async function handleTestSend(): Promise<void> {
     if (!tgBotToken || !tgChatId) return;
@@ -84,6 +110,21 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
 
   return (
     <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+      {suggestion.loaded && suggestion.reasoning && (
+        <div style={{
+          padding: "0.4rem 0.6rem",
+          background: "var(--bg)",
+          border: "1px dashed var(--accent)",
+          borderRadius: 6,
+          fontSize: 11,
+          color: "var(--text-dim)",
+          lineHeight: 1.45,
+        }}>
+          <span style={{ color: "var(--accent)", fontWeight: 600 }}>✨ Suggested for you</span>
+          {" — "}{suggestion.reasoning}
+        </div>
+      )}
+
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: "0.35rem", color: "var(--text-dim)" }}>
           Where should your board talk to you?
@@ -98,6 +139,7 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
           onChange={(v) => { setCommCanon(v); setUrgencyCanon([]); setUrgencyCustom([]); }}
           onCustomChange={(v) => { setCommCustom(v); setUrgencyCanon([]); setUrgencyCustom([]); }}
           disabled={submitting}
+          suggestedValues={suggestedComm ? [suggestedComm as typeof COMM_OPTS[number]["value"]] : []}
         />
       </div>
 
@@ -166,6 +208,7 @@ export function Pillar5PromptCard({ companyId, onDone }: Props) {
             onChange={setUrgencyCanon}
             onCustomChange={setUrgencyCustom}
             disabled={submitting}
+            suggestedValues={suggestedUrgency ? [suggestedUrgency as typeof URGENCY_OPTS[number]["value"]] : []}
           />
         </div>
       )}

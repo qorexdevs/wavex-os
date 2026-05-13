@@ -1,12 +1,13 @@
 /** Inline prompt card for Pillar 4 — GTM motion (lead sources, sales motion,
  *  conditional close channel). */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Pillar4Response, LeadSource, SalesMotion, CloseChannel } from "@op-omega/plugin-onboarding";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
 import { ResponseChips } from "../ResponseChips";
 import { LEAD_SOURCES, SALES_MOTIONS, CLOSE_CHANNELS } from "../../lib/options";
 import { deriveGtmProfile, displayGtmProfile } from "../../lib/gtm-profile";
+import { usePillarSuggestion } from "../../lib/use-pillar-suggestion";
 
 const LEAD_OPTS = LEAD_SOURCES.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
 const MOTION_OPTS = SALES_MOTIONS.filter((o) => o.v !== "other").map((o) => ({ value: o.v, label: o.l }));
@@ -28,6 +29,33 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
   const [closeCustom, setCloseCustom] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inference-grounded suggestions from /pillar/4/suggest. Pre-fill the
+  // primary lead source + sales motion when Claude has a confident pick;
+  // operator can still add / remove freely. lead_sources is a ranked array.
+  const suggestion = usePillarSuggestion(4, companyId);
+  const suggestedLeads = (Array.isArray(suggestion.recommended.lead_sources)
+    ? (suggestion.recommended.lead_sources as unknown[]).filter((v): v is string => typeof v === "string")
+    : []);
+  const suggestedMotion = typeof suggestion.recommended.sales_motion === "string"
+    ? (suggestion.recommended.sales_motion as string)
+    : null;
+
+  useEffect(() => {
+    if (!suggestion.loaded) return;
+    if (leadsCanon.length > 0 || leadsCustom.length > 0) return;
+    // Pre-fill up to the top 3 canonical leads.
+    const canonicalSet = new Set<string>(LEAD_OPTS.map((o) => o.value));
+    const initialLeads = suggestedLeads.filter((v) => canonicalSet.has(v)).slice(0, MAX_LEAD_SOURCES);
+    if (initialLeads.length > 0) setLeadsCanon(initialLeads);
+  }, [suggestion.loaded]);
+  useEffect(() => {
+    if (!suggestion.loaded) return;
+    if (motionCanon.length > 0 || motionCustom.length > 0) return;
+    if (suggestedMotion && MOTION_OPTS.some((o) => o.value === suggestedMotion)) {
+      setMotionCanon([suggestedMotion]);
+    }
+  }, [suggestion.loaded, suggestedMotion]);
 
   const motionValue = motionCustom[0] ?? motionCanon[0] ?? "";
   const motionIsCustom = motionCustom.length > 0;
@@ -70,6 +98,21 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
 
   return (
     <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+      {suggestion.loaded && suggestion.reasoning && (
+        <div style={{
+          padding: "0.4rem 0.6rem",
+          background: "var(--bg)",
+          border: "1px dashed var(--accent)",
+          borderRadius: 6,
+          fontSize: 11,
+          color: "var(--text-dim)",
+          lineHeight: 1.45,
+        }}>
+          <span style={{ color: "var(--accent)", fontWeight: 600 }}>✨ Suggested for you</span>
+          {" — "}{suggestion.reasoning}
+        </div>
+      )}
+
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: "0.35rem", color: "var(--text-dim)" }}>
           Lead sources <span className="text-dim" style={{ fontWeight: 400 }}>(up to {MAX_LEAD_SOURCES}, primary first)</span>
@@ -85,6 +128,7 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
           onChange={setLeadsCanon}
           onCustomChange={setLeadsCustom}
           disabled={submitting}
+          suggestedValues={suggestedLeads as readonly typeof LEAD_OPTS[number]["value"][]}
         />
       </div>
 
@@ -102,6 +146,7 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
           onChange={(v) => { setMotionCanon(v); setCloseCanon([]); setCloseCustom([]); }}
           onCustomChange={(v) => { setMotionCustom(v); setCloseCanon([]); setCloseCustom([]); }}
           disabled={submitting}
+          suggestedValues={suggestedMotion ? [suggestedMotion as typeof MOTION_OPTS[number]["value"]] : []}
         />
       </div>
 

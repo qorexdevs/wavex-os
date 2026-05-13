@@ -28,6 +28,11 @@ export interface ResponseChipsProps<T extends string> {
   onChange: (next: T[]) => void;
   onCustomChange?: (next: string[]) => void;
   disabled?: boolean;
+  /** Chip values pre-recommended by inference (Pool A pillar/:n/suggest).
+   *  Matching chips render with a ✨ sparkle prefix and a subtle accent
+   *  outline so the customer can see "the system has an opinion here"
+   *  without losing the freedom to pick anything else. */
+  suggestedValues?: ReadonlyArray<T>;
 }
 
 export function ResponseChips<T extends string>({
@@ -41,7 +46,11 @@ export function ResponseChips<T extends string>({
   onChange,
   onCustomChange,
   disabled = false,
+  suggestedValues = [],
 }: ResponseChipsProps<T>) {
+  const suggestedSet = new Set<string>(
+    Array.isArray(suggestedValues) ? suggestedValues.map((v) => String(v).toLowerCase()) : [],
+  );
   const [editingCustom, setEditingCustom] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -108,25 +117,35 @@ export function ResponseChips<T extends string>({
     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
       {options.map((o) => {
         const active = values.includes(o.value);
+        const suggested = suggestedSet.has(String(o.value).toLowerCase());
         return (
           <button
             key={o.value}
             type="button"
             onClick={() => toggleCanonical(o.value)}
             disabled={disabled || (!active && atLimit)}
-            title={o.description}
+            title={suggested && o.description
+              ? `${o.description}\n\n✨ Suggested for you based on what you told us in Pillar 1.`
+              : (suggested ? "✨ Suggested for you based on what you told us in Pillar 1." : o.description)}
             style={{
               padding: "0.4rem 0.7rem",
               fontSize: 12,
               borderRadius: 999,
               cursor: disabled || (!active && atLimit) ? "not-allowed" : "pointer",
-              border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+              // Suggested chips get a soft accent outline even when not active,
+              // so the customer notices the system's pick without it feeling
+              // pre-locked. Active still wins visually for what they chose.
+              border: active
+                ? "1px solid var(--accent)"
+                : suggested
+                  ? "1px dashed var(--accent)"
+                  : "1px solid var(--border)",
               background: active ? "var(--surface-2)" : "transparent",
               color: "var(--text)",
               opacity: !active && atLimit ? 0.5 : 1,
             }}
           >
-            {active ? "✓ " : ""}{o.label}
+            {active ? "✓ " : ""}{suggested && !active ? "✨ " : ""}{o.label}
           </button>
         );
       })}
