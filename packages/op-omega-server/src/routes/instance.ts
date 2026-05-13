@@ -143,6 +143,120 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Fleet listing (mock-core stand-in for Paperclip's /api/companies/:id/
+  // agents). Reads swarm_manifest.json (pre-finalize) or company.manifest.
+  // json's swarm_manifest section (post-finalize) and projects each agent
+  // into a flat list with status. Used by InceptionCTA's "agents ready"
+  // probe and any future fleet-summary surface.
+  app.get("/api/companies/:companyId/agents", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    const manifest = await loadCompanyManifest(companyId);
+    // Try the full company manifest first (post-finalize) then fall back to
+    // swarm_manifest.json which exists earlier in the wizard.
+    let agents: Record<string, { status?: string }> = {};
+    if (manifest?.swarm_manifest?.agents) {
+      agents = manifest.swarm_manifest.agents;
+    } else {
+      try {
+        const raw = await readFile(join(getOnboardingDir(companyId), "swarm_manifest.json"), "utf8");
+        const swarm = JSON.parse(raw) as { agents?: Record<string, { status?: string }> };
+        agents = swarm.agents ?? {};
+      } catch { /* no swarm yet — return [] */ }
+    }
+    const list = Object.entries(agents).map(([slot, info]) => ({
+      slot,
+      status: info?.status ?? "unknown",
+    }));
+    return reply.send(list);
+  });
+
+  // "Force first cycle now" handler — fires a synthetic heartbeat event
+  // per agent. Mock-core doesn't actually run agents (Paperclip does), so
+  // this is a recorded acknowledgement rather than a real trigger.
+  //
+  // Persists to ~/.wavex-os/instances/.../triggered-heartbeats.jsonl so
+  // a future fleet status surface can show "last manually triggered: <ts>".
+  // When Paperclip is configured (paperclip-handoff.json present) we ALSO
+  // forward to Paperclip's real trigger endpoint so the heartbeats fire
+  // there too.
+  app.post("/api/companies/:companyId/trigger-heartbeats", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    const manifest = await loadCompanyManifest(companyId);
+    let slots: string[] = manifest?.swarm_manifest?.agents
+      ? Object.keys(manifest.swarm_manifest.agents)
+      : [];
+    if (slots.length === 0) {
+      try {
+        const raw = await readFile(join(getOnboardingDir(companyId), "swarm_manifest.json"), "utf8");
+        const swarm = JSON.parse(raw) as { agents?: Record<string, unknown> };
+        slots = Object.keys(swarm.agents ?? {});
+      } catch { /* no swarm */ }
+    }
+
+    // Record the trigger event locally (every operator/customer audit
+    // would want to know when manual triggers happened).
+    let recorded = 0;
+    try {
+      const { appendFile, mkdir } = await import("node:fs/promises");
+      const dir = join(getOnboardingDir(companyId), "..");
+      await mkdir(dir, { recursive: true });
+      const line = JSON.stringify({
+        triggered_at: new Date().toISOString(),
+        slots,
+        source: "mission-control:force-first-cycle",
+      }) + "\n";
+      await appendFile(join(dir, "triggered-heartbeats.jsonl"), line, "utf8");
+      recorded = slots.length;
+    } catch { /* best-effort */ }
+
+    // Forward to Paperclip if configured. Mock-core can't actually fire
+    // agent heartbeats; only Paperclip can.
+    let forwarded = 0;
+    let forwardError: string | null = null;
+    try {
+      const handoffRaw = await readFile(
+        join(getOnboardingDir(companyId), "..", "paperclip-handoff.json"),
+        "utf8",
+      ).catch(() => null);
+      if (handoffRaw) {
+        const handoff = JSON.parse(handoffRaw) as { paperclipUrl?: string; paperclipCompanyId?: string };
+        if (handoff.paperclipUrl && handoff.paperclipCompanyId) {
+          const r = await fetch(
+            `${handoff.paperclipUrl}/api/companies/${handoff.paperclipCompanyId}/trigger-heartbeats`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
+          );
+          if (r.ok) {
+            const body = await r.json().catch(() => ({})) as { triggered?: number };
+            forwarded = body.triggered ?? slots.length;
+          } else {
+            forwardError = `paperclip returned HTTP ${r.status}`;
+          }
+        }
+      }
+    } catch (e) {
+      forwardError = e instanceof Error ? e.message : String(e);
+    }
+
+    return reply.send({
+      ok: true,
+      triggered: forwarded > 0 ? forwarded : recorded,
+      source: forwarded > 0 ? "paperclip" : "mock-recorded",
+      ...(forwardError ? { paperclip_forward_error: forwardError } : {}),
+    });
+  });
+
   // Post-activate handoff state — read by InceptionCTA on Mission Control to
   // decide whether to show "Open Paperclip Dashboard" with a real link vs
   // the generic "fleet is live, defaults to localhost:5174" fallback.
