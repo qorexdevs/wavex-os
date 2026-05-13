@@ -200,6 +200,7 @@ export function Pillar4PromptCard({ companyId, onDone }: Props) {
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           type="button"
+          data-testid="pillar4-submit"
           onClick={() => void handleSubmit()}
           disabled={submitting || !ready}
           style={{

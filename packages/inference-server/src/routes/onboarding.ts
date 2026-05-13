@@ -22,6 +22,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import { appendFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { incrementCounter, getCounter, setAdd } from "../lib/rate-limit.js";
 import { issueSessionToken, verifySessionToken, randomInstallId } from "../lib/session-token.js";
 import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
@@ -72,6 +75,37 @@ function calcCostCents(model: string, usage: { input_tokens: number; output_toke
   );
 }
 
+// Local jsonl mirror path. The WaveX Ops cycle (scripts/ops/wavex-ops-cycle.mjs
+// probePoolAErrorRate) reads this file to compute Pool A error rate; the
+// hosted-shim writes here too. Keeping both writers on the same schema means
+// the operator-side ops layer doesn't care which call path served a given T2.
+const T2_EVENTS_PATH = join(
+  process.env.WAVEX_OS_STATE_DIR ?? join(homedir(), ".wavex-os"),
+  "state",
+  "t2-events.jsonl",
+);
+
+async function appendT2Event(row: {
+  ts_iso: string;
+  ended_ms: number;
+  exit_code: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cost_cents: number;
+  install_id: string;
+  pool: "A";
+  status: "ok" | "rate_limited" | "error" | "cap_hit";
+  error_class?: string;
+}): Promise<void> {
+  try {
+    await mkdir(join(T2_EVENTS_PATH, ".."), { recursive: true });
+    await appendFile(T2_EVENTS_PATH, JSON.stringify(row) + "\n");
+  } catch (err) {
+    console.error("t2-events.jsonl append failed", err);
+  }
+}
+
 async function writeLedger(row: {
   pool: "A";
   install_id: string;
@@ -87,6 +121,23 @@ async function writeLedger(row: {
   status: "ok" | "rate_limited" | "error" | "cap_hit";
   error_class?: string;
 }): Promise<void> {
+  // Local mirror (always — even if Supabase isn't configured the Ops cycle
+  // still needs to see Pool A activity).
+  const now = Date.now();
+  void appendT2Event({
+    ts_iso: new Date(now).toISOString(),
+    ended_ms: now,
+    exit_code: row.status === "ok" ? 0 : 1,
+    input_tokens: row.prompt_tokens,
+    output_tokens: row.completion_tokens,
+    cached_input_tokens: row.cache_read_tokens,
+    cost_cents: row.cost_cents,
+    install_id: row.install_id,
+    pool: row.pool,
+    status: row.status,
+    ...(row.error_class ? { error_class: row.error_class } : {}),
+  });
+
   if (!supabase) return;
   // Fire-and-forget; we don't block the response.
   void supabase

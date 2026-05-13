@@ -15,10 +15,17 @@ export default defineConfig({
     host: "127.0.0.1",
     open: false, // installer opens the browser; vite shouldn't double-open
     proxy: {
-      "/api/paperclip": {
+      // Anchored to `/api/paperclip/<subpath>` — requires the trailing
+      // slash so neighboring paths like `/api/paperclip-reachable`
+      // (server-side Paperclip-up probe) don't get wrongly matched and
+      // rewritten to `/api-reachable`, which 404s. Without this anchor
+      // the InceptionCTA's "Open Paperclip Dashboard ↗" button stayed
+      // disabled forever even when Paperclip was healthy. See
+      // BUG.PROXY_REWRITE in the 2026-05-13 E2E QA report.
+      "^/api/paperclip/": {
         target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/paperclip/, "/api"),
+        rewrite: (path) => path.replace(/^\/api\/paperclip\//, "/api/"),
       },
       "/api": {
         target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",

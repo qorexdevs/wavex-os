@@ -122,6 +122,15 @@ export function ResponseChips<T extends string>({
           <button
             key={o.value}
             type="button"
+            // Stable QA hooks: data-testid="response-chip" lets driver
+            // collect every chip in the document; data-value identifies
+            // which option the chip represents; data-active reflects
+            // selection state for assertion. Added 2026-05-13 after E2E
+            // QA flagged button pickers as non-driveable (no inputs).
+            data-testid="response-chip"
+            data-value={String(o.value)}
+            data-active={active ? "true" : "false"}
+            data-suggested={suggested ? "true" : "false"}
             onClick={() => toggleCanonical(o.value)}
             disabled={disabled || (!active && atLimit)}
             title={suggested && o.description
