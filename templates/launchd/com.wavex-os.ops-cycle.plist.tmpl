@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wavex-os.ops-cycle</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${WAVEX_OS_ROOT}/scripts/ops/wavex-ops-cycle.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>STATE_DIR</key>
+    <string>${STATE_DIR}</string>
+    <key>REPO_ROOT</key>
+    <string>${WAVEX_OS_ROOT}</string>
+    <key>WAVEX_OS_STATE_DIR</key>
+    <string>${STATE_DIR}</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${STATE_DIR}/wavex-ops-cycle.log</string>
+  <key>StandardErrorPath</key>
+  <string>${STATE_DIR}/wavex-ops-cycle.log</string>
+</dict>
+</plist>
