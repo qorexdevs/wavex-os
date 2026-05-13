@@ -85,6 +85,7 @@ export type ChatSlot =
   | { kind: "avatar-profile" }
   | { kind: "avatar-tools"; connected: AvatarToolConnection[] }
   | { kind: "avatar-voice"; samples: string[] }
+  | { kind: "avatar-trust" }
   | { kind: "avatar-suggestions"; suggestions: AvatarAutomationSuggestion[] };
 
 // ── Top-level phase machine ───────────────────────────────────────────────

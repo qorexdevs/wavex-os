@@ -38,7 +38,7 @@ import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
 import { Pricing } from "../pricing/Pricing";
-import { reducer, initialState, phaseProgressPct, type AccountType, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
+import { reducer, initialState, phaseProgressPct, type AccountType, type AvatarAutomationSuggestion, type AvatarProfile, type AvatarToolConnection, type AvatarTrust, type AvatarVoiceProfile, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
@@ -490,6 +490,92 @@ export function OnboardingShell() {
     })();
   }, [state.phase, companyId]);
 
+  /** Phase 4 — Avatar branch handlers. Each card's onSubmitted /
+   *  onDone callback collapses its slot, dispatches the corresponding
+   *  reducer action (which advances `state.phase`), and drops the
+   *  next assistant bubble + card slot via `transitionWithPill`. Same
+   *  shape as the pillar handlers above. */
+  const handleAvatarProfileSubmitted = useCallback((profile: AvatarProfile, avatarId: string) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "avatar-profile" });
+    dispatch({ type: "AVATAR_PROFILE_DONE", profile, avatarId });
+    transitionWithPill("Wiring your tools…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Pick the tools you live in. We use them to read for you and write back on your behalf.",
+          slot: { kind: "avatar-tools", connected: [] },
+        },
+      });
+    });
+  }, [transitionWithPill]);
+
+  const handleAvatarToolConnected = useCallback((connection: AvatarToolConnection) => {
+    dispatch({ type: "AVATAR_TOOL_CONNECTED", connection });
+  }, []);
+
+  const handleAvatarToolsDone = useCallback(() => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "avatar-tools" });
+    dispatch({ type: "AVATAR_TOOLS_DONE" });
+    transitionWithPill("Reading your voice…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Show me how you write. Three short prompts and I'll mirror your voice.",
+          slot: { kind: "avatar-voice", samples: [] },
+        },
+      });
+    });
+  }, [transitionWithPill]);
+
+  const handleAvatarVoiceAnalyzing = useCallback(() => {
+    dispatch({ type: "AVATAR_VOICE_ANALYZING" });
+  }, []);
+
+  const handleAvatarVoiceDone = useCallback((profile: AvatarVoiceProfile) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "avatar-voice" });
+    dispatch({ type: "AVATAR_VOICE_DONE", profile });
+    transitionWithPill("Setting trust & boundaries…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "How autonomous on day one — and what's off-limits?",
+          slot: { kind: "avatar-trust" },
+        },
+      });
+    });
+  }, [transitionWithPill]);
+
+  const handleAvatarTrustDone = useCallback((trust: AvatarTrust) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "avatar-trust" });
+    dispatch({ type: "AVATAR_TRUST_DONE", trust });
+    transitionWithPill("First automations…", () => {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          role: "assistant",
+          text: "Pick what your avatar should start doing on day one.",
+          slot: { kind: "avatar-suggestions", suggestions: [] },
+        },
+      });
+    });
+  }, [transitionWithPill]);
+
+  const handleAvatarSuggestionsLoaded = useCallback((suggestions: AvatarAutomationSuggestion[]) => {
+    dispatch({ type: "AVATAR_SUGGESTIONS_LOADED", suggestions });
+  }, []);
+
+  const handleAvatarAutomationToggled = useCallback((suggestionId: string) => {
+    dispatch({ type: "AVATAR_AUTOMATION_TOGGLED", suggestionId });
+  }, []);
+
+  const handleAvatarFinalized = useCallback((avatarId: string) => {
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "avatar-suggestions" });
+    dispatch({ type: "AVATAR_FINALIZED", avatarId });
+  }, []);
+
   const handleScopeDone = useCallback((mode: "full" | "focused", departments: Department[]) => {
     dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "scope-prompt" });
     const summary = mode === "full"
@@ -594,6 +680,23 @@ export function OnboardingShell() {
     })();
   }, [state.phase, companyId, t0]);
 
+  /** Phase 4 — Avatar entry effect. When the gateway picks "avatar" the
+   *  reducer sets phase to avatar_profile directly. We drop the first
+   *  assistant bubble + profile slot once. Idempotency check on the
+   *  thread prevents StrictMode double-mounts from dropping twice. */
+  useEffect(() => {
+    if (state.phase.kind !== "avatar_profile") return;
+    if (state.thread.some((m) => m.slot?.kind === "avatar-profile")) return;
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Let's set you up. Tell me a bit about yourself.",
+        slot: { kind: "avatar-profile" },
+      },
+    });
+  }, [state.phase.kind, state.thread]);
+
   const handleConnectorRefined = useCallback((manifest: ConnectorManifest) => {
     dispatch({ type: "CONNECTORS_LOADED", manifest });
     dispatch({
@@ -696,12 +799,9 @@ export function OnboardingShell() {
     state.phase.kind === "pricing" ||
     state.phase.kind === "activate" ||
     state.phase.kind === "handed_off" ||
-    // Avatar branch — single-card centered overlay per step, no chat thread
-    // / input bar underneath since the Avatar flow isn't conversational.
-    state.phase.kind === "avatar_profile" ||
-    state.phase.kind === "avatar_tools" ||
-    state.phase.kind === "avatar_voice" ||
-    state.phase.kind === "avatar_suggestions" ||
+    // Avatar branch renders entirely in the chat thread now (Phase 4).
+    // `avatar_done` stays full-screen briefly while the suggestions card
+    // navigates to /avatar/:id; nothing should render under it.
     state.phase.kind === "avatar_done";
 
   return (
@@ -753,6 +853,19 @@ export function OnboardingShell() {
           onConnectorRefined: handleConnectorRefined,
           onConnectorConfirmed: handleConnectorConfirmed,
           onScopeDone: handleScopeDone,
+          avatarId: state.draft.avatarId ?? null,
+          avatarToolsInitialConnected: state.draft.avatarTools ?? [],
+          avatarSuggestions: state.draft.avatarSuggestions ?? [],
+          avatarEnabledAutomations: state.draft.avatarEnabledAutomations ?? [],
+          onAvatarProfileSubmitted: handleAvatarProfileSubmitted,
+          onAvatarToolConnected: handleAvatarToolConnected,
+          onAvatarToolsDone: handleAvatarToolsDone,
+          onAvatarVoiceAnalyzing: handleAvatarVoiceAnalyzing,
+          onAvatarVoiceDone: handleAvatarVoiceDone,
+          onAvatarTrustDone: handleAvatarTrustDone,
+          onAvatarSuggestionsLoaded: handleAvatarSuggestionsLoaded,
+          onAvatarAutomationToggled: handleAvatarAutomationToggled,
+          onAvatarFinalized: handleAvatarFinalized,
         }}
       />
       ) : null}
@@ -810,140 +923,6 @@ export function OnboardingShell() {
        *  No chat thread, no input bar — the Avatar flow is form-shaped,
        *  not conversational, so we use full-screen overlays instead.
        */}
-      {state.phase.kind === "avatar_profile" && (
-        <AvatarPhaseLayout
-          step={1}
-          title="Tell me about you"
-          subtitle="Your avatar uses this to time itself to your day."
-        >
-          <AvatarProfileCard
-            onSubmitted={(profile, avatarId) =>
-              dispatch({ type: "AVATAR_PROFILE_DONE", profile, avatarId })
-            }
-          />
-        </AvatarPhaseLayout>
-      )}
-
-      {state.phase.kind === "avatar_tools" && state.draft.avatarId && (
-        <AvatarPhaseLayout
-          step={2}
-          title="Connect your tools"
-          subtitle="Pick the ones you live in. You can wire more later."
-        >
-          <AvatarToolsCard
-            avatarId={state.draft.avatarId}
-            initialConnected={state.phase.connected}
-            onConnected={(connection) =>
-              dispatch({ type: "AVATAR_TOOL_CONNECTED", connection })
-            }
-            onDone={() => dispatch({ type: "AVATAR_TOOLS_DONE" })}
-          />
-        </AvatarPhaseLayout>
-      )}
-
-      {state.phase.kind === "avatar_voice" && state.draft.avatarId && (
-        <AvatarPhaseLayout
-          step={3}
-          title="Show me your voice"
-          subtitle="Three short prompts. Your avatar uses them to mirror you."
-        >
-          <AvatarVoiceCard
-            avatarId={state.draft.avatarId}
-            onAnalyzing={() => dispatch({ type: "AVATAR_VOICE_ANALYZING" })}
-            onDone={(profile) => dispatch({ type: "AVATAR_VOICE_DONE", profile })}
-          />
-        </AvatarPhaseLayout>
-      )}
-
-      {state.phase.kind === "avatar_trust" && state.draft.avatarId && (
-        <AvatarPhaseLayout
-          step={4}
-          title="Trust & boundaries"
-          subtitle="How autonomous on day one — and what's off-limits."
-        >
-          <AvatarTrustCard
-            avatarId={state.draft.avatarId}
-            onDone={(trust) => dispatch({ type: "AVATAR_TRUST_DONE", trust })}
-          />
-        </AvatarPhaseLayout>
-      )}
-
-      {state.phase.kind === "avatar_suggestions" && state.draft.avatarId && (
-        <AvatarPhaseLayout
-          step={5}
-          title="First automations"
-          subtitle="Pick what your avatar should start doing on day one."
-        >
-          <AvatarSuggestionsCard
-            avatarId={state.draft.avatarId}
-            suggestions={state.phase.suggestions}
-            enabled={state.phase.enabled}
-            onSuggestionsLoaded={(suggestions) =>
-              dispatch({ type: "AVATAR_SUGGESTIONS_LOADED", suggestions })
-            }
-            onToggle={(suggestionId) =>
-              dispatch({ type: "AVATAR_AUTOMATION_TOGGLED", suggestionId })
-            }
-            onFinalized={(avatarId) =>
-              dispatch({ type: "AVATAR_FINALIZED", avatarId })
-            }
-          />
-        </AvatarPhaseLayout>
-      )}
-    </div>
-  );
-}
-
-/** Shared chrome for every Avatar step: top-left wordmark, hero title,
- *  step badge, then the card content centered in a 720-px column. */
-function AvatarPhaseLayout({
-  step, title, subtitle, children,
-}: {
-  step: number;
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 50,
-      background: "var(--bg)",
-      overflowY: "auto",
-      padding: "5rem 1.5rem 3rem",
-    }}>
-      <div style={{ position: "absolute", top: "1.25rem", left: "1.5rem" }}>
-        <Wordmark size="compact" />
-      </div>
-      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "var(--accent)",
-            marginBottom: "0.5rem",
-          }}>
-            Avatar setup · Step {step} of 5
-          </div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>
-            {title}
-          </h1>
-          <p className="text-dim" style={{ fontSize: 13, margin: "0.5rem 0 0", lineHeight: 1.55 }}>
-            {subtitle}
-          </p>
-        </div>
-        <div style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: "1rem 1.25rem",
-        }}>
-          {children}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1240,6 +1219,20 @@ interface SlotContext {
   onConnectorRefined: (manifest: ConnectorManifest) => void;
   onConnectorConfirmed: () => void;
   onScopeDone: (mode: "full" | "focused", departments: Department[]) => void;
+  // Phase 4 — Avatar branch as inline chat cards
+  avatarId: string | null;
+  avatarToolsInitialConnected: AvatarToolConnection[];
+  avatarSuggestions: AvatarAutomationSuggestion[];
+  avatarEnabledAutomations: string[];
+  onAvatarProfileSubmitted: (profile: AvatarProfile, avatarId: string) => void;
+  onAvatarToolConnected: (connection: AvatarToolConnection) => void;
+  onAvatarToolsDone: () => void;
+  onAvatarVoiceAnalyzing: () => void;
+  onAvatarVoiceDone: (profile: AvatarVoiceProfile) => void;
+  onAvatarTrustDone: (trust: AvatarTrust) => void;
+  onAvatarSuggestionsLoaded: (suggestions: AvatarAutomationSuggestion[]) => void;
+  onAvatarAutomationToggled: (suggestionId: string) => void;
+  onAvatarFinalized: (avatarId: string) => void;
 }
 
 function ChatThread({ thread, slotContext, onUncollapse }: { thread: ChatMessage[]; slotContext: SlotContext; onUncollapse: (id: string) => void }) {
@@ -1449,6 +1442,50 @@ function SlotRenderer({ slot, slotContext }: { slot: ChatSlot; slotContext: Slot
           manifest={slot.manifest}
           onConfirmed={slotContext.onConnectorConfirmed}
           onReRefined={slotContext.onConnectorRefined}
+        />
+      );
+    // Phase 4 — Avatar steps render inline as chat cards (parity with
+    // Solo/Hybrid). Profile + Tools land in slice 2; voice/trust/sugg
+    // come in slice 3.
+    case "avatar-profile":
+      return <AvatarProfileCard onSubmitted={slotContext.onAvatarProfileSubmitted} />;
+    case "avatar-tools":
+      if (!slotContext.avatarId) return null;
+      return (
+        <AvatarToolsCard
+          avatarId={slotContext.avatarId}
+          initialConnected={slotContext.avatarToolsInitialConnected}
+          onConnected={slotContext.onAvatarToolConnected}
+          onDone={slotContext.onAvatarToolsDone}
+        />
+      );
+    case "avatar-voice":
+      if (!slotContext.avatarId) return null;
+      return (
+        <AvatarVoiceCard
+          avatarId={slotContext.avatarId}
+          onAnalyzing={slotContext.onAvatarVoiceAnalyzing}
+          onDone={slotContext.onAvatarVoiceDone}
+        />
+      );
+    case "avatar-trust":
+      if (!slotContext.avatarId) return null;
+      return (
+        <AvatarTrustCard
+          avatarId={slotContext.avatarId}
+          onDone={slotContext.onAvatarTrustDone}
+        />
+      );
+    case "avatar-suggestions":
+      if (!slotContext.avatarId) return null;
+      return (
+        <AvatarSuggestionsCard
+          avatarId={slotContext.avatarId}
+          suggestions={slotContext.avatarSuggestions}
+          enabled={slotContext.avatarEnabledAutomations}
+          onSuggestionsLoaded={slotContext.onAvatarSuggestionsLoaded}
+          onToggle={slotContext.onAvatarAutomationToggled}
+          onFinalized={slotContext.onAvatarFinalized}
         />
       );
     default:

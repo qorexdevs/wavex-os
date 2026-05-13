@@ -1,7 +1,8 @@
 /** End-to-end smoke for the Avatar branch under ?t0=1 fast mode.
- *  Drives: gateway → profile → tools (connect 2 + Gmail drawer) →
- *  voice (3 samples + signoff + guardrails) → trust (preset + VIPs) →
- *  suggestions → finalize → /avatar/:id dashboard. */
+ *  Avatar onboarding now uses the same chat-thread + inline-card pattern
+ *  as Solo/Hybrid (Phase 4). Each step drops a card into an assistant
+ *  bubble; we drive selectors off the bubble text instead of the old
+ *  "Step N of 5" full-screen badges. */
 
 import { chromium } from "@playwright/test";
 
@@ -20,15 +21,15 @@ async function main() {
   await page.locator("button").filter({ hasText: /Set up my avatar/i }).first().click();
   console.log("✓ Picked Avatar");
 
-  // Step 1: profile
-  await page.waitForSelector("text=/Avatar setup · Step 1 of 5/i", { timeout: 5_000 });
+  // Step 1: profile card lands as the first assistant bubble.
+  await page.waitForSelector("text=/Let's set you up/i", { timeout: 5_000 });
   await page.locator("input[placeholder='Alex Founder']").fill("Test Operator");
   await page.locator("input[placeholder*='Indie hacker']").fill("Indie hacker");
   await page.locator("button").filter({ hasText: /^Continue/i }).click();
   console.log("✓ Profile saved");
 
-  // Step 2: tools — connect 2 (Gmail first to trigger the personalize drawer)
-  await page.waitForSelector("text=/Avatar setup · Step 2 of 5/i", { timeout: 10_000 });
+  // Step 2: tools — bubble announces, card follows. Connect 2 (Gmail first).
+  await page.waitForSelector("text=/Pick the tools you live in/i", { timeout: 10_000 });
   await page.locator("button").filter({ hasText: /^Connect$/i }).first().click();
   await page.waitForFunction(
     () => document.body.textContent?.match(/1 of 8 connected/),
@@ -46,7 +47,7 @@ async function main() {
   await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
 
   // Step 3: voice — paste 3 long samples (signoff/guardrails optional)
-  await page.waitForSelector("text=/Avatar setup · Step 3 of 5/i", { timeout: 5_000 });
+  await page.waitForSelector("text=/Show me how you write/i", { timeout: 5_000 });
   const longSample = "This is a sample of how I write to colleagues with enough characters to clear the validation.";
   const textareas = page.locator("textarea");
   await textareas.nth(0).fill(longSample);
@@ -55,14 +56,14 @@ async function main() {
   await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
   console.log("✓ Voice samples submitted");
 
-  // Step 4 (NEW): Trust & boundaries — keep defaults, click Continue
-  await page.waitForSelector("text=/Avatar setup · Step 4 of 5/i", { timeout: 5_000 });
+  // Step 4: Trust & boundaries — keep defaults, click Continue
+  await page.waitForSelector("text=/How autonomous on day one/i", { timeout: 10_000 });
   await page.waitForSelector("text=/Autonomy preset/i", { timeout: 5_000 });
   await page.locator("button").filter({ hasText: /Continue →/i }).first().click();
   console.log("✓ Trust step submitted (defaults)");
 
   // Step 5: suggestions — finalize without enabling
-  await page.waitForSelector("text=/Avatar setup · Step 5 of 5/i", { timeout: 30_000 });
+  await page.waitForSelector("text=/Pick what your avatar should start doing/i", { timeout: 30_000 });
   // Wait for suggestions to load (or empty state)
   await page.waitForFunction(
     () => /Launch — /i.test(document.body.textContent ?? ""),
