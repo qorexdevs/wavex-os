@@ -294,4 +294,52 @@ export function registerInstanceRoutes(app: FastifyInstance): void {
       return { ok: true, handoff: { paperclipUrl: null, paperclipCompanyId: null, handedOff: false } };
     }
   });
+
+  // Server-side probe for Paperclip on localhost:3100. The browser used to
+  // do this directly, but Chrome logs `net::ERR_CONNECTION_REFUSED` to the
+  // DevTools console for every failed cross-origin fetch even when JS
+  // catches the rejection — turning the InceptionCTA's 2 s poll loop into
+  // a noisy DevTools spammer for users on `pnpm dev:no-paperclip`.
+  //
+  // Probing server-side avoids the cross-origin shape entirely, returns
+  // structured JSON the client can consume cleanly, and lets us swap the
+  // probe target later (different host, different port, health endpoint)
+  // without touching the UI.
+  //
+  // Cheap: 800 ms timeout, no body parsing, treats any HTTP response as
+  // "reachable" since Paperclip's root may legitimately return 302/404.
+  app.get("/api/paperclip-reachable", async (_req, reply) => {
+    const target = process.env.PAPERCLIP_PROBE_URL ?? "http://127.0.0.1:3100/";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 800);
+    try {
+      const r = await fetch(target, { signal: controller.signal, redirect: "manual" });
+      clearTimeout(timer);
+      return reply.send({
+        ok: true,
+        reachable: true,
+        target,
+        status: r.status,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      // Node 18+ fetch wraps the real reason in `err.cause` (TypeError:
+      // fetch failed + cause.code='ECONNREFUSED'). Check both layers.
+      const errAny = err as { message?: string; name?: string; cause?: { code?: string; message?: string } };
+      const code = errAny?.cause?.code ?? "";
+      const msg = errAny?.message ?? "";
+      const causeMsg = errAny?.cause?.message ?? "";
+      const blob = `${code} ${msg} ${causeMsg}`;
+      return reply.send({
+        ok: true,
+        reachable: false,
+        target,
+        reason: blob.includes("ECONNREFUSED")
+          ? "not_listening"
+          : errAny?.name === "AbortError" || blob.includes("aborted") || blob.includes("timeout")
+            ? "timeout"
+            : "other",
+      });
+    }
+  });
 }

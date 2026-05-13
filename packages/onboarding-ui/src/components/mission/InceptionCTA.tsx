@@ -25,18 +25,26 @@ interface HandoffState {
 }
 
 /** Paperclip is vendored at packages/core/ and runs on port 3100 by
- *  default (see packages/core/server/src/config.ts:294). We probe that
- *  port via no-cors to detect whether the customer has it running
- *  alongside wavex-os. The 1.5s timeout keeps the CTA snappy either way. */
+ *  default (see packages/core/server/src/config.ts:294). We *used* to probe
+ *  that port from the browser via no-cors, but Chrome logs
+ *  `net::ERR_CONNECTION_REFUSED` to the DevTools console on every failed
+ *  cross-origin fetch even when JS catches the rejection — flooding the
+ *  console while we wait for Paperclip to boot.
+ *
+ *  Now we proxy through the wavex-os server: GET /api/paperclip-reachable
+ *  returns { reachable: boolean } from a server-side fetch with no client
+ *  console noise. Same logical behavior, zero DevTools spam. */
 const PAPERCLIP_LOCAL_URL = "http://localhost:3100";
 
 async function probePaperclipLocal(): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
-    await fetch(`${PAPERCLIP_LOCAL_URL}/`, { mode: "no-cors", signal: controller.signal });
+    const r = await fetch("/api/paperclip-reachable", { signal: controller.signal });
     clearTimeout(timer);
-    return true;
+    if (!r.ok) return false;
+    const j = (await r.json()) as { reachable?: boolean };
+    return Boolean(j.reachable);
   } catch {
     return false;
   }
