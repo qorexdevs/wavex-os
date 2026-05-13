@@ -38,7 +38,7 @@ import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
 import { Pricing } from "../pricing/Pricing";
-import { reducer, initialState, phaseProgressPct, type AccountType, type AvatarAutomationSuggestion, type AvatarProfile, type AvatarToolConnection, type AvatarTrust, type AvatarVoiceProfile, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
+import { reducer, initialState, phaseProgressPct, type AccountType, type AvatarAutomationSuggestion, type AvatarProfile, type AvatarProfilePrefill, type AvatarToolConnection, type AvatarTrust, type AvatarVoiceProfile, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@op-omega/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
@@ -272,8 +272,11 @@ export function OnboardingShell() {
 
   const showEmptyState =
     state.thread.length === 0
-    && (state.phase.kind === "welcome" || state.phase.kind === "account_type_select");
+    && (state.phase.kind === "welcome"
+        || state.phase.kind === "account_type_select"
+        || state.phase.kind === "avatar_welcome");
   const showAccountTypeGateway = state.phase.kind === "account_type_select";
+  const showAvatarWelcome = state.phase.kind === "avatar_welcome";
   const handleAccountTypeSelected = useCallback((accountType: AccountType) => {
     dispatch({ type: "ACCOUNT_TYPE_SELECTED", accountType });
   }, []);
@@ -351,9 +354,45 @@ export function OnboardingShell() {
   }, [qc, t0]);
 
   // ── Welcome → company slug + Pillar 1 ───────────────────────────────────
+  /** Phase 5 — Avatar welcome-hero handler. The operator types a free-text
+   *  intro; T2 parses it into the four profile fields and the
+   *  AvatarProfileCard lands inline pre-filled. Falls back to an empty
+   *  prefill on parse error so the card still renders. */
+  const handleAvatarWelcomeSubmit = useCallback(async (rawIntro: string) => {
+    dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: rawIntro } });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Reading your intro…",
+        slot: { kind: "transition-pill", label: "Reading your intro…" },
+      },
+    });
+    let profile: AvatarProfilePrefill = {};
+    try {
+      const r = await opOmegaOnboardingApi.parseAvatarIntro(rawIntro, isT0FastMode());
+      profile = r.profile;
+    } catch { /* empty profile — card still renders for manual fill */ }
+    dispatch({ type: "COLLAPSE_LAST_SLOT", kind: "transition-pill" });
+    dispatch({ type: "AVATAR_PROFILE_PREFILLED", profile });
+    dispatch({
+      type: "ADD_MESSAGE",
+      message: {
+        role: "assistant",
+        text: "Got it. Here's what I caught — adjust anything off.",
+        slot: { kind: "avatar-profile" },
+      },
+    });
+  }, []);
+
   const handleSubmit = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    if (state.phase.kind === "avatar_welcome") {
+      await handleAvatarWelcomeSubmit(trimmed);
+      return;
+    }
 
     if (state.phase.kind === "welcome") {
       const hasUrl = inputLooksLikeUrl(trimmed);
@@ -399,7 +438,7 @@ export function OnboardingShell() {
 
     // Default: just echo. Subsequent phase handlers wire actual work.
     dispatch({ type: "ADD_MESSAGE", message: { role: "user", text: trimmed } });
-  }, [state.phase, setCompanyId, runPillar1]);
+  }, [state.phase, setCompanyId, runPillar1, handleAvatarWelcomeSubmit]);
 
   /** Drop a transient "moving to next step" pill in the chat between a
    *  card-submit and the next card's mount, then run `next` after a 400ms
@@ -822,7 +861,7 @@ export function OnboardingShell() {
         <EmptyState
           onSubmit={handleSubmit}
           t0={t0}
-          mode={showAccountTypeGateway ? "gateway" : "input"}
+          mode={showAccountTypeGateway ? "gateway" : showAvatarWelcome ? "avatar_welcome" : "input"}
           onAccountTypeSelected={handleAccountTypeSelected}
         />
       ) : !isFullScreenPhase ? (
@@ -854,6 +893,7 @@ export function OnboardingShell() {
           onConnectorConfirmed: handleConnectorConfirmed,
           onScopeDone: handleScopeDone,
           avatarId: state.draft.avatarId ?? null,
+          avatarProfileInitial: state.draft.avatarProfilePrefill,
           avatarToolsInitialConnected: state.draft.avatarTools ?? [],
           avatarSuggestions: state.draft.avatarSuggestions ?? [],
           avatarEnabledAutomations: state.draft.avatarEnabledAutomations ?? [],
@@ -934,7 +974,7 @@ function EmptyState({
 }: {
   onSubmit: (text: string) => void;
   t0: boolean;
-  mode?: "gateway" | "input";
+  mode?: "gateway" | "input" | "avatar_welcome";
   onAccountTypeSelected?: (type: AccountType) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -968,11 +1008,17 @@ function EmptyState({
   /** Generalized starter patterns — each reveals one valid input shape
    *  without prescribing a specific business. Click to seed the input
    *  with a template the operator edits; doesn't auto-submit. */
-  const STARTERS: Array<{ label: string; seed: string }> = [
-    { label: "Your company URL", seed: "https://" },
-    { label: "Pitch in one sentence", seed: "We build " },
-    { label: "Scoped: just marketing & sales", seed: "I need a marketing and sales team for " },
-  ];
+  const STARTERS: Array<{ label: string; seed: string }> = mode === "avatar_welcome"
+    ? [
+        { label: "Who you are", seed: "I'm " },
+        { label: "Your role", seed: "I work as a " },
+        { label: "First thing to delegate", seed: "I'd hand off " },
+      ]
+    : [
+        { label: "Your company URL", seed: "https://" },
+        { label: "Pitch in one sentence", seed: "We build " },
+        { label: "Scoped: just marketing & sales", seed: "I need a marketing and sales team for " },
+      ];
 
   function applyStarter(seed: string): void {
     setDraft(seed);
@@ -1029,7 +1075,11 @@ function EmptyState({
       }}>
         <div style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: 30, fontWeight: 700, margin: 0, marginBottom: "0.6rem", letterSpacing: "-0.01em" }}>
-            {mode === "gateway" ? "Welcome to WaveX OS" : "What do you want to build?"}
+            {mode === "gateway"
+              ? "Welcome to WaveX OS"
+              : mode === "avatar_welcome"
+                ? "Let's get to know you"
+                : "What do you want to build?"}
           </h1>
           <p className="text-dim" style={{ fontSize: 14, margin: 0, lineHeight: 1.55 }}>
             {mode === "gateway" ? (
@@ -1037,6 +1087,12 @@ function EmptyState({
                 Pick how you want to work — a personal Avatar, a full AI company, or
                 <br />
                 a hybrid that fills the gaps in your team.
+              </>
+            ) : mode === "avatar_welcome" ? (
+              <>
+                Tell me your name, role, hours you work, and what you'd hand off first.
+                <br />
+                I'll set up the rest from your answer.
               </>
             ) : (
               <>
@@ -1070,7 +1126,7 @@ function EmptyState({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Ask anything…"
+            placeholder={mode === "avatar_welcome" ? "I'm…" : "Ask anything…"}
             rows={1}
             disabled={submitting}
             style={{
@@ -1221,6 +1277,7 @@ interface SlotContext {
   onScopeDone: (mode: "full" | "focused", departments: Department[]) => void;
   // Phase 4 — Avatar branch as inline chat cards
   avatarId: string | null;
+  avatarProfileInitial: AvatarProfilePrefill | undefined;
   avatarToolsInitialConnected: AvatarToolConnection[];
   avatarSuggestions: AvatarAutomationSuggestion[];
   avatarEnabledAutomations: string[];
@@ -1448,7 +1505,12 @@ function SlotRenderer({ slot, slotContext }: { slot: ChatSlot; slotContext: Slot
     // Solo/Hybrid). Profile + Tools land in slice 2; voice/trust/sugg
     // come in slice 3.
     case "avatar-profile":
-      return <AvatarProfileCard onSubmitted={slotContext.onAvatarProfileSubmitted} />;
+      return (
+        <AvatarProfileCard
+          initial={slotContext.avatarProfileInitial}
+          onSubmitted={slotContext.onAvatarProfileSubmitted}
+        />
+      );
     case "avatar-tools":
       if (!slotContext.avatarId) return null;
       return (

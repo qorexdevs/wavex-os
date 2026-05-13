@@ -5,9 +5,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../../lib/api";
-import type { AvatarProfile } from "../../state/onboarding-reducer";
+import type { AvatarProfile, AvatarProfilePrefill } from "../../state/onboarding-reducer";
 
 interface Props {
+  /** Phase 5 — pre-fill from the welcome-hero T2 parse. Optional; absent
+   *  means the operator either skipped the hero or T2 returned nothing. */
+  initial?: AvatarProfilePrefill;
   onSubmitted: (profile: AvatarProfile, avatarId: string) => void;
 }
 
@@ -24,15 +27,15 @@ const COMMON_TZS = [
   "Australia/Sydney",
 ];
 
-export function AvatarProfileCard({ onSubmitted }: Props) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("17:00");
+export function AvatarProfileCard({ initial, onSubmitted }: Props) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [role, setRole] = useState(initial?.role ?? "");
+  const [startTime, setStartTime] = useState(initial?.working_hours?.[0] ?? "09:00");
+  const [endTime, setEndTime] = useState(initial?.working_hours?.[1] ?? "17:00");
   const detectedTz = useMemo(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return "UTC"; }
   }, []);
-  const [tz, setTz] = useState(detectedTz);
+  const [tz, setTz] = useState(initial?.tz ?? detectedTz);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +47,11 @@ export function AvatarProfileCard({ onSubmitted }: Props) {
     return Array.from(set).sort();
   }, [detectedTz]);
 
-  useEffect(() => { setTz(detectedTz); }, [detectedTz]);
+  useEffect(() => {
+    // Only reset to the browser-detected zone if the operator didn't
+    // already get one from the welcome-hero parse (or hasn't picked one).
+    if (!initial?.tz) setTz(detectedTz);
+  }, [detectedTz, initial?.tz]);
 
   const ready = name.trim().length > 0 && role.trim().length > 0 && startTime < endTime;
 

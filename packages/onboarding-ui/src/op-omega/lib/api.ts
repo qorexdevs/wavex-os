@@ -267,6 +267,18 @@ export const opOmegaOnboardingApi = {
       meta,
     ),
 
+  // Phase 5 — welcome-hero free-text intro parse (T2 → profile prefill)
+  parseAvatarIntro: (rawIntro: string, skipInference?: boolean) =>
+    call<{
+      ok: true;
+      profile: { name?: string; role?: string; working_hours?: [string, string]; tz?: string };
+      source: "t2" | "stub";
+    }>(
+      "POST",
+      `/op-omega/onboarding/avatar/parse`,
+      { raw_intro: rawIntro, skipInference },
+    ),
+
   analyzeAvatarVoice: (
     avatarId: string,
     samples: [string, string, string],

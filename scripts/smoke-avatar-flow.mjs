@@ -21,12 +21,21 @@ async function main() {
   await page.locator("button").filter({ hasText: /Set up my avatar/i }).first().click();
   console.log("✓ Picked Avatar");
 
-  // Step 1: profile card lands as the first assistant bubble.
-  await page.waitForSelector("text=/Let's set you up/i", { timeout: 5_000 });
+  // Welcome hero: type a free-text intro. T2 parses → profile card pre-fills.
+  await page.waitForSelector("text=/Let's get to know you/i", { timeout: 5_000 });
+  await page.locator("textarea[placeholder*=\"I'm\"]").fill(
+    "I'm Dylan, founder at WaveX. Work 9-5 EST. Hand off email triage first.",
+  );
+  await page.locator("button", { hasText: /^↑$/ }).first().click();
+  console.log("✓ Welcome intro submitted");
+
+  // Profile card lands inline; under t0=1 the stub fills name=Operator role=Founder.
+  await page.waitForSelector("text=/Got it. Here's what I caught/i", { timeout: 10_000 });
+  // Overwrite the parsed values with the smoke's test ones.
   await page.locator("input[placeholder='Alex Founder']").fill("Test Operator");
   await page.locator("input[placeholder*='Indie hacker']").fill("Indie hacker");
   await page.locator("button").filter({ hasText: /^Continue/i }).click();
-  console.log("✓ Profile saved");
+  console.log("✓ Profile confirmed");
 
   // Step 2: tools — bubble announces, card follows. Connect 2 (Gmail first).
   await page.waitForSelector("text=/Pick the tools you live in/i", { timeout: 10_000 });

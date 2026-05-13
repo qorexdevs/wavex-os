@@ -174,6 +174,85 @@ function suggestionsFor(
   return base.slice(0, 3);
 }
 
+// ── Intro parsing (welcome hero T2) ──────────────────────────────────────
+
+interface ProfilePrefill {
+  name?: string;
+  role?: string;
+  working_hours?: [string, string];
+  tz?: string;
+}
+
+const STUB_PROFILE_PREFILL: ProfilePrefill = {
+  name: "Operator",
+  role: "Founder",
+  working_hours: ["09:00", "17:00"],
+  tz: "America/New_York",
+};
+
+/** Parse a free-text intro ("I'm Dylan, founder, work 9-5 EST, hand off
+ *  email triage…") into the four AvatarProfileCard fields via T2. Stub
+ *  fallback for fast-mode and any T2 parse failure. No persistence — the
+ *  avatar isn't created until the operator confirms the profile card. */
+async function parseIntro(rawIntro: string, skipInference: boolean): Promise<{ profile: ProfilePrefill; source: "t2" | "stub" }> {
+  if (skipInference || rawIntro.trim().length < 4) {
+    return { profile: STUB_PROFILE_PREFILL, source: "stub" };
+  }
+  const prompt = `You extract an operator's personal profile from a free-text intro they wrote about themselves.
+
+Intro:
+${rawIntro}
+
+Return JSON only, no commentary. Use these field rules:
+- "name": first name only, or null if not stated.
+- "role": short title like "Founder", "VP Sales", "Eng Manager". Null if not stated.
+- "working_hours": ["HH:MM","HH:MM"] in 24h. If they say "9-5" map to ["09:00","17:00"]. Null if not stated.
+- "tz": IANA timezone like "America/New_York". Map "EST"/"ET" → "America/New_York", "PST"/"PT" → "America/Los_Angeles", "CT" → "America/Chicago", "MT" → "America/Denver", "GMT"/"UTC" → "UTC". Null if not stated.
+
+Exact shape:
+{
+  "name": "<string or null>",
+  "role": "<string or null>",
+  "working_hours": ["HH:MM","HH:MM"] | null,
+  "tz": "<IANA tz or null>"
+}`;
+  try {
+    const text = await withTokenAccounting("avatar.parse", "avatar_intro", async () => {
+      const resp = await tierRoute({
+        agent_id: "onboarding.avatar-intro",
+        prompt,
+        task_metadata: {
+          creativity_required: false,
+          customer_facing: false,
+          reasoning_depth: "shallow",
+          priority: "high",
+        },
+        companyId: "avatar.parse",
+        outputFormat: "json",
+        timeout_ms: 20_000,
+      });
+      return resp.output.trim();
+    });
+    const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(cleaned) as {
+      name?: string | null;
+      role?: string | null;
+      working_hours?: [string, string] | null;
+      tz?: string | null;
+    };
+    const profile: ProfilePrefill = {};
+    if (parsed.name) profile.name = parsed.name;
+    if (parsed.role) profile.role = parsed.role;
+    if (Array.isArray(parsed.working_hours) && parsed.working_hours.length === 2) {
+      profile.working_hours = parsed.working_hours;
+    }
+    if (parsed.tz) profile.tz = parsed.tz;
+    return { profile, source: "t2" };
+  } catch {
+    return { profile: STUB_PROFILE_PREFILL, source: "stub" };
+  }
+}
+
 // ── Voice analysis ───────────────────────────────────────────────────────
 
 const STUB_VOICE_PROFILE: VoiceProfile = {
@@ -263,6 +342,11 @@ const toolMetaSchema = z.object({
   signoff: z.string().max(120).optional(),
 });
 
+const parseIntroSchema = z.object({
+  raw_intro: z.string().min(1).max(2000),
+  skipInference: z.boolean().optional(),
+});
+
 const voiceSchema = z.object({
   samples: z.tuple([z.string().max(2000), z.string().max(2000), z.string().max(2000)]),
   skipInference: z.boolean().optional(),
@@ -318,6 +402,17 @@ function gateBoard(req: FastifyRequest, reply: import("fastify").FastifyReply): 
 // ── Route registration ───────────────────────────────────────────────────
 
 export function registerAvatarRoutes(app: FastifyInstance): void {
+  // Welcome-hero free-text parse. Pre-fills the AvatarProfileCard.
+  // No persistence — the avatar is created when the operator submits
+  // the profile card. Always returns a profile shape (T2 → stub fallback).
+  app.post("/op-omega/onboarding/avatar/parse", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
+    const parsed = parseIntroSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "validation failed", issues: parsed.error.issues });
+    const { profile, source } = await parseIntro(parsed.data.raw_intro, parsed.data.skipInference === true);
+    return { ok: true, profile, source };
+  });
+
   // Create avatar
   app.post("/op-omega/onboarding/avatar", async (req, reply) => {
     if (!gateBoard(req, reply)) return;

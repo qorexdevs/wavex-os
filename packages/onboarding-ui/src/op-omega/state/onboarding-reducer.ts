@@ -61,6 +61,13 @@ export interface AvatarAutomationSuggestion {
   needs: string[];                // providers required
 }
 
+export interface AvatarProfilePrefill {
+  name?: string;
+  role?: string;
+  working_hours?: [string, string];
+  tz?: string;
+}
+
 export type AvatarAutonomyPreset = "cautious" | "balanced" | "aggressive";
 
 export interface AvatarTrust {
@@ -112,6 +119,7 @@ export type OnboardingPhase =
   | { kind: "handed_off"; paperclipUrl: string | null }
   // Avatar branch — runs entirely inside the chat shell, doesn't touch
   // pillar / connector / swarm phases. Lands on /avatar/:id when finalized.
+  | { kind: "avatar_welcome" }
   | { kind: "avatar_profile" }
   | { kind: "avatar_tools"; connected: AvatarToolConnection[] }
   | { kind: "avatar_voice"; samples: string[]; analyzing: boolean }
@@ -140,6 +148,7 @@ export interface OnboardingState {
     avatarId?: string;
     avatarProfile?: AvatarProfile;
     avatarTools?: AvatarToolConnection[];
+    avatarProfilePrefill?: AvatarProfilePrefill;
     avatarVoice?: { samples: string[]; profile?: AvatarVoiceProfile };
     avatarTrust?: AvatarTrust;
     avatarSuggestions?: AvatarAutomationSuggestion[];
@@ -179,6 +188,7 @@ export type Action =
   | { type: "HANDED_OFF"; paperclipUrl: string | null }
   // Avatar branch actions
   | { type: "ACCOUNT_TYPE_SELECTED"; accountType: AccountType }
+  | { type: "AVATAR_PROFILE_PREFILLED"; profile: AvatarProfilePrefill }
   | { type: "AVATAR_PROFILE_DONE"; profile: AvatarProfile; avatarId: string }
   | { type: "AVATAR_TOOL_CONNECTED"; connection: AvatarToolConnection }
   | { type: "AVATAR_TOOLS_DONE" }
@@ -392,10 +402,20 @@ export function reducer(state: OnboardingState, action: Action): OnboardingState
       // restores the welcome phase. Avatar starts the parallel branch.
       const nextDraft = { ...state.draft, accountType: action.accountType };
       if (action.accountType === "avatar") {
-        return { ...state, phase: { kind: "avatar_profile" }, draft: nextDraft };
+        // Phase 5 — Avatar gets its own conversational welcome hero. The
+        // operator types a free-text intro; T2 parses it into the profile
+        // fields, then the AvatarProfileCard lands pre-filled.
+        return { ...state, phase: { kind: "avatar_welcome" }, draft: nextDraft };
       }
       return { ...state, phase: { kind: "welcome" }, draft: nextDraft };
     }
+
+    case "AVATAR_PROFILE_PREFILLED":
+      return {
+        ...state,
+        phase: { kind: "avatar_profile" },
+        draft: { ...state.draft, avatarProfilePrefill: action.profile },
+      };
 
     case "AVATAR_PROFILE_DONE":
       return {
@@ -494,6 +514,7 @@ export function phaseToUrlKey(phase: OnboardingPhase): string {
     case "activate": return "activate";
     case "handed_off": return "handed-off";
     case "account_type_select": return "account-type";
+    case "avatar_welcome": return "avatar-welcome";
     case "avatar_profile": return "avatar-profile";
     case "avatar_tools": return "avatar-tools";
     case "avatar_voice": return "avatar-voice";
@@ -516,6 +537,7 @@ export function urlKeyToPhase(key: string): OnboardingPhase {
   if (key === "activate") return { kind: "activate", progress: [], paperclipUrl: null };
   if (key === "handed-off") return { kind: "handed_off", paperclipUrl: null };
   if (key === "account-type") return { kind: "account_type_select" };
+  if (key === "avatar-welcome") return { kind: "avatar_welcome" };
   if (key === "avatar-profile") return { kind: "avatar_profile" };
   if (key === "avatar-tools") return { kind: "avatar_tools", connected: [] };
   if (key === "avatar-voice") return { kind: "avatar_voice", samples: ["", "", ""], analyzing: false };
@@ -542,7 +564,8 @@ export function phaseProgressPct(phase: OnboardingPhase): number {
     case "pricing": return 92;
     case "activate": return 96;
     case "handed_off": return 100;
-    case "avatar_profile": return 15;
+    case "avatar_welcome": return 8;
+    case "avatar_profile": return 18;
     case "avatar_tools": return 35;
     case "avatar_voice": return 55;
     case "avatar_trust": return 75;
