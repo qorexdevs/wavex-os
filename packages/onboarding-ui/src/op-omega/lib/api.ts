@@ -267,7 +267,20 @@ export const opOmegaOnboardingApi = {
     }>("GET", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/suggestions`),
 
   finalizeAvatar: (avatarId: string, enabledAutomationIds: string[]) =>
-    call<{ ok: true; avatarId: string; url: string }>(
+    call<{
+      ok: true;
+      avatarId: string;
+      url: string;
+      paperclipHandoff: {
+        enabled: boolean;
+        paperclipUrl: string | null;
+        paperclipCompanyId: string | null;
+        conductorAgentId: string | null;
+        created: Array<{ provider: string; agentId: string; status: string }>;
+        skipped: Array<{ provider: string; reason: string }>;
+        errors: Array<{ provider: string; message: string }>;
+      } | null;
+    }>(
       "POST", `/op-omega/onboarding/avatar/${encodeURIComponent(avatarId)}/finalize`,
       { enabledAutomationIds },
     ),

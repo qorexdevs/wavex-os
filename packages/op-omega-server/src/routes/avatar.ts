@@ -21,6 +21,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 import { withTokenAccounting } from "../lib/token-accounting.js";
+import { handoffAvatarToPaperclip } from "../bridge/avatar-handoff.js";
 
 // ── Storage helpers ──────────────────────────────────────────────────────
 
@@ -350,7 +351,29 @@ export function registerAvatarRoutes(app: FastifyInstance): void {
       suggested: existing.suggested,
     };
     await writeJson(join(dir, "automations.json"), next);
-    return { ok: true, avatarId: id, url: `/avatar/${id}` };
+
+    // Mirror the Avatar as a Paperclip company at avatar-os/<id>. Spawns
+    // a conductor + one sub-agent per connected tool. Idempotent — re-
+    // finalizing reuses the prior Paperclip companyId + agentIds.
+    // Failures are non-fatal: the Avatar is persisted on disk regardless,
+    // and the operator can re-run handoff later from the dashboard.
+    let paperclipHandoff: Awaited<ReturnType<typeof handoffAvatarToPaperclip>> | null = null;
+    try {
+      paperclipHandoff = await handoffAvatarToPaperclip(id);
+    } catch (e) {
+      paperclipHandoff = {
+        enabled: true, paperclipUrl: null, paperclipCompanyId: null,
+        conductorAgentId: null, created: [], skipped: [],
+        errors: [{ provider: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
+      };
+    }
+
+    return {
+      ok: true,
+      avatarId: id,
+      url: `/avatar/${id}`,
+      paperclipHandoff,
+    };
   });
 
   // Dashboard read
