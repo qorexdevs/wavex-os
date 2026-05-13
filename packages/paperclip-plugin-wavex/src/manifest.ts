@@ -1,0 +1,97 @@
+/**
+ * WaveX plugin manifest.
+ *
+ * Customizes Paperclip without forking the codebase. Declares three v1 UI
+ * slots and the data handlers the worker registers. Subtree updates of
+ * Paperclip core stay clean because all WaveX behavior lives in this
+ * separate package.
+ *
+ * @see docs/PAPERCLIP_PLUGIN_WAVEX.md
+ * @see PLUGIN_SPEC.md §10.1 — Manifest Shape
+ */
+import type { PaperclipPluginManifestV1 } from "@wavex-os/plugin-sdk-shim";
+
+const PLUGIN_ID = "wavex-os.paperclip-plugin";
+const PLUGIN_VERSION = "0.1.0";
+
+// Slot IDs are referenced from the host's UI registry. Keep them stable
+// (operator's saved-layout state references them by id).
+const EXPERT_AGENTS_SLOT = "wavex-expert-agents-status";
+const INCEPTION_STATUS_SLOT = "wavex-inception-status";
+const WAVEX_SETTINGS_SLOT = "wavex-preferences";
+
+const manifest: PaperclipPluginManifestV1 = {
+  id: PLUGIN_ID,
+  apiVersion: 1,
+  version: PLUGIN_VERSION,
+  displayName: "WaveX OS",
+  description:
+    "WaveX-branded panels for Paperclip: Expert Agents status, Inception health, and WaveX-specific preferences. Read-only — never modifies issues, comments, or agent state.",
+  author: "WaveX OS",
+  categories: ["ui"],
+  capabilities: [
+    "ui.dashboardWidget.register",
+    "ui.sidebar.register",
+    "ui.page.register",
+    // The worker reads from the wavex-os op-omega-server + (optionally) the
+    // Supabase REST endpoint. No outbound HTTP to third parties — only
+    // localhost and the configured operator infra.
+    "http.outbound",
+  ],
+  entrypoints: {
+    worker: "./dist/worker.js",
+    ui: "./dist/ui",
+  },
+  ui: {
+    slots: [
+      {
+        type: "dashboardWidget",
+        id: EXPERT_AGENTS_SLOT,
+        displayName: "WaveX Expert Agents",
+        exportName: "ExpertAgentsStatusWidget",
+      },
+      {
+        type: "sidebar",
+        id: INCEPTION_STATUS_SLOT,
+        displayName: "Inception Status",
+        exportName: "InceptionStatusPanel",
+      },
+      {
+        type: "settingsPage",
+        id: WAVEX_SETTINGS_SLOT,
+        displayName: "WaveX Preferences",
+        exportName: "WaveXSettingsPage",
+      },
+    ],
+  },
+  // Plugin-instance configuration the operator can set at install time.
+  instanceConfigSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      wavexApiBase: {
+        type: "string",
+        format: "uri",
+        title: "WaveX op-omega-server base URL",
+        description:
+          "Where the plugin reads inception manifests + Expert Agent hire state. Defaults to the wavex-os mock-core endpoint.",
+        default: "http://127.0.0.1:3101",
+      },
+      supabaseUrl: {
+        type: "string",
+        format: "uri",
+        title: "Supabase project URL (optional)",
+        description:
+          "If set, the plugin reads catalog/hire counts directly from the wavex_os_ops_* RPCs. Leave blank to fall back to wavex-os-server proxying.",
+      },
+      supabasePublishableKey: {
+        type: "string",
+        title: "Supabase publishable key (optional)",
+        description:
+          "Anon-style key with read access to the ops RPCs. Never paste a service-role key here.",
+      },
+    },
+  },
+};
+
+export default manifest;
