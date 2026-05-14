@@ -39,6 +39,7 @@ export interface IgnitionState {
     seed_issues: { status: IgnitionStepStatus; created: string[]; note?: string };
     seed_roadmap: { status: IgnitionStepStatus; created: string[]; note?: string };
     kickoff_probe: { status: IgnitionStepStatus; ceo_run_id?: string; cos_run_id?: string; note?: string };
+    kickoff_routine: { status: IgnitionStepStatus; routine_id?: string; trigger_id?: string; note?: string };
     validate_coverage: { status: IgnitionStepStatus; gaps: string[]; note?: string };
     stagger_heartbeats: { status: IgnitionStepStatus; offsets: Record<string, number>; note?: string };
   };
@@ -116,6 +117,7 @@ function freshState(companyId: string): IgnitionState {
       seed_issues: { status: "pending", created: [] },
       seed_roadmap: { status: "pending", created: [] },
       kickoff_probe: { status: "pending" },
+      kickoff_routine: { status: "pending" },
       validate_coverage: { status: "pending", gaps: [] },
       stagger_heartbeats: { status: "pending", offsets: {} },
     },
@@ -165,11 +167,14 @@ export async function ignite(
   paperclipHandoff: { paperclipCompanyId: string | null; created: Array<{ slot: string; agentId: string }> } | null,
 ): Promise<IgnitionResult> {
   const state = (await readState(companyId)) ?? freshState(companyId);
-  // Back-compat: an ignition-state.json written before seed_roadmap existed
-  // won't have the step. Initialize it so step access + the allOk check
-  // don't trip over `undefined`.
+  // Back-compat: an ignition-state.json written before seed_roadmap /
+  // kickoff_routine existed won't have those steps. Initialize them so step
+  // access + the allOk check don't trip over `undefined`.
   if (!state.steps.seed_roadmap) {
     state.steps.seed_roadmap = { status: "pending", created: [] };
+  }
+  if (!state.steps.kickoff_routine) {
+    state.steps.kickoff_routine = { status: "pending" };
   }
   await writeState(state);
 
@@ -353,17 +358,41 @@ export async function ignite(
   await writeState(state);
 
   // ── Step 4: CEO + CoS kickoff probe (best-effort) ────────────────────
+  // The kickoff carries a real brief in `reason` — not just a bare wake.
+  // Bug fixed here: the old code sent `wake_reason`, which isn't a field
+  // wakeAgentSchema accepts ({ source, triggerDetail, reason, payload,
+  // idempotencyKey, forceFreshSession }), so the context was silently
+  // dropped by the validator. Now the agent's first run sees the goal,
+  // the seeded issues, and the roadmap it's expected to drive.
+  const kickoffBrief = [
+    `INCEPTION KICKOFF — your fleet just went live.`,
+    goalId ? `Primary goal: ${goalId}` : `Primary goal: (not yet set on Paperclip)`,
+    createdIssues.length > 0
+      ? `Your first-cycle issues: ${createdIssues.join(", ")}`
+      : `No per-agent seed issues were created.`,
+    roadmapCreated.length > 0
+      ? `Roadmap initiatives (cross-agent, you own coordination): ${roadmapCreated.join(", ")}`
+      : `No roadmap initiatives were seeded.`,
+    `Read your CONTEXT.md (company + your mandate) and WORKFLOW.md (your`,
+    `heartbeat loop), then start driving the goal. Break the roadmap`,
+    `initiatives into child issues and pull in the agents they name.`,
+  ].join(" ");
+
   if (paperclipCompanyId && PAPERCLIP_URL && state.steps.kickoff_probe.status === "pending") {
     const ceoId = slotToPaperclipId.get("ceo.orchestrator");
     const cosId = slotToPaperclipId.get("ceo.chief-of-staff");
+    const wakeBody = (label: string) => JSON.stringify({
+      source: "automation",
+      triggerDetail: "system",
+      reason: `[${label}] ${kickoffBrief}`,
+      payload: { seeded_issue_keys: createdIssues, roadmap_issue_keys: roadmapCreated, goal_id: goalId },
+      idempotencyKey: `ignition-kickoff-${companyId}-${label}`,
+    });
     if (ceoId) {
       try {
         const wake = await paperclipFetch(`/api/agents/${ceoId}/wakeup`, {
           method: "POST",
-          body: JSON.stringify({
-            wake_reason: "ignition_kickoff",
-            payload: { seeded_issue_keys: createdIssues, roadmap_issue_keys: roadmapCreated, goal_id: goalId },
-          }),
+          body: wakeBody("CEO kickoff"),
         });
         state.steps.kickoff_probe.ceo_run_id = wake.ok ? "ok" : `err_${wake.status}`;
       } catch (e) {
@@ -374,10 +403,7 @@ export async function ignite(
       try {
         const wake = await paperclipFetch(`/api/agents/${cosId}/wakeup`, {
           method: "POST",
-          body: JSON.stringify({
-            wake_reason: "ignition_kickoff",
-            payload: { seeded_issue_keys: createdIssues, roadmap_issue_keys: roadmapCreated, goal_id: goalId },
-          }),
+          body: wakeBody("CoS kickoff"),
         });
         state.steps.kickoff_probe.cos_run_id = wake.ok ? "ok" : `err_${wake.status}`;
       } catch (e) {
@@ -386,6 +412,85 @@ export async function ignite(
     }
     state.steps.kickoff_probe.status = ceoId && cosId ? "ok" : "error";
   }
+
+  // ── Step 4.5: register the recurring 2-hour fleet follow-up ──────────
+  // A one-shot kickoff isn't enough — the operator asked for a follow-up
+  // every 2h. We register a Paperclip routine assigned to the CEO with a
+  // schedule trigger. Each fire creates a fresh "fleet review" issue, so
+  // the CEO re-assesses progress toward the goal on a fixed cadence
+  // regardless of what individual agent heartbeats are doing.
+  //
+  // Cron is off-:00 (7 */2) so we don't pile onto every other fleet's
+  // top-of-hour tick. Override via WAVEX_FOLLOWUP_CRON.
+  if (
+    paperclipCompanyId && PAPERCLIP_URL &&
+    state.steps.kickoff_routine.status === "pending"
+  ) {
+    const ceoId = slotToPaperclipId.get("ceo.orchestrator");
+    const followupCron = process.env.WAVEX_FOLLOWUP_CRON ?? "7 */2 * * *";
+    try {
+      const routineResp = await paperclipFetch(`/api/companies/${paperclipCompanyId}/routines`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Fleet follow-up — every 2h",
+          description: [
+            `Recurring fleet review seeded by wavex-os ignition.`,
+            ``,
+            `Each fire: re-read the goal${goalId ? ` (${goalId})` : ""}, check progress`,
+            `on the seeded + roadmap issues, course-correct, and re-assign or`,
+            `escalate anything stalled. Keep it tight — this is a pulse check,`,
+            `not a full re-plan.`,
+          ].join("\n"),
+          ...(goalId ? { goalId } : {}),
+          ...(ceoId ? { assigneeAgentId: ceoId } : {}),
+          priority: "high",
+          status: "active",
+          concurrencyPolicy: "coalesce_if_active",
+          catchUpPolicy: "skip_missed",
+        }),
+      });
+      if (!routineResp.ok) {
+        recordErr(state, "kickoff_routine", `routine POST returned ${routineResp.status}`);
+        state.steps.kickoff_routine = { status: "error", note: `routine POST ${routineResp.status}` };
+      } else {
+        const routine = (await routineResp.json()) as { id: string };
+        state.steps.kickoff_routine.routine_id = routine.id;
+        // Attach the schedule trigger.
+        const trigResp = await paperclipFetch(`/api/routines/${routine.id}/triggers`, {
+          method: "POST",
+          body: JSON.stringify({
+            kind: "schedule",
+            label: "every 2h",
+            cronExpression: followupCron,
+            timezone: process.env.WAVEX_FOLLOWUP_TZ ?? "UTC",
+            enabled: true,
+          }),
+        });
+        if (!trigResp.ok) {
+          recordErr(state, "kickoff_routine", `trigger POST returned ${trigResp.status}`);
+          state.steps.kickoff_routine = {
+            status: "error",
+            routine_id: routine.id,
+            note: `routine created but trigger POST ${trigResp.status}`,
+          };
+        } else {
+          const trigger = (await trigResp.json()) as { id: string };
+          state.steps.kickoff_routine = {
+            status: "ok",
+            routine_id: routine.id,
+            trigger_id: trigger.id,
+            note: `cron=${followupCron}`,
+          };
+        }
+      }
+    } catch (e) {
+      recordErr(state, "kickoff_routine", `${(e as Error).message}`);
+      state.steps.kickoff_routine = { status: "error", note: (e as Error).message };
+    }
+  } else if (!paperclipCompanyId) {
+    state.steps.kickoff_routine = { status: "skipped", note: "no Paperclip company id" };
+  }
+  await writeState(state);
 
   // ── Step 5: validate L·IV coverage ────────────────────────────────────
   const gaps: string[] = [];
