@@ -116,6 +116,16 @@ target_kpi, kpi_before, kpi_after, delivery_score(0..1 numeric)`. This **closes
 the loop on the prompt-injection promise** — it is the difference between "we
 sent a directive" and "the directive actually moved the fleet."
 
+`wavex_os.deliverable_ledger` — the unified accountability record. One row per
+unit of agent work: `id, device_id, subscription_id, plan_ref, issue_id,
+expected_response(text), assigned_agent(text), contributing_agents(jsonb),
+kind('directive'|'code_change'|'db_migration'|'routine'), artifacts(jsonb —
+commit SHAs, PR url, migration file, comment refs), tokens_in, tokens_out,
+tokens_cache (bigint — **economics are in TOKENS, never USD**),
+status('open'|'in_progress'|'delivered'|'verified'|'failed'), opened_at,
+delivered_at, verified_at`. This is the single source for "which agent touched
+which issue and what did it cost."
+
 ### Surface 1 — Customer console `/os/console`
 
 A tabbed or sectioned layout. Sections:
@@ -144,8 +154,16 @@ A tabbed or sectioned layout. Sections:
 
 4. **Billing & Usage** — `subscriptions` summary (tier, status,
    `current_period_end`, cancel-at-period-end banner) + `usage_ledger` rolled
-   up (this period's `cost_cents` by `pool`, run count). Link to the Stripe
-   customer portal (existing edge function).
+   up. **Show usage in TOKENS** (sum `tokens_in/out/cache`), not USD —
+   `cost_cents` is billing-recon only and should not be the headline number.
+   Link to the Stripe customer portal (existing edge function).
+
+5. **Deliverables** — table from `deliverable_ledger` for the customer's
+   devices: `plan_ref`, `expected_response`, `assigned_agent`, `kind` (with a
+   PR link when `kind` is `code_change`/`db_migration` — `artifacts.pr_url`),
+   `status` pill, and **token cost** (`tokens_in + tokens_out + tokens_cache`).
+   Filterable by status and kind. This is the customer's accountability view —
+   every unit of work, who did it, what it cost in tokens, did it land.
 
 ### Surface 2 — Operator console `/os/admin` (admin role only)
 
@@ -189,6 +207,15 @@ running Pool B agents and the problems they're tackling."
    `name` starts with `WaveX Mission Control` as the admin instance). Show its
    own `instance_health` + `fleet_log_synthesis` so the operator can confirm
    the overseer itself is alive.
+
+6. **Deliverable Ledger** — the unified cross-fleet accountability view from
+   `deliverable_ledger` across all paid customers. Group/filter by `kind`,
+   `status`, `assigned_agent`. For `code_change` / `db_migration` rows, surface
+   the `artifacts.pr_url` and which cloud Expert proposed it vs which local Git
+   Engineer implemented it (both are in `contributing_agents`). Headline metric
+   per agent and per fleet is **total tokens** (`tokens_in/out/cache`), never
+   USD. This is where the operator sees, in one place, every deliverable, the
+   agent accountable for it, and its token economics.
 
 ### Design system
 

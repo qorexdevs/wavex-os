@@ -67,8 +67,9 @@ older than 3× the slowest heartbeat interval; `degraded` if `agents_error > 0`
 or `runs_failed_last_hour / runs_last_hour > 0.25`; else `healthy`.
 
 ### `wavex_os.fleet_log_synthesis`
-Pushed by the Liaison every ~6h. This is the **"are the agents doing the right
-job"** rollup — the Liaison runs a claude pass over the Paperclip run logs.
+Pushed by the Liaison every **4h** (the "4h instance check" — see
+`OPERATIONAL_LAYER.md` §3). This is the **"are the agents doing the right job"**
+rollup — the Liaison runs a claude pass over the Paperclip run logs.
 
 | column | type | notes |
 |---|---|---|
