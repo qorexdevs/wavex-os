@@ -53,28 +53,48 @@ If the local Paperclip API is unreachable, **still insert a row** with
 identical to a healthy silence, which is the exact failure mode we are
 preventing.
 
-## Every ~4h — also push `wavex_os.fleet_log_synthesis` (the 4h instance check)
+## Every 4h — the instance check: push `wavex_os.fleet_log_synthesis`
 
-Track the last synthesis time in `$WAVEX_OS_STATE_DIR/state/liaison-checkpoints.json`
-under `last_fleet_synthesis_at`. When ≥ 4h have elapsed:
+This is a **defined procedure**, not a vibe check — run all six steps. Track
+`last_fleet_synthesis_at` in
+`$WAVEX_OS_STATE_DIR/state/liaison-checkpoints.json`. When ≥ 4h have elapsed,
+run it. Paid (`pool_b`) fleets run this unconditionally; free fleets
+best-effort.
 
-1. Read the local fleet's run logs for the window (heartbeat-runs + run events
-   over the last 4h): tally `runs_total`, `runs_ok`, `runs_failed`,
-   `runs_timeout`; list `agents_silent` — agents that should have woken on
-   their heartbeat schedule but produced no run.
-2. **This is the judgment step.** Read enough of the run content to answer:
-   *are the agents doing the right job?* Write a one-paragraph `summary` in
-   plain language. Compute `effectiveness_score` 0..1 (runs landing
-   on-contract, no silent agents, errors low). Put anything an operator should
-   look at into `flags`: `[{severity, agent_id, note}]`.
-3. `INSERT` one row into `wavex_os.fleet_log_synthesis` with
-   `device_id`, `subscription_id`, `synthesized_at = now()`, `window_hours = 4`,
-   the tallies, `agents_silent`, `effectiveness_score`, `summary`, `flags`.
-4. Update `last_fleet_synthesis_at` in the checkpoint file.
+1. **Runs.** Tally heartbeat-runs over the window: `runs_total`, `runs_ok`,
+   `runs_failed`, `runs_timeout`. List `agents_silent` — agents that should
+   have woken on their heartbeat schedule but produced no run.
+
+2. **Deliverables on-contract.** Read `wavex_os.deliverable_ledger` for this
+   device, window = last 4h. For each deliverable: is `status` progressing
+   toward `delivered`/`verified`, or stuck `open`/`failed`? A deliverable open
+   across multiple windows with no status movement is **off-contract** — flag
+   it with the agent.
+
+3. **Token burn proportionate.** Sum `tokens_in/out/cache` per deliverable.
+   Flag any deliverable burning tokens with no status progress — that is the
+   doom-loop signature (an agent spinning without delivering). Economics in
+   tokens, never USD.
+
+4. **Expected_response met.** For deliverables that reached `delivered`, spot
+   check the work against the deliverable's `expected_response`. Closing an
+   issue is not the same as delivering what the contract asked for.
+
+5. **Synthesize — the judgment step.** Write a one-paragraph `summary` in plain
+   language answering *are the agents doing the right job?* Compute
+   `effectiveness_score` 0..1 from: runs landing, deliverables on-contract,
+   token burn proportionate, no silent agents. Put everything an operator
+   should see into `flags`: `[{severity, agent_id, note}]`.
+
+6. **Push.** `INSERT` one row into `wavex_os.fleet_log_synthesis`: `device_id`,
+   `subscription_id`, `synthesized_at = now()`, `window_hours = 4`, the run
+   tallies, `agents_silent`, `effectiveness_score`, `summary`, `flags`. Then
+   update `last_fleet_synthesis_at`.
 
 Keep the summary honest and specific — it is what the operator reads to decide
 whether a paid fleet is delivering. Vague reassurance is worse than a blunt
-flag.
+flag. **A fleet that runs a lot but delivers nothing on-contract is NOT
+healthy** — say so plainly.
 
 ## Rules
 
