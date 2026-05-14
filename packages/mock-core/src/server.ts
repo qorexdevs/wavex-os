@@ -121,13 +121,18 @@ function sleep(ms: number): Promise<void> {
 
 const app = Fastify({ logger: false });
 
-// CORS allowlist for cross-origin reads from the Paperclip UI (port 5174).
+// CORS allowlist for cross-origin reads from the Paperclip Dashboard UI.
 // Mission Control on 5173 is same-origin (vite proxies /api to 3101), so it
-// doesn't need this — but Paperclip Dashboard at 5174 calls wavex directly
-// for the KPI panel + board chat dock + manifest reads. The allowlist is
-// explicit (no wildcard); add real origins here when deploying.
+// doesn't need this — but the Paperclip Dashboard (core/ui) calls wavex
+// directly for the KPI panel + Kernel chat dock + manifest reads. In dev the
+// Dashboard is served by the Paperclip core server itself at :3100 (not a
+// standalone vite dev server), so 3100 must be allowlisted or the browser
+// blocks the cross-origin fetch and the Kernel chat silently fails to
+// respond. 5174 is kept for setups that run core/ui as its own vite server.
+// The allowlist is explicit (no wildcard); add real origins here when deploying.
 const CORS_ALLOWED_ORIGINS = new Set(
-  (process.env.WAVEX_CORS_ORIGINS ?? "http://localhost:5174,http://127.0.0.1:5174")
+  (process.env.WAVEX_CORS_ORIGINS
+    ?? "http://localhost:3100,http://127.0.0.1:3100,http://localhost:5174,http://127.0.0.1:5174")
     .split(",").map((s) => s.trim()).filter(Boolean),
 );
 app.addHook("onRequest", async (req, reply) => {

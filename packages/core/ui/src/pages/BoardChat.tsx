@@ -1,5 +1,7 @@
-/** Chief of Staff chat — full-page route mounted from the sidebar
+/** Kernel chat — full-page route mounted from the sidebar
  *  (below Dashboard). Operator's primary lens into the live fleet.
+ *  (The chat UI surface is named "Kernel"; it is still backed by the
+ *  company's Chief of Staff agent server-side via help-chat board mode.)
  *  Reuses wavex help-chat in board mode for the T2 reply, augmented with:
  *    - markdown rendering of replies
  *    - char-by-char reveal of the newest assistant message ("streaming")
@@ -108,7 +110,7 @@ export function BoardChat() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Chief of Staff" }]);
+    setBreadcrumbs([{ label: "Kernel" }]);
   }, [setBreadcrumbs]);
 
   const chatQ = useQuery({
@@ -190,10 +192,11 @@ export function BoardChat() {
       <div className="flex h-full items-center justify-center p-8">
         <div className="max-w-md text-center">
           <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/60 mb-3" />
-          <h2 className="text-base font-semibold mb-1">Chief of Staff is wavex-only</h2>
+          <h2 className="text-base font-semibold mb-1">Kernel is wavex-only</h2>
           <p className="text-sm text-muted-foreground">
-            Companies onboarded through wavex-os get a Chief of Staff agent for
-            board-level chat. This Paperclip company isn't wavex-onboarded.
+            Companies onboarded through wavex-os get the Kernel chat — a
+            board-level lens into the live fleet. This Paperclip company isn't
+            wavex-onboarded.
           </p>
         </div>
       </div>
@@ -238,7 +241,7 @@ export function BoardChat() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-6 py-3 shrink-0">
         <MessageCircle className="h-4 w-4 text-muted-foreground" />
-        <h1 className="text-sm font-semibold">Chief of Staff</h1>
+        <h1 className="text-sm font-semibold">Kernel</h1>
         <span className="text-xs text-muted-foreground">
           Grounded in live fleet state · ask anything
         </span>
@@ -254,7 +257,7 @@ export function BoardChat() {
           {!networkDown && messages.length === 0 && !chatQ.isLoading && (
             <div className="rounded-lg border bg-card p-4">
               <p className="text-sm text-muted-foreground mb-3">
-                Ask the Chief of Staff anything about the fleet. Try one of these:
+                Ask Kernel anything about the fleet. Try one of these:
               </p>
               <div className="flex flex-wrap gap-2">
                 {[

@@ -81,7 +81,7 @@ export function Sidebar() {
             <span className="truncate">New Issue</span>
           </button>
           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
-          <SidebarNavItem to="/chief-of-staff" label="Chief of Staff" icon={MessageCircle} />
+          <SidebarNavItem to="/chief-of-staff" label="Kernel" icon={MessageCircle} />
           <SidebarNavItem
             to="/inbox"
             label="Inbox"
