@@ -171,9 +171,11 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
     };
   }
   // Non-fatal if missing — the Liaison still works for digests/injections;
-  // it just won't push health / track outcomes until the skill files exist.
+  // it just won't push health / track outcomes / mirror the deliverable
+  // ledger until the skill files exist.
   const healthPushMd = await readLiaisonExtSkill("HEALTH_PUSH.md");
   const injectionOutcomesMd = await readLiaisonExtSkill("INJECTION_OUTCOMES.md");
+  const deliverableLedgerMd = await readLiaisonExtSkill("DELIVERABLE_LEDGER.md");
 
   // Paperclip role enum has no 'liaison' value; "general" is the closest
   // fit (matches what paperclip-handoff.ts uses for non-enum roles).
@@ -202,14 +204,16 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
       },
     },
     // AGENTS.md = the frozen wavex-liaison template (digest/inject skills).
-    // HEALTH_PUSH.md + INJECTION_OUTCOMES.md = redundancy/observability skills,
-    // injected here so the frozen template is never modified (same pattern as
-    // paperclip-handoff's CONTEXT.md/WORKFLOW.md alongside AGENTS.md).
+    // The liaison-ext skills (HEALTH_PUSH / INJECTION_OUTCOMES /
+    // DELIVERABLE_LEDGER) are redundancy/observability skills injected here so
+    // the frozen template is never modified (same pattern as paperclip-handoff's
+    // CONTEXT.md/WORKFLOW.md alongside AGENTS.md).
     instructionsBundle: {
       files: {
         "AGENTS.md": bundleMd,
         ...(healthPushMd ? { "HEALTH_PUSH.md": healthPushMd } : {}),
         ...(injectionOutcomesMd ? { "INJECTION_OUTCOMES.md": injectionOutcomesMd } : {}),
+        ...(deliverableLedgerMd ? { "DELIVERABLE_LEDGER.md": deliverableLedgerMd } : {}),
       },
     },
     // 10-min heartbeat: tight enough that a paid fleet going down is caught

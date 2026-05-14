@@ -262,8 +262,17 @@ export async function ignite(
       if (!paperclipAgentId) continue;
 
       const title = `${(firstNonGated.expected_output ?? firstNonGated.title ?? "Initial cycle").slice(0, 80)}`;
+      // OPERATIONAL_LAYER.md §1 — the deliverable contract. The Liaison's
+      // DELIVERABLE_LEDGER skill parses this fenced block back out to seed a
+      // wavex_os.deliverable_ledger row (plan_ref + expected_response + kind).
       const body = [
         firstNonGated.description ?? "",
+        "",
+        "```wavex-contract",
+        `plan_ref: workflow:${slot}:on_fire`,
+        `expected_response: ${(firstNonGated.expected_output ?? firstNonGated.title ?? "complete the seeded cycle").replace(/\r?\n/g, " ").slice(0, 280)}`,
+        "kind: routine",
+        "```",
         "",
         "_Seeded by ignition v1. Grade criteria: see SKILL_KPI_OWNERSHIP measurement contract._",
       ].join("\n");
@@ -320,6 +329,14 @@ export async function ignite(
         ``,
         `Owner: break this into concrete child issues, pull in the`,
         `participating agents, and drive the cycle. Grade against the KPIs above.`,
+        ``,
+        // OPERATIONAL_LAYER.md §1 — deliverable contract, parsed by the
+        // Liaison's DELIVERABLE_LEDGER skill into a deliverable_ledger row.
+        "```wavex-contract",
+        `plan_ref: bundle:${bundleName}`,
+        `expected_response: ${`Break into child issues, drive the ${bw.cycle_length ?? "stated"} cycle, move KPIs: ${(bw.kpis_moved ?? []).join(", ") || "n/a"}`.slice(0, 280)}`,
+        "kind: directive",
+        "```",
       ].join("\n");
       try {
         const resp = await paperclipFetch(`/api/companies/${paperclipCompanyId}/issues`, {
