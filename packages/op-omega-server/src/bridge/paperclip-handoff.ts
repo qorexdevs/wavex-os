@@ -103,6 +103,51 @@ function humanNameForSlot(slot: string, displayName?: string): string {
   return parts.join(" / ");
 }
 
+/** Stable slot → 0..N-1 bucket. Used to stagger heartbeat first-wake so a
+ *  35-agent fleet doesn't thundering-herd the operator's Claude Max window
+ *  on the same scheduler tick. */
+function slotHashBucket(slot: string, buckets: number): number {
+  let h = 0;
+  for (let i = 0; i < slot.length; i++) h = (h * 31 + slot.charCodeAt(i)) >>> 0;
+  return h % buckets;
+}
+
+/** Heartbeat runtimeConfig for a freshly-hired agent.
+ *
+ *  Demo-day finding (2026-05-14): every agent shipped `enabled: false`, so
+ *  the fleet landed in the graph but never woke — no inference, no work.
+ *  The whole WaveX product is the autonomous fleet, so heartbeats MUST be
+ *  on. Cost is bounded by the Max-allocation slider, not by keeping the
+ *  fleet inert.
+ *
+ *  intervalSec = base + per-slot jitter. The jitter spreads ~35 agents
+ *  across base..base+(buckets·step) so the first wake (and every wake
+ *  after) is naturally staggered without needing a per-agent cron field
+ *  that Paperclip's heartbeat policy doesn't expose.
+ *
+ *  Env overrides:
+ *    PAPERCLIP_HANDOFF_HEARTBEAT_ENABLED   "false" to ship inert (old behavior)
+ *    PAPERCLIP_HANDOFF_HEARTBEAT_BASE_SEC  base interval, default 1800 (30 min)
+ *    PAPERCLIP_HANDOFF_HEARTBEAT_JITTER_SEC per-bucket step, default 45
+ */
+function heartbeatConfigForSlot(slot: string): {
+  enabled: boolean;
+  intervalSec: number;
+  wakeOnDemand: boolean;
+} {
+  const enabled = process.env.PAPERCLIP_HANDOFF_HEARTBEAT_ENABLED !== "false";
+  const baseSec = Number(process.env.PAPERCLIP_HANDOFF_HEARTBEAT_BASE_SEC ?? 1800);
+  const jitterStep = Number(process.env.PAPERCLIP_HANDOFF_HEARTBEAT_JITTER_SEC ?? 45);
+  // 40 buckets ≈ comfortably more than the 35-slot kernel, so collisions
+  // are rare and the spread is ~0..30 min on the default jitter step.
+  const bucket = slotHashBucket(slot, 40);
+  return {
+    enabled,
+    intervalSec: enabled ? baseSec + bucket * jitterStep : 0,
+    wakeOnDemand: true,
+  };
+}
+
 /** Assemble AGENTS.md content from the vendored role template directory.
  *  Concatenates SKILL.md (entry) + all SKILL_*.md siblings. */
 async function readAgentBundle(role: string, repoRoot: string): Promise<string | null> {
@@ -292,7 +337,7 @@ async function hireOne(
       },
     },
     instructionsBundle: { files: { "AGENTS.md": bundleMd } },
-    runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true } },
+    runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot) },
   };
   if (reportsToId) payload.reportsTo = reportsToId;
 

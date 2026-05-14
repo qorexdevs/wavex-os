@@ -319,12 +319,20 @@ export async function ignite(
   }
 
   // ── Step 6: heartbeat offsets ────────────────────────────────────────
+  // As of 2026-05-14, heartbeats are enabled AT HIRE TIME in
+  // paperclip-handoff.ts (heartbeatConfigForSlot) — `enabled: true` with a
+  // per-slot jittered intervalSec. The old "deferred to G.3.b" note is
+  // resolved: we no longer need a PATCH endpoint because the hire payload
+  // carries the final runtimeConfig.heartbeat. This step now just records
+  // the computed offsets for observability — the actual staggering lives
+  // in the hire payload's intervalSec jitter.
   const offsets: Record<string, number> = {};
   for (const agent of nonMuted) offsets[agent.slot] = hashSlotToOffset(agent.slot);
-  state.steps.stagger_heartbeats = { status: "ok", offsets };
-  // Note: actually patching heartbeat.enabled=true on Paperclip agents is
-  // deferred to G.3.b — Paperclip's wakeup pulse already runs, and flipping
-  // the runtimeConfig requires a PATCH endpoint we haven't audited yet.
+  state.steps.stagger_heartbeats = {
+    status: "ok",
+    offsets,
+    note: "heartbeats enabled at hire time (paperclip-handoff heartbeatConfigForSlot); offsets here are observability-only",
+  };
 
   // ── Finalize ─────────────────────────────────────────────────────────
   const allOk = Object.values(state.steps).every((s) => s.status === "ok" || s.status === "skipped");
