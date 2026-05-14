@@ -37,6 +37,7 @@ export interface IgnitionState {
     workflow_load: { status: IgnitionStepStatus; note?: string };
     goal_create: { status: IgnitionStepStatus; goal_id?: string; note?: string };
     seed_issues: { status: IgnitionStepStatus; created: string[]; note?: string };
+    seed_roadmap: { status: IgnitionStepStatus; created: string[]; note?: string };
     kickoff_probe: { status: IgnitionStepStatus; ceo_run_id?: string; cos_run_id?: string; note?: string };
     validate_coverage: { status: IgnitionStepStatus; gaps: string[]; note?: string };
     stagger_heartbeats: { status: IgnitionStepStatus; offsets: Record<string, number>; note?: string };
@@ -66,6 +67,15 @@ interface WorkflowManifest {
       dry_run_gate?: boolean;
     }>;
     heartbeat?: { period_minutes?: number };
+  }>;
+  /** Cross-agent collaborative initiatives — the "roadmap of tasks". Each
+   *  is owned by one agent, runs on a cycle, pulls in participating agents,
+   *  and exists to move a named set of KPIs. Seeded as roadmap issues. */
+  bundle_workflows?: Record<string, {
+    owner?: string;
+    cycle_length?: string;
+    participating_agents?: string[];
+    kpis_moved?: string[];
   }>;
 }
 
@@ -104,6 +114,7 @@ function freshState(companyId: string): IgnitionState {
       workflow_load: { status: "pending" },
       goal_create: { status: "pending" },
       seed_issues: { status: "pending", created: [] },
+      seed_roadmap: { status: "pending", created: [] },
       kickoff_probe: { status: "pending" },
       validate_coverage: { status: "pending", gaps: [] },
       stagger_heartbeats: { status: "pending", offsets: {} },
@@ -154,6 +165,12 @@ export async function ignite(
   paperclipHandoff: { paperclipCompanyId: string | null; created: Array<{ slot: string; agentId: string }> } | null,
 ): Promise<IgnitionResult> {
   const state = (await readState(companyId)) ?? freshState(companyId);
+  // Back-compat: an ignition-state.json written before seed_roadmap existed
+  // won't have the step. Initialize it so step access + the allOk check
+  // don't trip over `undefined`.
+  if (!state.steps.seed_roadmap) {
+    state.steps.seed_roadmap = { status: "pending", created: [] };
+  }
   await writeState(state);
 
   // ── Step 1: load workflow manifest ───────────────────────────────────
@@ -273,6 +290,68 @@ export async function ignite(
     state.steps.seed_issues = { status: "ok", created: createdIssues, note: "already seeded; idempotent skip" };
   }
 
+  // ── Step 3.5: seed the roadmap (bundle_workflows) ────────────────────
+  // bundle_workflows are the cross-agent initiatives — the "roadmap of
+  // tasks" the operator expects to see after inception. Each becomes one
+  // issue assigned to its owner agent, tagged with the KPIs it moves and
+  // the participating agents, so the fleet has concrete multi-agent
+  // deliverables to drive, not just per-agent heartbeat loops.
+  const roadmapCreated: string[] = state.steps.seed_roadmap.created ?? [];
+  const bundleWorkflows = workflow.bundle_workflows ?? {};
+  const bundleNames = Object.keys(bundleWorkflows);
+  if (paperclipCompanyId && PAPERCLIP_URL && roadmapCreated.length === 0 && bundleNames.length > 0) {
+    for (const bundleName of bundleNames) {
+      const bw = bundleWorkflows[bundleName]!;
+      const ownerSlot = bw.owner ?? "";
+      const ownerAgentId = ownerSlot ? slotToPaperclipId.get(ownerSlot) : undefined;
+      const title = `[Roadmap] ${bundleName.replace(/[._]/g, " ")}`;
+      const body = [
+        `Cross-agent initiative seeded by ignition v1.`,
+        ``,
+        `**Owner:** \`${ownerSlot || "unassigned"}\``,
+        `**Cycle:** ${bw.cycle_length ?? "n/a"}`,
+        `**KPIs this moves:** ${(bw.kpis_moved ?? []).join(", ") || "n/a"}`,
+        `**Participating agents:** ${(bw.participating_agents ?? []).map((s) => `\`${s}\``).join(", ") || "n/a"}`,
+        ``,
+        `Owner: break this into concrete child issues, pull in the`,
+        `participating agents, and drive the cycle. Grade against the KPIs above.`,
+      ].join("\n");
+      try {
+        const resp = await paperclipFetch(`/api/companies/${paperclipCompanyId}/issues`, {
+          method: "POST",
+          body: JSON.stringify({
+            title,
+            description: body,
+            ...(ownerAgentId ? { assigneeAgentId: ownerAgentId } : {}),
+            goalId,
+            priority: "high",
+            tags: ["wavex:roadmap:v1", `wavex:bundle:${bundleName}`],
+          }),
+        });
+        if (resp.ok) {
+          const created = (await resp.json()) as { id?: string; key?: string };
+          if (created.key) roadmapCreated.push(created.key);
+          else if (created.id) roadmapCreated.push(created.id);
+        } else {
+          recordErr(state, "seed_roadmap", `bundle=${bundleName}: POST issues returned ${resp.status}`);
+        }
+      } catch (e) {
+        recordErr(state, "seed_roadmap", `bundle=${bundleName}: ${(e as Error).message}`);
+      }
+    }
+    state.steps.seed_roadmap = {
+      status: roadmapCreated.length > 0 ? "ok" : "error",
+      created: roadmapCreated,
+    };
+  } else if (!paperclipCompanyId) {
+    state.steps.seed_roadmap = { status: "skipped", created: [], note: "no Paperclip company id" };
+  } else if (bundleNames.length === 0) {
+    state.steps.seed_roadmap = { status: "skipped", created: [], note: "workflow manifest has no bundle_workflows" };
+  } else {
+    state.steps.seed_roadmap = { status: "ok", created: roadmapCreated, note: "already seeded; idempotent skip" };
+  }
+  await writeState(state);
+
   // ── Step 4: CEO + CoS kickoff probe (best-effort) ────────────────────
   if (paperclipCompanyId && PAPERCLIP_URL && state.steps.kickoff_probe.status === "pending") {
     const ceoId = slotToPaperclipId.get("ceo.orchestrator");
@@ -283,7 +362,7 @@ export async function ignite(
           method: "POST",
           body: JSON.stringify({
             wake_reason: "ignition_kickoff",
-            payload: { seeded_issue_keys: createdIssues, goal_id: goalId },
+            payload: { seeded_issue_keys: createdIssues, roadmap_issue_keys: roadmapCreated, goal_id: goalId },
           }),
         });
         state.steps.kickoff_probe.ceo_run_id = wake.ok ? "ok" : `err_${wake.status}`;
@@ -297,7 +376,7 @@ export async function ignite(
           method: "POST",
           body: JSON.stringify({
             wake_reason: "ignition_kickoff",
-            payload: { seeded_issue_keys: createdIssues, goal_id: goalId },
+            payload: { seeded_issue_keys: createdIssues, roadmap_issue_keys: roadmapCreated, goal_id: goalId },
           }),
         });
         state.steps.kickoff_probe.cos_run_id = wake.ok ? "ok" : `err_${wake.status}`;
@@ -344,7 +423,7 @@ export async function ignite(
       ? (state.warnings.length > 0 ? "partial" : "ignited")
       : (state.steps.workflow_load.status === "error" ? "deferred" : "partial"),
     agents_working: nonMuted.length - gaps.length,
-    workflows_queued: createdIssues.length,
+    workflows_queued: createdIssues.length + roadmapCreated.length,
     goal_id: goalId,
     errors: state.errors,
     warnings: state.warnings,

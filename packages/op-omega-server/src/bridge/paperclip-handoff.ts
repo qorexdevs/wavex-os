@@ -92,6 +92,66 @@ function buildCompanyContextBlock(manifest: unknown): string {
   return lines.join("\n");
 }
 
+/** Per-agent WORKFLOW.md — the agent's on_fire heartbeat loop, escalation
+ *  path, and cadence, lifted straight from manifest.workflow_manifest.
+ *
+ *  Before this, the workflow manifest was loaded by ignition but only the
+ *  FIRST on_fire task was ever surfaced (as a single seed issue). The agent
+ *  itself never saw its own workflow — it heartbeated blind. Now every wake
+ *  the agent has its loop in front of it. */
+function buildAgentWorkflowMd(workflowManifest: unknown, slot: string): string | null {
+  const wm = workflowManifest as {
+    agent_workflows?: Record<string, {
+      heartbeat?: string;
+      on_fire?: Array<{
+        task?: string; tier?: string; flow_type?: string;
+        input?: string; expected_output?: string;
+      }>;
+      escalation?: Array<{ on?: string; to?: string }>;
+    }>;
+  };
+  const aw = wm?.agent_workflows?.[slot];
+  if (!aw) return null;
+
+  const lines: string[] = [
+    "# Your Workflow",
+    "",
+    "_Injected by the wavex-os handoff bridge from the finalized workflow",
+    "manifest. This is the loop you run every heartbeat — read it top to",
+    "bottom, each step's `input` is the prior step's `expected_output`._",
+    "",
+  ];
+  if (aw.heartbeat) lines.push(`**Cadence:** every ${aw.heartbeat}`, "");
+
+  const onFire = aw.on_fire ?? [];
+  if (onFire.length > 0) {
+    lines.push("## On every heartbeat, in order:", "");
+    onFire.forEach((step, i) => {
+      const parts = [`${i + 1}. **${step.task ?? "(unnamed step)"}**`];
+      const meta: string[] = [];
+      if (step.tier) meta.push(`tier ${step.tier}`);
+      if (step.flow_type) meta.push(step.flow_type);
+      if (step.input) meta.push(`in: ${step.input}`);
+      if (step.expected_output) meta.push(`out: ${step.expected_output}`);
+      if (meta.length) parts.push(`   _(${meta.join(" · ")})_`);
+      lines.push(parts.join("\n"));
+    });
+    lines.push("");
+  }
+
+  const esc = aw.escalation ?? [];
+  if (esc.length > 0) {
+    lines.push("## Escalation", "");
+    for (const e of esc) {
+      lines.push(`- When \`${e.on ?? "?"}\` → escalate to \`${e.to ?? "?"}\``);
+    }
+    lines.push("");
+  }
+
+  if (onFire.length === 0 && esc.length === 0) return null;
+  return lines.join("\n");
+}
+
 /** Per-agent CONTEXT.md = shared company block + this agent's customization
  *  (skill_overlay, department/level, who it reports to, owned KPIs). */
 function buildAgentContextMd(
@@ -401,6 +461,7 @@ async function hireOne(
   reportsToId: string | null,
   bundleMd: string,
   contextMd: string,
+  workflowMd: string | null,
 ): Promise<{ agentId: string; status: string }> {
   const { role, orig } = mapRoleToPaperclipEnum(slot);
   const name = humanNameForSlot(slot, entry.display_name);
@@ -426,9 +487,16 @@ async function hireOne(
       },
     },
     // AGENTS.md = generic role skills; CONTEXT.md = company-specific overlay
-    // (company context + this agent's skill_overlay mandate). Both land in
-    // the agent's instructions dir so it knows its role AND its company.
-    instructionsBundle: { files: { "AGENTS.md": bundleMd, "CONTEXT.md": contextMd } },
+    // (company context + this agent's skill_overlay mandate); WORKFLOW.md =
+    // the agent's on_fire heartbeat loop. All land in the agent's
+    // instructions dir so it knows its craft, its company, AND its cycle.
+    instructionsBundle: {
+      files: {
+        "AGENTS.md": bundleMd,
+        "CONTEXT.md": contextMd,
+        ...(workflowMd ? { "WORKFLOW.md": workflowMd } : {}),
+      },
+    },
     runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot) },
   };
   if (reportsToId) payload.reportsTo = reportsToId;
@@ -624,10 +692,16 @@ export async function handoffToPaperclip(
       ?? `# ${slot}\n\nPlaceholder — bundle file missing.`;
     // CONTEXT.md = shared company block + this agent's skill_overlay mandate.
     const contextMd = buildAgentContextMd(companyContextBlock, slot, entry);
+    // WORKFLOW.md = this agent's on_fire heartbeat loop (null if the
+    // workflow manifest has no entry for this slot).
+    const workflowMd = buildAgentWorkflowMd(
+      (manifest as unknown as { workflow_manifest?: unknown }).workflow_manifest,
+      slot,
+    );
     const reportsToSlot = entry.reports_to ?? null;
     const reportsToId = reportsToSlot ? slotToPaperclipId[reportsToSlot] ?? null : null;
     try {
-      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd, contextMd);
+      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd, contextMd, workflowMd);
       slotToPaperclipId[slot] = out.agentId;
       report.created.push({ slot, agentId: out.agentId, status: out.status });
       completed += 1;
