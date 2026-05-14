@@ -17,6 +17,13 @@
  *                                 non-zero exit_code in last 60 min
  *   4. Hub inference status    — check inference-status JSON freshness
  *   5. Catalog/hire mismatch   — agents in catalog with zero hires for >30d
+ *   6. Paid-fleet health      — wavex_os_ops_fleet_health(): latest
+ *                                instance_health per device. A PAID fleet
+ *                                (pool_b + active sub) that is DOWN or DARK
+ *                                (no health push in 30min) is CRIT — the
+ *                                redundancy promise. Matched remediation
+ *                                playbooks (scripts/ops/playbooks/) ride
+ *                                along on the escalation.
  *
  * Output:
  *   - ALWAYS append a structured event to ~/.wavex-os/state/ops-events.jsonl.
@@ -44,6 +51,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
+import { matchPlaybooks } from "./playbooks/index.mjs";
 
 const STATE_DIR = process.env.WAVEX_OS_STATE_DIR ?? path.join(homedir(), ".wavex-os");
 const EVENTS_FILE = path.join(STATE_DIR, "state", "ops-events.jsonl");
@@ -53,6 +61,10 @@ const COMPANIES_DIR = path.join(STATE_DIR, "instances", "default", "companies");
 const STALE_HOURS = Number(process.env.WAVEX_OPS_STALE_HOURS ?? 24);
 const STRIPE_QUIET_HOURS = Number(process.env.WAVEX_OPS_STRIPE_QUIET_HOURS ?? 24);
 const T2_ERROR_THRESHOLD_PCT = Number(process.env.WAVEX_OPS_T2_ERROR_THRESHOLD_PCT ?? 25);
+// A paid fleet whose Liaison hasn't pushed instance_health in this many
+// minutes is "dark" — we've lost visibility, treated as CRIT. The Liaison
+// heartbeats every 10min, so 30min = 3 missed pushes.
+const FLEET_DARK_MINUTES = Number(process.env.WAVEX_OPS_FLEET_DARK_MINUTES ?? 30);
 
 const PAPERCLIP_URL = process.env.WAVEX_OPS_PAPERCLIP_URL ?? "http://127.0.0.1:3100";
 const PAPERCLIP_COMPANY = process.env.WAVEX_OPS_PAPERCLIP_COMPANY_ID ?? "";
@@ -353,6 +365,82 @@ async function probeCatalogHires() {
   }
 }
 
+// Phase 2 — paid-fleet sweep. Reads the latest instance_health per device
+// (via wavex_os_ops_fleet_health) and opens covered incidents. A PAID fleet
+// (pool_b + active/trialing sub) that is down or dark is CRIT — the
+// redundancy promise. Matched playbooks ride along on the escalation.
+async function probePaidFleetHealth() {
+  if (!SB_URL || !SB_KEY) {
+    record("INFO", "FLEET.SKIPPED", "Supabase creds not configured");
+    return;
+  }
+  const r = await callOpsRpc("wavex_os_ops_fleet_health");
+  if (!r.ok) {
+    record("WARN", "FLEET.PROBE_FAILED",
+      `RPC failed: ${r.status ?? r.reason} ${r.text ?? ""}`);
+    return;
+  }
+  const rows = Array.isArray(r.data) ? r.data : [];
+  if (rows.length === 0) {
+    record("INFO", "FLEET.NONE_REPORTING",
+      "No instance_health rows yet — no Liaison has pushed health");
+    return;
+  }
+
+  let paid = 0, healthy = 0, incidents = 0;
+  for (const row of rows) {
+    const isPaid = row.tier === "pool_b" &&
+      ["active", "trialing"].includes(row.subscription_status ?? "");
+    if (isPaid) paid++;
+
+    const stale = Number(row.staleness_minutes ?? 0) > FLEET_DARK_MINUTES;
+    const down = row.fleet_status === "down";
+    const degraded = row.fleet_status === "degraded" ||
+      Number(row.agents_error ?? 0) > 0;
+
+    // Match remediation playbooks against this fleet's recent_errors.
+    const matched = matchPlaybooks(row);
+    const playbook = matched[0]
+      ? { id: matched[0].id, name: matched[0].name, remediation: matched[0].remediation }
+      : null;
+
+    const who = row.device_name || row.hostname || row.device_id;
+    const detail = {
+      device_id: row.device_id,
+      subscription_id: row.subscription_id,
+      tier: row.tier,
+      paid: isPaid,
+      fleet_status: row.fleet_status,
+      staleness_minutes: row.staleness_minutes,
+      agents_error: row.agents_error,
+      ...(playbook ? { playbook } : {}),
+    };
+
+    if (stale) {
+      // Liaison stopped pushing — we've gone blind. Worse than a reported `down`.
+      record(isPaid ? "CRIT" : "INFO", "FLEET.DARK",
+        `${isPaid ? "PAID" : "free"} fleet "${who}" went dark — no health push in ${row.staleness_minutes}min`,
+        detail);
+      incidents++;
+    } else if (down) {
+      record(isPaid ? "CRIT" : "WARN", "FLEET.DOWN",
+        `${isPaid ? "PAID" : "free"} fleet "${who}" is DOWN${playbook ? ` — playbook ${playbook.id} matches` : ""}`,
+        detail);
+      incidents++;
+    } else if (degraded) {
+      record(isPaid ? "WARN" : "INFO", "FLEET.DEGRADED",
+        `${isPaid ? "PAID" : "free"} fleet "${who}" degraded — ${row.agents_error} agent(s) erroring${playbook ? ` — playbook ${playbook.id} matches` : ""}`,
+        detail);
+      incidents++;
+    } else {
+      healthy++;
+    }
+  }
+
+  record("INFO", "FLEET.SWEEP_DONE",
+    `Swept ${rows.length} fleet(s): ${paid} paid, ${healthy} healthy, ${incidents} with incidents`);
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Main
 
@@ -363,6 +451,7 @@ async function main() {
     probePoolAErrorRate(),
     probeHubInferenceFreshness(),
     probeCatalogHires(),
+    probePaidFleetHealth(),
   ]);
 
   const result = await flush();
@@ -370,11 +459,26 @@ async function main() {
   // Notify on CRIT only
   const crits = findings.filter((f) => f.severity === "CRIT");
   if (crits.length > 0) {
+    // Surface any matched remediation playbook inline — the operator (or the
+    // WaveX Ops fleet) gets the concrete fix attached to the alert, not just
+    // the symptom.
+    const critLines = crits.flatMap((f) => {
+      const lines = [`• \`${f.code}\` — ${f.summary}`];
+      const pb = f.detail?.playbook;
+      if (pb?.remediation) {
+        lines.push(`  ↳ *playbook ${pb.id}* — ${pb.remediation.summary}`);
+        for (const step of pb.remediation.steps ?? []) {
+          lines.push(`     · ${step}`);
+        }
+        if (pb.remediation.docs) lines.push(`     · see ${pb.remediation.docs}`);
+      }
+      return lines;
+    });
     const msg = [
       `*WaveX Ops — ${crits.length} critical finding${crits.length > 1 ? "s" : ""}*`,
       `_cycle ${cycleId}_`,
       "",
-      ...crits.map((f) => `• \`${f.code}\` — ${f.summary}`),
+      ...critLines,
     ].join("\n");
     const tg = await notifyTelegram(msg);
     const pc = await notifyPaperclip(
