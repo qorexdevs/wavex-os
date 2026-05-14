@@ -115,11 +115,13 @@ async function readLiaisonBundle(): Promise<string | null> {
   return parts.length > 0 ? parts.join("") : null;
 }
 
-/** Phase 1 redundancy skill — injected alongside the frozen wavex-liaison
- *  template so the template itself is never modified (frozen path). Tells the
- *  Liaison to push instance_health every heartbeat + fleet_log_synthesis every
- *  4h. See docs/REDUNDANCY_ARCHITECTURE.md + OPERATIONAL_LAYER.md §3. */
-async function readHealthPushSkill(): Promise<string | null> {
+/** Read a liaison-ext skill file — injected alongside the frozen wavex-liaison
+ *  template so the template itself is never modified (frozen path).
+ *    HEALTH_PUSH.md       — instance_health every heartbeat + 4h synthesis
+ *                           (docs/REDUNDANCY_ARCHITECTURE.md, OPERATIONAL_LAYER.md §3)
+ *    INJECTION_OUTCOMES.md — closes the loop on the prompt-injection promise
+ *                           (docs/REDUNDANCY_ARCHITECTURE.md "injection_outcomes") */
+async function readLiaisonExtSkill(fileName: string): Promise<string | null> {
   const path = join(
     resolveRepoRoot(),
     "packages",
@@ -127,7 +129,7 @@ async function readHealthPushSkill(): Promise<string | null> {
     "src",
     "bridge",
     "liaison-ext",
-    "HEALTH_PUSH.md",
+    fileName,
   );
   try {
     return await readFile(path, "utf8");
@@ -169,8 +171,9 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
     };
   }
   // Non-fatal if missing — the Liaison still works for digests/injections;
-  // it just won't push health until the skill file is present.
-  const healthPushMd = await readHealthPushSkill();
+  // it just won't push health / track outcomes until the skill files exist.
+  const healthPushMd = await readLiaisonExtSkill("HEALTH_PUSH.md");
+  const injectionOutcomesMd = await readLiaisonExtSkill("INJECTION_OUTCOMES.md");
 
   // Paperclip role enum has no 'liaison' value; "general" is the closest
   // fit (matches what paperclip-handoff.ts uses for non-enum roles).
@@ -199,13 +202,14 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
       },
     },
     // AGENTS.md = the frozen wavex-liaison template (digest/inject skills).
-    // HEALTH_PUSH.md = Phase 1 redundancy skill, injected here so the frozen
-    // template is never modified (same pattern as paperclip-handoff's
-    // CONTEXT.md/WORKFLOW.md alongside AGENTS.md).
+    // HEALTH_PUSH.md + INJECTION_OUTCOMES.md = redundancy/observability skills,
+    // injected here so the frozen template is never modified (same pattern as
+    // paperclip-handoff's CONTEXT.md/WORKFLOW.md alongside AGENTS.md).
     instructionsBundle: {
       files: {
         "AGENTS.md": bundleMd,
         ...(healthPushMd ? { "HEALTH_PUSH.md": healthPushMd } : {}),
+        ...(injectionOutcomesMd ? { "INJECTION_OUTCOMES.md": injectionOutcomesMd } : {}),
       },
     },
     // 10-min heartbeat: tight enough that a paid fleet going down is caught
