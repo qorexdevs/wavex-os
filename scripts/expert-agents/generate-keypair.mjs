@@ -19,8 +19,17 @@
  * decryption until they re-upload with the new public key. Use the
  * rotation procedure in docs/F4e_KEYPAIR_OPS.md for live rotation.
  */
-import sodium from "libsodium-wrappers";
 import { execSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+// libsodium-wrappers lives in packages/inference-server/node_modules (pnpm
+// workspace, not hoisted). Resolve it from there so this script runs from any
+// cwd. scripts/expert-agents/<this> → repo root is ../..
+const _repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const _require = createRequire(join(_repoRoot, "packages", "inference-server", "package.json"));
+const sodium = _require("libsodium-wrappers");
 
 const catalogId = process.argv[2];
 if (!catalogId) {

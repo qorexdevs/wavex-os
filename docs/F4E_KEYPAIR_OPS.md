@@ -16,41 +16,55 @@ The encryption does NOT defend against compromise of the macOS Keychain itself (
 
 ## One-time setup (initial deployment)
 
-Run **once** per Expert Agent in the catalog. For V1 that's four times.
+Run **once** per Expert Agent in the catalog. Each agent needs **two**
+keypairs:
 
-### 1. Generate keypair
+| Keypair | Keychain service | Catalog column | Purpose |
+|---|---|---|---|
+| X25519 (encryption) | `wavex-os.expert-agent.<id>` | `recipient_public_key` | decrypts the customer's fleet digest |
+| Ed25519 (signing) | `wavex-os.expert-agent-sign.<id>` | `signing_public_key` | signs injections; the Liaison pins + verifies this |
+
+The three ceremony scripts resolve their npm deps from
+`packages/inference-server/node_modules` via `createRequire`, so they run from
+any cwd — no `pnpm exec` wrapper needed.
+
+### 1. Generate both keypairs
 
 ```bash
 cd ~/wavex-os
-pnpm --filter @wavex-os/inference-server exec node -e "require('libsodium-wrappers').then(()=>{})"  # warm up
-node scripts/expert-agents/generate-keypair.mjs optimizer-v1
+node scripts/expert-agents/generate-keypair.mjs         code-engineer-v1   # X25519 encryption
+node scripts/expert-agents/generate-signing-keypair.mjs code-engineer-v1   # Ed25519 signing
 ```
 
-Output:
+Each prints its **public** key and stores the **private/secret** key in the
+macOS Keychain. The private keys are NEVER written anywhere else — don't copy
+them, don't email them, don't commit them.
 
-```
-✓ Generated keypair for optimizer-v1
-  Private key: stored in macOS Keychain as "wavex-os.expert-agent.optimizer-v1"
-               retrievable via: security find-generic-password -s "wavex-os.expert-agent.optimizer-v1" -w
-  Public key:
-               YnpQU5h2VqRkN3...
-```
-
-The private key is in the Keychain. It will NEVER be written anywhere else. Don't copy it. Don't email it.
-
-### 2. Upload public key to Supabase
+### 2. Upload both public keys to Supabase
 
 ```bash
-SUPABASE_URL=https://<your-ref>.supabase.co \
-SUPABASE_SERVICE_ROLE_KEY=eyJ... \
-  node scripts/expert-agents/upload-public-key.mjs optimizer-v1 'YnpQU5h2VqRkN3...'
+export SUPABASE_URL=https://<your-ref>.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=eyJ...
+node scripts/expert-agents/upload-public-key.mjs --type recipient code-engineer-v1 '<enc_public_b64>'
+node scripts/expert-agents/upload-public-key.mjs --type signing   code-engineer-v1 '<sign_public_b64>'
+```
+
+Then flip the catalog row live — seed migrations ship `is_active=false` with
+NULL keys by design; the ceremony is the activation step and is intentionally
+out-of-band (key material never enters a migration file or git):
+
+```sql
+update wavex_os.expert_agent_catalog set is_active = true where id = 'code-engineer-v1';
 ```
 
 Verify:
 
 ```sql
-select id, length(recipient_public_key) from wavex_os.expert_agent_catalog where id='optimizer-v1';
--- should return 32 (bytes)
+select id, is_active,
+       length(recipient_public_key) as enc_bytes,
+       length(signing_public_key)   as sign_bytes
+from wavex_os.expert_agent_catalog where id = 'code-engineer-v1';
+-- expect: is_active=true, enc_bytes=32, sign_bytes=32
 ```
 
 ### 3. Repeat for the other three
