@@ -178,13 +178,55 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
   const deliverableLedgerMd = await readLiaisonExtSkill("DELIVERABLE_LEDGER.md");
   const codeInjectionRoutingMd = await readLiaisonExtSkill("CODE_INJECTION_ROUTING.md");
 
+  // The Liaison's SKILL files (build → upload → poll → deliver) read a
+  // fixed set of operational env vars. Without these injected into the
+  // agent's adapterConfig.env, a spawned Liaison cannot resolve its own
+  // company, subscription, inference endpoint, or tools directory — the
+  // 4-step heartbeat no-ops on the first command. Source them from the
+  // op-omega-server process env (operators set them in ~/.wavex-os/state/
+  // .env). Each is best-effort: a missing value becomes an empty string
+  // and the corresponding SKILL step degrades per its documented contract
+  // (e.g. unreachable inference → idle; empty Supabase key → skip upload).
+  const liaisonEnv: Record<string, { type: "plain"; value: string }> = {
+    HOME: { type: "plain", value: process.env.HOME ?? "" },
+    USER: { type: "plain", value: process.env.USER ?? process.env.LOGNAME ?? "" },
+    LOGNAME: { type: "plain", value: process.env.LOGNAME ?? process.env.USER ?? "" },
+    // Which Paperclip company this Liaison serves (build-digest.mjs +
+    // deliver-injection target).
+    COMPANY_ID: { type: "plain", value: mapping.paperclipCompanyId },
+    PAPERCLIP_API_BASE: { type: "plain", value: paperclipUrl },
+    PAPERCLIP_COMPANY_ID: { type: "plain", value: mapping.paperclipCompanyId },
+    // Pool C optimizer queue endpoint (poll step). Defaults to the public
+    // tunnel; operators override to the local inference-server for dev.
+    WAVEX_INFERENCE_URL: {
+      type: "plain",
+      value: process.env.WAVEX_INFERENCE_URL ?? "https://api.wavex-os.com",
+    },
+    // Supabase — fleet_digests upload + injection_queue consume PATCH.
+    SUPABASE_URL: {
+      type: "plain",
+      value: process.env.WAVEX_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "",
+    },
+    SUPABASE_ANON_KEY: {
+      type: "plain",
+      value: process.env.WAVEX_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? "",
+    },
+    // Liaison state dir — last-seen-injection cursor + subscription.json.
+    WAVEX_OS_STATE_DIR: { type: "plain", value: stateRoot() },
+    // The Liaison's own Paperclip agent id — used to stamp consumed rows.
+    LIAISON_AGENT_ID: { type: "plain", value: "" }, // backfilled post-hire below
+  };
+
   // Paperclip role enum has no 'liaison' value; "general" is the closest
   // fit (matches what paperclip-handoff.ts uses for non-enum roles).
   const payload: Record<string, unknown> = {
     name: "WaveX Liaison",
     role: "general",
     title: "WaveX Liaison",
-    icon: "antenna",
+    // "antenna" is NOT in the Paperclip icon enum — it fails agent-hires
+    // validation. "radar" is the closest valid value (the Liaison's job
+    // is to scan/poll the cross-tenant boundary).
+    icon: "radar",
     capabilities:
       "Builds encrypted fleet digests, polls injection queue, decrypts Pool-C-signed directives, and files them into local Paperclip. Mediates the cross-tenant boundary defined by F.4.",
     adapterType: "claude_local",
@@ -198,11 +240,7 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
       dangerouslySkipPermissions: true,
       timeoutSec: 600,
       graceSec: 30,
-      env: {
-        HOME: { type: "plain", value: process.env.HOME ?? "" },
-        USER: { type: "plain", value: process.env.USER ?? process.env.LOGNAME ?? "" },
-        LOGNAME: { type: "plain", value: process.env.LOGNAME ?? process.env.USER ?? "" },
-      },
+      env: liaisonEnv,
     },
     // AGENTS.md = the frozen wavex-liaison template (digest/inject skills).
     // The liaison-ext skills (HEALTH_PUSH / INJECTION_OUTCOMES /
@@ -242,6 +280,21 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
     agent: { id: string; status: string };
     approval?: { id: string; status: string };
   };
+
+  // Backfill LIAISON_AGENT_ID — the Liaison stamps consumed injection
+  // rows with its own Paperclip agent id, which isn't known until the
+  // hire returns. Best-effort: a failure here just leaves the field
+  // empty; the consume-PATCH still works, it's only the audit stamp.
+  try {
+    liaisonEnv.LIAISON_AGENT_ID = { type: "plain", value: hireBody.agent.id };
+    await fetch(`${paperclipUrl}/api/agents/${hireBody.agent.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adapterConfig: { env: liaisonEnv } }),
+    });
+  } catch {
+    // non-fatal — see comment above
+  }
 
   if (hireBody.approval && hireBody.approval.status === "pending") {
     const ap = await fetch(`${paperclipUrl}/api/approvals/${hireBody.approval.id}/approve`, {
