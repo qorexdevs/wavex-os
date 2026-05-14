@@ -16,6 +16,7 @@ import { registerPillarRoutes } from "./routes/pillars.js";
 import { registerPhaseRoutes } from "./routes/phases.js";
 import { registerProbeRoutes } from "./routes/probe.js";
 import { registerInstanceRoutes } from "./routes/instance.js";
+import { registerInferenceAllocationRoute } from "./routes/inference-allocation.js";
 import { registerObservabilityRoutes } from "./routes/observability.js";
 import { registerPillar5TestSendRoute } from "./routes/pillar5-test-send.js";
 import { registerCredentialRoutes } from "./routes/credentials.js";
@@ -54,6 +55,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerPhaseRoutes(app);
   registerProbeRoutes(app);
   registerInstanceRoutes(app);
+  registerInferenceAllocationRoute(app);
   registerObservabilityRoutes(app);
   registerPillar5TestSendRoute(app);
   registerCredentialRoutes(app);

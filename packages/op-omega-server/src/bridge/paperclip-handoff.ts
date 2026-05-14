@@ -28,6 +28,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
+import { readInferenceAllocation } from "../routes/inference-allocation.js";
 
 interface SwarmAgentEntry {
   template_id?: string | null;
@@ -268,17 +269,22 @@ function slotHashBucket(slot: string, buckets: number): number {
  *  on. Cost is bounded by the Max-allocation slider, not by keeping the
  *  fleet inert.
  *
- *  intervalSec = base + per-slot jitter. The jitter spreads ~35 agents
- *  across base..base+(buckets·step) so the first wake (and every wake
- *  after) is naturally staggered without needing a per-agent cron field
- *  that Paperclip's heartbeat policy doesn't expose.
+ *  intervalSec = (base / swarmShare) + per-slot jitter:
+ *    - swarmShare is the swarm's slice of the operator's Claude Max window
+ *      (0.05..1.0), from ~/.wavex-os/state/inference-allocation.json. At
+ *      100% the swarm runs at `base`; at 50% intervals double (agents wake
+ *      half as often → consume ~half the window); at 25% they quadruple.
+ *      That's the enforcement teeth behind the allocation slider.
+ *    - the jitter spreads ~35 agents across the interval so the first wake
+ *      (and every wake after) is staggered, without needing a per-agent
+ *      cron field that Paperclip's heartbeat policy doesn't expose.
  *
  *  Env overrides:
  *    PAPERCLIP_HANDOFF_HEARTBEAT_ENABLED   "false" to ship inert (old behavior)
  *    PAPERCLIP_HANDOFF_HEARTBEAT_BASE_SEC  base interval, default 1800 (30 min)
  *    PAPERCLIP_HANDOFF_HEARTBEAT_JITTER_SEC per-bucket step, default 45
  */
-function heartbeatConfigForSlot(slot: string): {
+function heartbeatConfigForSlot(slot: string, swarmPct: number): {
   enabled: boolean;
   intervalSec: number;
   wakeOnDemand: boolean;
@@ -286,12 +292,17 @@ function heartbeatConfigForSlot(slot: string): {
   const enabled = process.env.PAPERCLIP_HANDOFF_HEARTBEAT_ENABLED !== "false";
   const baseSec = Number(process.env.PAPERCLIP_HANDOFF_HEARTBEAT_BASE_SEC ?? 1800);
   const jitterStep = Number(process.env.PAPERCLIP_HANDOFF_HEARTBEAT_JITTER_SEC ?? 45);
+  // Clamp the swarm share to 5%..100% — a 0% swarm would be ÷0 and a fleet
+  // that never wakes is just the bug we're fixing. The operator can still
+  // pause the fleet via Paperclip if they truly want it silent.
+  const swarmShare = Math.max(0.05, Math.min(1, swarmPct / 100));
   // 40 buckets ≈ comfortably more than the 35-slot kernel, so collisions
   // are rare and the spread is ~0..30 min on the default jitter step.
   const bucket = slotHashBucket(slot, 40);
+  const scaledBase = Math.round(baseSec / swarmShare);
   return {
     enabled,
-    intervalSec: enabled ? baseSec + bucket * jitterStep : 0,
+    intervalSec: enabled ? scaledBase + bucket * jitterStep : 0,
     wakeOnDemand: true,
   };
 }
@@ -462,6 +473,7 @@ async function hireOne(
   bundleMd: string,
   contextMd: string,
   workflowMd: string | null,
+  swarmPct: number,
 ): Promise<{ agentId: string; status: string }> {
   const { role, orig } = mapRoleToPaperclipEnum(slot);
   const name = humanNameForSlot(slot, entry.display_name);
@@ -497,7 +509,7 @@ async function hireOne(
         ...(workflowMd ? { "WORKFLOW.md": workflowMd } : {}),
       },
     },
-    runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot) },
+    runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot, swarmPct) },
   };
   if (reportsToId) payload.reportsTo = reportsToId;
 
@@ -602,6 +614,12 @@ export async function handoffToPaperclip(
   // per-slot inside the hire loop below.
   const companyContextBlock = buildCompanyContextBlock(manifest);
 
+  // Inference allocation — the swarm's share of the operator's Claude Max
+  // window. Read once; scales every agent's heartbeat interval. Default
+  // 70% (the route's default) if the operator never touched the slider.
+  const allocation = await readInferenceAllocation();
+  const swarmPct = allocation.swarm_pct;
+
   // Track slot -> paperclip agentId for reports_to resolution
   const slotToPaperclipId: Record<string, string> = { ...(existing?.agents ?? {}) };
 
@@ -701,7 +719,7 @@ export async function handoffToPaperclip(
     const reportsToSlot = entry.reports_to ?? null;
     const reportsToId = reportsToSlot ? slotToPaperclipId[reportsToSlot] ?? null : null;
     try {
-      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd, contextMd, workflowMd);
+      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd, contextMd, workflowMd, swarmPct);
       slotToPaperclipId[slot] = out.agentId;
       report.created.push({ slot, agentId: out.agentId, status: out.status });
       completed += 1;

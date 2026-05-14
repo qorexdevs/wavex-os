@@ -7,6 +7,7 @@ import { InceptionCTA } from "../components/mission/InceptionCTA";
 import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
+import { AllocationSlider } from "../components/AllocationSlider";
 import { useCompany } from "../op-omega/lib/CompanyContext";
 import { getSupabase } from "../lib/supabase";
 import { CoachmarkOverlay, type CoachmarkStep } from "../op-omega/components/Coachmark";
@@ -162,6 +163,14 @@ export default function MissionControl() {
 
         <div data-tour="mc-fleet" style={{ marginBottom: "2.5rem" }}>
           <FleetGraph />
+        </div>
+
+        {/* Live-adjustable Claude Max allocation — operator tunes the
+            swarm-vs-Pool-A split as they watch consumption. Changes apply
+            to the next fleet cycle (heartbeat intervals re-scale at the
+            next hire / re-ignition). */}
+        <div data-tour="mc-allocation" style={{ marginBottom: "2.5rem" }}>
+          <AllocationSlider variant="console" />
         </div>
 
         <div data-tour="mc-privacy" style={{ marginBottom: "2.5rem" }}>

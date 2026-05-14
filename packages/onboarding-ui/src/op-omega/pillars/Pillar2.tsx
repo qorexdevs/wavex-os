@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import { Card, H2, P } from "../components/primitives";
+import { AllocationSlider } from "../../components/AllocationSlider";
 
 type Plan = "max_20x" | "max_5x" | "api_only" | "other";
 
@@ -208,6 +209,14 @@ export function Pillar2({ companyId, initial, onComplete }: Props) {
             <div className="text-dim" style={{ whiteSpace: "pre-wrap" }}>{fixHint}</div>
           </div>
         )}
+      </Card>
+
+      {/* Claude Max allocation — set the swarm-vs-Pool-A split here as a
+          default; the operator can re-tune it live in Mission Control
+          once the fleet is running. Only meaningful in local (oauth)
+          mode where the operator's own Max plan is the inference source. */}
+      <Card>
+        <AllocationSlider variant="wizard" />
       </Card>
 
       <div className="nav-buttons">
