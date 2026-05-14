@@ -20,6 +20,7 @@ import {
   type SubscriptionFile,
 } from "../billing/subscription-store.js";
 import { ensureLiaisonAgent } from "../bridge/paperclip-liaison-spawn.js";
+import { ensureGitEngineerAgent } from "../bridge/paperclip-git-engineer-spawn.js";
 
 // Operators set these in their local .env. No defaults — downstream forks
 // must point at their OWN Supabase project, not whatever was here when
@@ -181,6 +182,65 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return reply.code(503).send({ error: "liaison_spawn_failed", message });
+    }
+  });
+
+  // Phase 9 — ensure the customer's git-engineer agent exists, but ONLY when
+  // they have an active `code-engineer-v1` Expert Agent hire (the Git Engineer
+  // exists to action that expert's code_change / db_migration proposals).
+  // Idempotent. Same call sites / cadence as ensure-liaison.
+  app.post("/api/billing/ensure-git-engineer", async (_req, reply) => {
+    const sub = await readLocalSubscription();
+    if (!sub) {
+      return reply.send({ git_engineer: null, reason: "no_local_subscription" });
+    }
+    if (!SUPABASE_URL || !SUPABASE_ANON) {
+      return reply.code(503).send({ error: "supabase_not_configured" });
+    }
+
+    const url = `${SUPABASE_URL}/rest/v1/wavex_os/hired_expert_agents?subscription_id=eq.${sub.subscription_id}&status=eq.active&select=id,catalog_id`;
+    const resp = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
+    });
+    if (!resp.ok) {
+      return reply.code(503).send({ error: "supabase_query_failed", status: resp.status });
+    }
+    const hires = (await resp.json()) as Array<{ id: string; catalog_id: string }>;
+    const hasCodeEngineer = hires.some((h) => h.catalog_id === "code-engineer-v1");
+    if (!hasCodeEngineer) {
+      // No code-engineer-v1 hire → nothing for a Git Engineer to do yet.
+      return reply.send({ git_engineer: null, reason: "no_code_engineer_hire" });
+    }
+
+    const paperclipUrl = process.env.PAPERCLIP_HANDOFF_URL?.replace(/\/+$/, "") ?? null;
+    if (!paperclipUrl) {
+      return reply.send({
+        git_engineer: null,
+        reason: "paperclip_not_configured",
+        note: "PAPERCLIP_HANDOFF_URL not set — Git Engineer cannot spawn into a Paperclip company that doesn't exist",
+      });
+    }
+
+    try {
+      const result = await ensureGitEngineerAgent();
+      if (result.status === "no_company_mapping") {
+        return reply.send({
+          git_engineer: null,
+          reason: result.reason ?? "no_company_mapping",
+        });
+      }
+      return reply.send({
+        git_engineer: {
+          status: result.status,
+          paperclip_agent_id: result.paperclipAgentId,
+          paperclip_company_id: result.paperclipCompanyId,
+          wavex_company_id: result.wavexCompanyId,
+          ...(result.reason ? { note: result.reason } : {}),
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(503).send({ error: "git_engineer_spawn_failed", message });
     }
   });
 }
