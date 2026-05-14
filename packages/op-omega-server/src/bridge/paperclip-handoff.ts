@@ -35,6 +35,94 @@ interface SwarmAgentEntry {
   display_name?: string;
   tier?: number;
   adapter?: string;
+  /** Company-specific customization line written by the swarm phase —
+   *  e.g. "Drives Linear's product roadmap across performance + AI agent
+   *  integrations". Injected into each agent's CONTEXT.md so the agent
+   *  knows what company it's working for, not just its generic role. */
+  skill_overlay?: string;
+  department?: string;
+  level?: string;
+  budget_monthly_usd?: number;
+  heartbeat?: string;
+  owned_kpi_ids?: string[];
+}
+
+/** Shared company-context block — same for every agent in the fleet.
+ *  Built once per handoff from the finalized manifest's pillar_1 + goal. */
+function buildCompanyContextBlock(manifest: unknown): string {
+  const m = manifest as {
+    pillar_responses?: { pillar_1?: Record<string, unknown> };
+    goal?: { kpiId?: string; current?: number; target?: number; days?: number };
+    meta_goal?: string;
+    imprint_summary?: string;
+  };
+  const p1 = m.pillar_responses?.pillar_1 ?? {};
+  const goal = m.goal ?? {};
+  const lines: string[] = [
+    "# Company Context",
+    "",
+    "_This file is injected by the wavex-os handoff bridge. It tells you which",
+    "company you work for and what the fleet is driving toward. Your generic",
+    "role skills are in AGENTS.md — this is the company-specific overlay._",
+    "",
+    `**Company:** ${(p1.org_name as string) ?? "(unnamed)"}`,
+    "",
+    `**What the company does:** ${(p1.company_context as string) ?? "n/a"}`,
+    "",
+    `**Ideal customer:** ${(p1.ideal_customer_profile as string) ?? "n/a"}`,
+    "",
+    `**Differentiator (hypothesis):** ${(p1.differentiator_hypothesis as string) ?? "n/a"}`,
+    "",
+    `**Primary friction (hypothesis):** ${(p1.primary_friction_hypothesis as string) ?? "n/a"}`,
+    "",
+    `**Competitive position:** ${(p1.competitive_position as string) ?? "n/a"}`,
+    "",
+    "## The goal the whole fleet is driving",
+    "",
+    goal.kpiId
+      ? `**${goal.kpiId}**: ${goal.current ?? "?"} → ${goal.target ?? "?"} over ${goal.days ?? "?"} days`
+      : "_No primary KPI set on the manifest._",
+  ];
+  if (m.meta_goal) {
+    lines.push("", `**Meta goal:** ${m.meta_goal}`);
+  }
+  if (m.imprint_summary) {
+    lines.push("", "## Onboarding imprint", "", m.imprint_summary);
+  }
+  return lines.join("\n");
+}
+
+/** Per-agent CONTEXT.md = shared company block + this agent's customization
+ *  (skill_overlay, department/level, who it reports to, owned KPIs). */
+function buildAgentContextMd(
+  companyBlock: string,
+  slot: string,
+  entry: SwarmAgentEntry,
+): string {
+  const lines: string[] = [companyBlock, "", "---", "", `## Your role in this fleet`, ""];
+  lines.push(`**Slot:** \`${slot}\``);
+  if (entry.department) lines.push(`**Department:** ${entry.department}`);
+  if (entry.level) lines.push(`**Level:** ${entry.level}`);
+  if (entry.reports_to) lines.push(`**Reports to:** \`${entry.reports_to}\``);
+  if (typeof entry.budget_monthly_usd === "number") {
+    lines.push(`**Monthly inference budget:** $${entry.budget_monthly_usd}`);
+  }
+  if (entry.owned_kpi_ids && entry.owned_kpi_ids.length > 0) {
+    lines.push(`**KPIs you own:** ${entry.owned_kpi_ids.join(", ")}`);
+  }
+  if (entry.skill_overlay) {
+    lines.push(
+      "",
+      "## Your company-specific mandate",
+      "",
+      entry.skill_overlay,
+      "",
+      "_This mandate was written for THIS company during onboarding. When it",
+      "conflicts with your generic role skills, the mandate wins — it reflects",
+      "what the operator actually hired this fleet to do._",
+    );
+  }
+  return lines.join("\n");
 }
 
 export interface HandoffReport {
@@ -312,6 +400,7 @@ async function hireOne(
   entry: SwarmAgentEntry,
   reportsToId: string | null,
   bundleMd: string,
+  contextMd: string,
 ): Promise<{ agentId: string; status: string }> {
   const { role, orig } = mapRoleToPaperclipEnum(slot);
   const name = humanNameForSlot(slot, entry.display_name);
@@ -336,7 +425,10 @@ async function hireOne(
         CLAUDE_CONFIG_DIR: { type: "plain", value: process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME}/.claude` },
       },
     },
-    instructionsBundle: { files: { "AGENTS.md": bundleMd } },
+    // AGENTS.md = generic role skills; CONTEXT.md = company-specific overlay
+    // (company context + this agent's skill_overlay mandate). Both land in
+    // the agent's instructions dir so it knows its role AND its company.
+    instructionsBundle: { files: { "AGENTS.md": bundleMd, "CONTEXT.md": contextMd } },
     runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot) },
   };
   if (reportsToId) payload.reportsTo = reportsToId;
@@ -437,6 +529,11 @@ export async function handoffToPaperclip(
     (manifest as unknown as { agents?: Record<string, SwarmAgentEntry> }).agents ??
     {};
 
+  // Company-context block — built once, shared verbatim across every agent's
+  // CONTEXT.md. Per-agent customization (skill_overlay etc.) is appended
+  // per-slot inside the hire loop below.
+  const companyContextBlock = buildCompanyContextBlock(manifest);
+
   // Track slot -> paperclip agentId for reports_to resolution
   const slotToPaperclipId: Record<string, string> = { ...(existing?.agents ?? {}) };
 
@@ -525,10 +622,12 @@ export async function handoffToPaperclip(
     const bundleMd = await readAgentBundle(bundleRole, repoRoot)
       ?? await readAgentBundle("chief-of-staff", repoRoot)
       ?? `# ${slot}\n\nPlaceholder — bundle file missing.`;
+    // CONTEXT.md = shared company block + this agent's skill_overlay mandate.
+    const contextMd = buildAgentContextMd(companyContextBlock, slot, entry);
     const reportsToSlot = entry.reports_to ?? null;
     const reportsToId = reportsToSlot ? slotToPaperclipId[reportsToSlot] ?? null : null;
     try {
-      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd);
+      const out = await hireOne(paperclipUrl, paperclipCompanyId, slot, entry, reportsToId, bundleMd, contextMd);
       slotToPaperclipId[slot] = out.agentId;
       report.created.push({ slot, agentId: out.agentId, status: out.status });
       completed += 1;
