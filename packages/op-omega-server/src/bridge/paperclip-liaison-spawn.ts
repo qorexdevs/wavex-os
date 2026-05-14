@@ -115,6 +115,27 @@ async function readLiaisonBundle(): Promise<string | null> {
   return parts.length > 0 ? parts.join("") : null;
 }
 
+/** Phase 1 redundancy skill — injected alongside the frozen wavex-liaison
+ *  template so the template itself is never modified (frozen path). Tells the
+ *  Liaison to push instance_health every heartbeat + fleet_log_synthesis every
+ *  4h. See docs/REDUNDANCY_ARCHITECTURE.md + OPERATIONAL_LAYER.md §3. */
+async function readHealthPushSkill(): Promise<string | null> {
+  const path = join(
+    resolveRepoRoot(),
+    "packages",
+    "op-omega-server",
+    "src",
+    "bridge",
+    "liaison-ext",
+    "HEALTH_PUSH.md",
+  );
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
   const paperclipUrl = process.env.PAPERCLIP_HANDOFF_URL?.replace(/\/+$/, "");
   if (!paperclipUrl) {
@@ -147,6 +168,9 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
       reason: "wavex-liaison agent template missing on disk",
     };
   }
+  // Non-fatal if missing — the Liaison still works for digests/injections;
+  // it just won't push health until the skill file is present.
+  const healthPushMd = await readHealthPushSkill();
 
   // Paperclip role enum has no 'liaison' value; "general" is the closest
   // fit (matches what paperclip-handoff.ts uses for non-enum roles).
@@ -159,21 +183,36 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
       "Builds encrypted fleet digests, polls injection queue, decrypts Pool-C-signed directives, and files them into local Paperclip. Mediates the cross-tenant boundary defined by F.4.",
     adapterType: "claude_local",
     adapterConfig: {
-      command: process.env.PAPERCLIP_HANDOFF_WRAPPER ?? "claude",
+      // Auth wrapper — see paperclip-handoff.ts + docs/PAPERCLIP_AUTH_FIX.md.
+      // The Liaison is the customer's lifeline; it MUST NOT carry the
+      // CLAUDE_CONFIG_DIR poison. Wrapper unsets it + guarantees USER/LOGNAME.
+      command: process.env.PAPERCLIP_HANDOFF_WRAPPER
+        ?? join(resolveRepoRoot(), "scripts", "ops", "claude-keychain-wrapper.sh"),
       model: "claude-sonnet-4-6",
       dangerouslySkipPermissions: true,
       timeoutSec: 600,
       graceSec: 30,
       env: {
         HOME: { type: "plain", value: process.env.HOME ?? "" },
-        CLAUDE_CONFIG_DIR: {
-          type: "plain",
-          value: process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME}/.claude`,
-        },
+        USER: { type: "plain", value: process.env.USER ?? process.env.LOGNAME ?? "" },
+        LOGNAME: { type: "plain", value: process.env.LOGNAME ?? process.env.USER ?? "" },
       },
     },
-    instructionsBundle: { files: { "AGENTS.md": bundleMd } },
-    runtimeConfig: { heartbeat: { enabled: true, intervalSec: 1800, wakeOnDemand: true } },
+    // AGENTS.md = the frozen wavex-liaison template (digest/inject skills).
+    // HEALTH_PUSH.md = Phase 1 redundancy skill, injected here so the frozen
+    // template is never modified (same pattern as paperclip-handoff's
+    // CONTEXT.md/WORKFLOW.md alongside AGENTS.md).
+    instructionsBundle: {
+      files: {
+        "AGENTS.md": bundleMd,
+        ...(healthPushMd ? { "HEALTH_PUSH.md": healthPushMd } : {}),
+      },
+    },
+    // 10-min heartbeat: tight enough that a paid fleet going down is caught
+    // fast (the watchdog treats >30min stale as `down`), loose enough that the
+    // per-wake instance_health push stays cheap in tokens. The 4h
+    // fleet_log_synthesis self-gates inside HEALTH_PUSH.md.
+    runtimeConfig: { heartbeat: { enabled: true, intervalSec: 600, wakeOnDemand: true } },
   };
 
   const hireResp = await fetch(
