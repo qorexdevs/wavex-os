@@ -1,0 +1,25 @@
+{
+  "name": "@wavex-os/cloud-client",
+  "version": "0.1.0",
+  "description": "HTTP clients for the WaveX OS Console edge functions: os-link-device, os-claim-device, os-device-token, os-device-refresh, os-inference, os-spend-intent. Reads/writes the device token bundle at ~/.wavex-os/device-token.json. Imported by Liaison + future tier-router + the wavex-os login CLI.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./token-store": "./src/token-store.ts",
+    "./inference": "./src/inference.ts",
+    "./spend-intent": "./src/spend-intent.ts",
+    "./login": "./src/login.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wavex-os/auth-shim": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
+  }
+}
