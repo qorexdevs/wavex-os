@@ -176,6 +176,7 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
   const healthPushMd = await readLiaisonExtSkill("HEALTH_PUSH.md");
   const injectionOutcomesMd = await readLiaisonExtSkill("INJECTION_OUTCOMES.md");
   const deliverableLedgerMd = await readLiaisonExtSkill("DELIVERABLE_LEDGER.md");
+  const codeInjectionRoutingMd = await readLiaisonExtSkill("CODE_INJECTION_ROUTING.md");
 
   // Paperclip role enum has no 'liaison' value; "general" is the closest
   // fit (matches what paperclip-handoff.ts uses for non-enum roles).
@@ -214,6 +215,7 @@ export async function ensureLiaisonAgent(): Promise<LiaisonSpawnResult> {
         ...(healthPushMd ? { "HEALTH_PUSH.md": healthPushMd } : {}),
         ...(injectionOutcomesMd ? { "INJECTION_OUTCOMES.md": injectionOutcomesMd } : {}),
         ...(deliverableLedgerMd ? { "DELIVERABLE_LEDGER.md": deliverableLedgerMd } : {}),
+        ...(codeInjectionRoutingMd ? { "CODE_INJECTION_ROUTING.md": codeInjectionRoutingMd } : {}),
       },
     },
     // 10-min heartbeat: tight enough that a paid fleet going down is caught
