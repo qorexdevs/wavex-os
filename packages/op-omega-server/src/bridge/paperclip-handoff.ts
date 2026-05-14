@@ -485,17 +485,26 @@ async function hireOne(
     capabilities: `Vendored from wavex-os op-omega manifest. Original slot=${slot}, template=${entry.template_id ?? orig}.`,
     adapterType: "claude_local",
     adapterConfig: {
-      // Use the company's per-instance auth wrapper if available — otherwise
-      // bare `claude` hits Anthropic without OAuth and 429s on every request.
-      // The wrapper handles macOS keychain read + Sonnet fallback on usage-limit.
-      command: process.env.PAPERCLIP_HANDOFF_WRAPPER ?? "claude",
+      // Auth wrapper — NEVER bare `claude`. Root cause (2026-05-14 live demo):
+      // claude v2.1.x with CLAUDE_CONFIG_DIR explicitly set reads
+      // <dir>/.credentials.json and skips the macOS keychain entirely, so
+      // every keychain-auth box reports "Not logged in". The wrapper unsets
+      // CLAUDE_CONFIG_DIR, drops an empty ANTHROPIC_API_KEY, and guarantees
+      // USER/LOGNAME so the keychain is reachable from launchd spawns.
+      // PAPERCLIP_HANDOFF_WRAPPER lets an operator point at a per-box wrapper;
+      // the repo-versioned default is the safe fallback for every fresh fleet.
+      command: process.env.PAPERCLIP_HANDOFF_WRAPPER
+        ?? join(resolveRepoRoot(), "scripts", "ops", "claude-keychain-wrapper.sh"),
       model: "claude-sonnet-4-6",
       dangerouslySkipPermissions: true,
       timeoutSec: 600,
       graceSec: 30,
+      // Deliberately do NOT pass CLAUDE_CONFIG_DIR — see above. HOME + USER +
+      // LOGNAME are the minimum claude needs to find the login keychain.
       env: {
         HOME: { type: "plain", value: process.env.HOME ?? "" },
-        CLAUDE_CONFIG_DIR: { type: "plain", value: process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME}/.claude` },
+        USER: { type: "plain", value: process.env.USER ?? process.env.LOGNAME ?? "" },
+        LOGNAME: { type: "plain", value: process.env.LOGNAME ?? process.env.USER ?? "" },
       },
     },
     // AGENTS.md = generic role skills; CONTEXT.md = company-specific overlay
