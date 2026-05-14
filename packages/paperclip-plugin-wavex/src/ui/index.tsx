@@ -73,6 +73,131 @@ export function ExpertAgentsStatusWidget(_: PluginWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard widget — recent deliverables: accountability + token cost
+// ---------------------------------------------------------------------------
+
+interface Deliverable {
+  id: string;
+  assignedAgent: string | null;
+  planRef: string | null;
+  expectedResponse: string | null;
+  kind: string;
+  status: string;
+  issueId: string | null;
+  totalTokens: number;
+}
+
+interface DeliverablesResponse {
+  deliverables: Deliverable[];
+  source: string;
+}
+
+const STATUS_TINT: Record<string, string> = {
+  open: "#8a8f98",
+  in_progress: "#00d4ff",
+  delivered: "#ffd166",
+  verified: "#4ade80",
+  failed: "#ff6b6b",
+};
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tint = STATUS_TINT[status] ?? "#8a8f98";
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.03em",
+        textTransform: "uppercase",
+        padding: "2px 6px",
+        borderRadius: 4,
+        color: tint,
+        border: `1px solid color-mix(in srgb, ${tint} 40%, transparent)`,
+        background: `color-mix(in srgb, ${tint} 12%, transparent)`,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+export function DeliverablesWidget(_: PluginWidgetProps) {
+  const { data, loading, error } = usePluginData<DeliverablesResponse>(
+    "deliverables-list",
+    {},
+  );
+
+  if (loading) return <SkeletonCard label="WaveX Deliverables" />;
+  if (error) {
+    return (
+      <Card label="WaveX Deliverables">
+        <div style={{ color: "#ff6b6b" }}>
+          Couldn't reach WaveX: {error.message}
+        </div>
+      </Card>
+    );
+  }
+  if (!data || data.deliverables.length === 0) {
+    return (
+      <Card label="WaveX Deliverables">
+        <div style={{ opacity: 0.7 }}>
+          {data?.source === "no-supabase-config"
+            ? "Configure Supabase URL + publishable key in WaveX Preferences to enable this widget."
+            : "No deliverables recorded yet."}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card label="WaveX Deliverables">
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <tbody>
+          {data.deliverables.map((d) => (
+            <tr key={d.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <td style={{ padding: "8px 0", verticalAlign: "top" }}>
+                <div style={{ fontWeight: 500 }}>
+                  {d.assignedAgent ?? "unassigned"}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                  {truncate(d.planRef ?? "—", 24)}{" "}
+                  <span style={{ opacity: 0.5 }}>→</span>{" "}
+                  {truncate(d.expectedResponse ?? "—", 48)}
+                </div>
+              </td>
+              <td
+                style={{
+                  padding: "8px 0 8px 8px",
+                  textAlign: "right",
+                  verticalAlign: "top",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <StatusPill status={d.status} />
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                  {formatTokens(d.totalTokens)} tok
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar — current company's inception status
 // ---------------------------------------------------------------------------
 

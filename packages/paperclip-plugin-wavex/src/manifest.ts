@@ -19,6 +19,7 @@ const PLUGIN_VERSION = "0.1.0";
 const EXPERT_AGENTS_SLOT = "wavex-expert-agents-status";
 const INCEPTION_STATUS_SLOT = "wavex-inception-status";
 const WAVEX_SETTINGS_SLOT = "wavex-preferences";
+const DELIVERABLES_SLOT = "wavex-deliverables";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -49,6 +50,12 @@ const manifest: PaperclipPluginManifestV1 = {
         id: EXPERT_AGENTS_SLOT,
         displayName: "WaveX Expert Agents",
         exportName: "ExpertAgentsStatusWidget",
+      },
+      {
+        type: "dashboardWidget",
+        id: DELIVERABLES_SLOT,
+        displayName: "WaveX Deliverables",
+        exportName: "DeliverablesWidget",
       },
       {
         type: "sidebar",

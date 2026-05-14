@@ -1,9 +1,10 @@
 /**
  * WaveX plugin worker.
  *
- * Registers three data handlers consumed by the UI bundles:
+ * Registers four data handlers consumed by the UI bundles:
  *
  *   - expert-agents-list  → { agents: Array<{id, displayName, activeHires}> }
+ *   - deliverables-list   → { deliverables: Array<{assignedAgent, planRef, ...}> }
  *   - inception-status    → { agentsTotal, agentsReady, finalizedAt, goalKpiId }
  *   - subscription-info   → { tier, status, currentPeriodEnd, expertAgentsHired }
  *
@@ -75,6 +76,62 @@ const plugin = definePlugin({
       } catch (err) {
         ctx.logger.error("expert-agents-list handler crashed", { err: String(err) });
         return { agents: [], source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // deliverables-list — recent deliverable_ledger rows from Supabase RPC
+    //   (falls back to an empty list when supabase config is absent).
+    // -------------------------------------------------------------------
+    ctx.data.register("deliverables-list", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      if (!cfg?.supabaseUrl || !cfg.supabasePublishableKey) {
+        return { deliverables: [], source: "no-supabase-config" };
+      }
+      try {
+        const r = await ctx.http.fetch(
+          `${cfg.supabaseUrl}/rest/v1/rpc/wavex_os_ops_deliverable_summary`,
+          {
+            method: "POST",
+            headers: {
+              apikey: cfg.supabasePublishableKey,
+              Authorization: `Bearer ${cfg.supabasePublishableKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+        );
+        if (!r.ok) {
+          ctx.logger.warn("ops_deliverable_summary RPC failed", { status: r.status });
+          return { deliverables: [], source: "rpc-failed", status: r.status };
+        }
+        type Row = {
+          id: string;
+          assigned_agent: string | null;
+          plan_ref: string | null;
+          expected_response: string | null;
+          kind: string;
+          status: string;
+          issue_id: string | null;
+          total_tokens: number;
+        };
+        const data = (await r.json()) as Row[];
+        return {
+          deliverables: data.map((row) => ({
+            id: row.id,
+            assignedAgent: row.assigned_agent,
+            planRef: row.plan_ref,
+            expectedResponse: row.expected_response,
+            kind: row.kind,
+            status: row.status,
+            issueId: row.issue_id,
+            totalTokens: row.total_tokens,
+          })),
+          source: "supabase",
+        };
+      } catch (err) {
+        ctx.logger.error("deliverables-list handler crashed", { err: String(err) });
+        return { deliverables: [], source: "exception", error: String(err) };
       }
     });
 
