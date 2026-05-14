@@ -134,6 +134,36 @@ Without those env vars, activate writes to the wavex DB only — the agents exis
 
 > **`npx wavex-os init`** ships from `apps/installer/` — Phase F will publish it to npm. For now, `pnpm dev` is the supported path.
 
+### Pair this machine with the cloud console
+
+The cloud console at [wavexcard.com/os](https://wavexcard.com/os) shows a
+device-pairing step that asks you to run a terminal command. That command is
+`wavex-os login`.
+
+`install.sh` / `install.ps1` put the `wavex-os` command on your PATH (symlinked
+into `~/.local/bin`). If you cloned the repo manually, link it once:
+
+```bash
+pnpm wavex:link        # pnpm link --global of the wavex-os bin
+# …or run it without linking:
+pnpm wavex:os login    # equivalent to `wavex-os login`
+```
+
+Then:
+
+```bash
+wavex-os login         # opens the browser, prints a pairing code, polls until claimed
+wavex-os status        # show local pairing state (add --refresh to rotate the token)
+wavex-os logout        # remove the local device token
+```
+
+`wavex-os login` runs the full device-pairing flow: it `POST`s `os-link-device`,
+opens `wavexcard.com/os/link?code=…`, polls `os-device-token` until you click
+**Pair this device** in the browser, then writes the device JWT + refresh token
+to `~/.wavex-os/device-token.json` (chmod 600). After that the local instance is
+synced to the console. `init` / `doctor` / `audit` / `reset` are delegated to the
+`wavex-os-installer` bin, so a single `wavex-os` command covers the whole surface.
+
 ---
 
 ## What's in the box

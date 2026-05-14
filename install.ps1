@@ -84,6 +84,14 @@ Write-Note "building vendored op-omega plugins (~30 s)..."
 pnpm -r --filter "./vendor/op-omega/*" build
 Write-Ok "vendored plugins built"
 
+# Compile @wavex-os/cloud-client (+ its @wavex-os/auth-shim dep) so the
+# `wavex-os` bin has a runnable dist\cli.js. `pnpm install` already runs
+# each package's `prepare` script, but we do this explicitly so the bin
+# is guaranteed usable even if install ran with --ignore-scripts.
+Write-Note "building wavex-os CLI..."
+pnpm --filter @wavex-os/auth-shim --filter @wavex-os/cloud-client build
+Write-Ok "wavex-os CLI built"
+
 # ── 4. Configure inference + start dev server ────────────────────────────
 Write-Bold "[4/4] Configuring inference + starting dev server"
 
@@ -106,10 +114,31 @@ WAVEX_INFERENCE_HUB_URL=$HubUrl
   Write-Ok "$InferenceEnv already present - keeping existing config"
 }
 
+# Put `wavex-os` on PATH so `wavex-os login` (cloud console device
+# pairing) works from any shell. We write a small .cmd shim to a
+# user-writable bin dir and append it to the user PATH.
+$WavexBinSrc = Join-Path $WavexOsDir "packages\cloud-client\bin\wavex-os.mjs"
+if (Test-Path $WavexBinSrc) {
+  $LinkDir = Join-Path $HOME ".local\bin"
+  New-Item -ItemType Directory -Force -Path $LinkDir | Out-Null
+  $Shim = Join-Path $LinkDir "wavex-os.cmd"
+  "@echo off`r`nnode `"$WavexBinSrc`" %*" | Set-Content -Path $Shim -Encoding ASCII
+  Write-Ok "wrote wavex-os shim -> $Shim"
+  $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+  if ($userPath -notlike "*$LinkDir*") {
+    [Environment]::SetEnvironmentVariable("PATH", "$LinkDir;$userPath", "User")
+    Write-Warn "Added $LinkDir to your PATH. Open a NEW terminal for it to take effect."
+  }
+  Write-Note "Pair this machine with the console:  wavex-os login"
+} else {
+  Write-Warn "wavex-os bin not found at $WavexBinSrc - skipping PATH link"
+}
+
 Write-Note "Vite UI on http://localhost:5173"
 Write-Note "mock-core API on http://localhost:3101"
 Write-Note ""
 Write-Note "Press Ctrl+C to stop. Re-run with: cd $WavexOsDir; pnpm dev"
+Write-Note "Pair with the console anytime with: wavex-os login"
 Write-Note ""
 
 # Open browser once Vite is up (background)

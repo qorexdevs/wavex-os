@@ -95,6 +95,14 @@ note "building vendored op-omega plugins (~30 s)…"
 pnpm -r --filter "./vendor/op-omega/*" build
 ok "vendored plugins built"
 
+# Compile @wavex-os/cloud-client (+ its @wavex-os/auth-shim dep) so the
+# `wavex-os` bin has a runnable dist/cli.js. `pnpm install` already runs
+# each package's `prepare` script, but we do this explicitly so the bin
+# is guaranteed usable even if install ran with --ignore-scripts.
+note "building wavex-os CLI…"
+pnpm --filter @wavex-os/auth-shim --filter @wavex-os/cloud-client build
+ok "wavex-os CLI built"
+
 bold "[4/4] Configuring inference + starting dev server"
 
 # Default: route Pool A (wizard's T2 enrichment) through the WaveX-hosted
@@ -117,10 +125,41 @@ else
   ok "$INFERENCE_ENV already present — keeping existing config"
 fi
 
+# Put the `wavex-os` command on PATH so `wavex-os login` (device pairing
+# with the cloud console) and the installer subcommands work from any
+# shell. The bin lives in the @wavex-os/cloud-client package; we symlink
+# it into a user-writable bin dir rather than touching system paths.
+WAVEX_BIN_SRC="$WAVEX_OS_DIR/packages/cloud-client/bin/wavex-os.mjs"
+if [ -f "$WAVEX_BIN_SRC" ]; then
+  chmod +x "$WAVEX_BIN_SRC" 2>/dev/null || true
+  LINK_DIR=""
+  for cand in "$HOME/.local/bin" "/usr/local/bin"; do
+    if [ -d "$cand" ] && [ -w "$cand" ]; then LINK_DIR="$cand"; break; fi
+  done
+  if [ -z "$LINK_DIR" ]; then
+    LINK_DIR="$HOME/.local/bin"
+    mkdir -p "$LINK_DIR"
+  fi
+  ln -sf "$WAVEX_BIN_SRC" "$LINK_DIR/wavex-os"
+  ok "linked wavex-os → $LINK_DIR/wavex-os"
+  case ":$PATH:" in
+    *":$LINK_DIR:"*) : ;;
+    *)
+      warn "$LINK_DIR is not on your PATH."
+      warn "Add it:  echo 'export PATH=\"$LINK_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+      warn "Until then, run the command as: $LINK_DIR/wavex-os login"
+      ;;
+  esac
+  note "Pair this machine with the console:  wavex-os login"
+else
+  warn "wavex-os bin not found at $WAVEX_BIN_SRC — skipping PATH link"
+fi
+
 note "Vite UI on http://localhost:5173"
 note "mock-core API on http://localhost:3101"
 note ""
 note "Press Ctrl+C to stop. Re-run with: cd $WAVEX_OS_DIR && pnpm dev"
+note "Pair with the console anytime with: wavex-os login"
 note ""
 
 # Open browser in background once Vite is up

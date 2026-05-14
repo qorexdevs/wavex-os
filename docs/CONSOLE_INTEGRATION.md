@@ -31,6 +31,14 @@ Requirements:
 
 ## Device pairing flow
 
+The `wavex-os` command is the bin exported by `@wavex-os/cloud-client`
+(`packages/cloud-client/bin/wavex-os.mjs` → `packages/cloud-client/src/cli.ts`).
+`install.sh` / `install.ps1` symlink it onto PATH (`~/.local/bin/wavex-os`); in a
+dev checkout, `pnpm wavex:link` (or `pnpm wavex:os login`) does the same job.
+`apps/installer` is a frozen path, so its bin still only owns `init`/`doctor`/
+`audit`/`reset` — the `wavex-os` bin owns `login`/`status`/`logout` and forwards
+the installer's subcommands to `wavex-os-installer`.
+
 ```
 local CLI                            cloud edge fns                 user browser
 ─────────                            ──────────────                 ────────────

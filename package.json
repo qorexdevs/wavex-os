@@ -36,7 +36,9 @@
     "diffeq:suite": "pnpm --filter @op-omega/plugin-onboarding test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "wavex:login": "node_modules/.pnpm/node_modules/.bin/tsx scripts/wavex-login.mjs",
+    "wavex:login": "node packages/cloud-client/bin/wavex-os.mjs login",
+    "wavex:os": "node packages/cloud-client/bin/wavex-os.mjs",
+    "wavex:link": "cd packages/cloud-client && pnpm link --global && echo 'wavex-os linked globally — run: wavex-os login'",
     "wavex:cloud-client:smoke": "node_modules/.pnpm/node_modules/.bin/tsx packages/cloud-client/scripts/smoke-offline.mjs"
   },
   "packageManager": "pnpm@8.15.0",

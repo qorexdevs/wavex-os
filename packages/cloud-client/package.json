@@ -5,15 +5,27 @@
   "license": "MIT",
   "private": true,
   "type": "module",
+  "bin": {
+    "wavex-os": "./bin/wavex-os.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./token-store": "./src/token-store.ts",
     "./inference": "./src/inference.ts",
     "./spend-intent": "./src/spend-intent.ts",
-    "./login": "./src/login.ts"
+    "./login": "./src/login.ts",
+    "./cli": "./src/cli.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "wavex-os": "node ./bin/wavex-os.mjs"
   },
   "dependencies": {
     "@wavex-os/auth-shim": "workspace:*"

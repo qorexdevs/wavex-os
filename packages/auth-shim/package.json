@@ -5,10 +5,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "wavex-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
   },
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "test": "vitest run"
   },
   "devDependencies": {
