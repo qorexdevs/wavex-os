@@ -30,6 +30,32 @@ async function ensureMigrations(): Promise<void> {
   migrationsRun = true;
 }
 
+/** Best-effort Telegram alert when a company activates but ignition leaves
+ *  it planning-orphaned. The operator MUST know — the fleet looks live but
+ *  has no goal / roadmap / kickoff, so the agents wake with nothing to
+ *  drive. This used to slip by as a soft "deferred" status. Never throws. */
+async function alertIgnitionOrphaned(companyId: string, detail: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN ?? process.env.WAVEX_OPS_TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TELEGRAM_CHAT_ID ?? process.env.WAVEX_OPS_TELEGRAM_CHAT_ID;
+  if (!token || !chat) return;
+  const text = [
+    `⚠️ *WaveX — ignition orphaned*`,
+    `Company \`${companyId}\` activated and agents were hired — but ignition did not plan it.`,
+    `The fleet has no goal / roadmap / kickoff. Detail: ${detail}`,
+    `Re-run planning: POST /api/instance/${companyId}/ignite`,
+  ].join("\n");
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chat,
+      text,
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+    }),
+  });
+}
+
 export function registerActivateRoute(app: FastifyInstance): void {
   // GET /api/instance/:companyId/handoff-status — polled by ActivateProgress
   // during /activate so the UI can paint per-slot hires in real time.
@@ -107,8 +133,11 @@ export function registerActivateRoute(app: FastifyInstance): void {
         errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
       }));
 
-      // Phase G — Ignition. Best-effort; does not fail activate. See
-      // docs/IGNITION.md for the design.
+      // Phase G — Ignition. Does NOT fail activate (the agents are hired
+      // and recoverable) — but a failed/deferred ignition leaves the fleet
+      // ORPHAN FROM PLANNING: no goal object, no seeded roadmap, no
+      // kickoff. That used to slip by silently as a soft "deferred". It
+      // must not. See docs/IGNITION.md.
       const ignition = await ignite(manifest, companyId, handoff).catch((e) => ({
         status: "deferred" as const,
         agents_working: 0,
@@ -119,6 +148,20 @@ export function registerActivateRoute(app: FastifyInstance): void {
         ignition_state_path: "",
       }));
 
+      // A planned fleet HAS a goal object. No goal_id (or any errors) means
+      // the company is planning-orphaned — surface it LOUDLY, never silently.
+      const ignitionOrphaned =
+        !ignition.goal_id || (ignition.errors?.length ?? 0) > 0;
+      if (ignitionOrphaned) {
+        const detail =
+          (ignition.errors ?? []).map((er) => `${er.step}: ${er.message}`).join("; ") ||
+          "ignition produced no goal object";
+        console.error(
+          `[activate] IGNITION ORPHANED — company ${companyId}: agents hired but the fleet is unplanned. ${detail}`,
+        );
+        await alertIgnitionOrphaned(companyId, detail).catch(() => {});
+      }
+
       return {
         ok: true,
         inserted: { companies: result.companies, agents: result.agents },
@@ -126,6 +169,7 @@ export function registerActivateRoute(app: FastifyInstance): void {
         sha256: newHash,
         paperclipHandoff: handoff,
         ignition,
+        ignition_orphaned: ignitionOrphaned,
       };
     } catch (e) {
       return reply.status(500).send({

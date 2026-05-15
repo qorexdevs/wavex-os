@@ -381,19 +381,40 @@ export async function ignite(
   // idempotencyKey, forceFreshSession }), so the context was silently
   // dropped by the validator. Now the agent's first run sees the goal,
   // the seeded issues, and the roadmap it's expected to drive.
+  // The kickoff is the Kernel's FOUNDING PLANNING DIRECTIVE — not a bare
+  // wake. It hands the CEO + Chief of Staff the manifest's goal, the seeded
+  // work, and the roster, and tells them to convert the manifest into an
+  // executable task roadmap. Without this run the fleet is "orphan from
+  // planning": agents wake with nothing concrete to drive and just chatter.
+  const g = (manifest as { goal?: { kpiId?: string; current?: number; target?: number; days?: number } }).goal;
+  const goalLine = g?.kpiId
+    ? `GOAL: move ${g.kpiId} from ${g.current ?? "?"} to ${g.target ?? "?"} within ${g.days ?? "?"} days.`
+    : `GOAL: not set in the manifest — derive it from the company context and confirm it.`;
   const kickoffBrief = [
-    `INCEPTION KICKOFF — your fleet just went live.`,
-    goalId ? `Primary goal: ${goalId}` : `Primary goal: (not yet set on Paperclip)`,
+    `INCEPTION KICKOFF — your fleet just went live. You are the Kernel (CEO + Chief of Staff). This is your FOUNDING PLANNING RUN — the most important run this company will ever have.`,
+    ``,
+    goalLine,
+    goalId ? `Paperclip goal id: ${goalId}.` : `(Paperclip goal object not created yet — create/confirm it as step 0.)`,
+    ``,
+    `Your manifest is already on disk as CONTEXT.md (company + your mandate)`,
+    `and WORKFLOW.md (your heartbeat loop). Read them, then convert the`,
+    `manifest into an EXECUTABLE PLAN:`,
+    `  1. Decompose the goal into 3-5 KPI-targeted workstreams.`,
+    `  2. For each workstream: name the owning role + the supporting roles.`,
+    `  3. Sequence them — what unblocks what — and set the FIRST concrete`,
+    `     deliverable for each, each with a measurement (not a vibe).`,
+    `  4. Tell each role which tools / connectors to use for their work.`,
     createdIssues.length > 0
-      ? `Your first-cycle issues: ${createdIssues.join(", ")}`
-      : `No per-agent seed issues were created.`,
+      ? `  Fold your first-cycle seed issues into the plan: ${createdIssues.join(", ")}.`
+      : `  No per-agent seed issues exist yet — create them as part of the plan.`,
     roadmapCreated.length > 0
-      ? `Roadmap initiatives (cross-agent, you own coordination): ${roadmapCreated.join(", ")}`
-      : `No roadmap initiatives were seeded.`,
-    `Read your CONTEXT.md (company + your mandate) and WORKFLOW.md (your`,
-    `heartbeat loop), then start driving the goal. Break the roadmap`,
-    `initiatives into child issues and pull in the agents they name.`,
-  ].join(" ");
+      ? `  You own coordination of these roadmap initiatives: ${roadmapCreated.join(", ")} — break each into child issues and pull in the agents they name.`
+      : `  No roadmap initiatives were seeded — derive them from the manifest's bundle_workflows.`,
+    ``,
+    `OUTPUT of this run: the task roadmap, written as Paperclip issues with`,
+    `owners + measurements, so every agent's next heartbeat has concrete work`,
+    `aimed directly at the goal.`,
+  ].join("\n");
 
   if (paperclipCompanyId && PAPERCLIP_URL && state.steps.kickoff_probe.status === "pending") {
     const ceoId = slotToPaperclipId.get("ceo.orchestrator");
