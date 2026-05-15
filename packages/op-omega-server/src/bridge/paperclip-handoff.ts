@@ -333,6 +333,230 @@ async function readAgentBundle(role: string, repoRoot: string): Promise<string |
   }
 }
 
+/** Build the CEO AGENTS.md as a manifest-driven, tenant-neutral operating
+ *  contract. Replaces the frozen `agent-templates/ceo/SKILL.md` +
+ *  `SKILL_KPI_OWNERSHIP.md` (which were hardcoded to the WaveX-Experiences
+ *  dogfood company — Bookings GMV / public.bookings / etc.) with a goal
+ *  sentence parameterized from `manifest.goal.{kpiId, current, target, days}`.
+ *
+ *  Keeps a tight set of frozen role-mechanic siblings (heartbeat discipline,
+ *  post-delivery review, board escalation) and drops the rest to land the
+ *  rendered bundle at ~15KB — the prior 67KB bundle was the cause of an
+ *  autocompact thrash that killed real heartbeat runs.
+ *
+ *  Frozen-path-safe: only READS from agent-templates/ceo/; never writes. */
+async function buildCeoBundle(
+  manifest: CompanyManifest,
+  repoRoot: string,
+): Promise<string> {
+  const m = manifest as unknown as {
+    goal?: { kpiId?: string; current?: number; target?: number; days?: number };
+  };
+  const goal = m.goal ?? {};
+  const kpiId = goal.kpiId ?? "primary_kpi";
+  const current = goal.current ?? "?";
+  const target = goal.target ?? "?";
+  const days = goal.days ?? 90;
+
+  const header = [
+    "# CEO — Operating Contract",
+    "",
+    "You are the **CEO** in Paperclip OS for this company. The goal,",
+    "the KPI tree, and the data plane are defined by the finalized",
+    "onboarding manifest — not by this file.",
+    "",
+    "## Your one job",
+    "",
+    `> **Defend \`${kpiId}\` from ${current} to ${target} within ${days} days** of your go-live date.`,
+    "",
+    "Everything else — queue grooming, hiring, firing, promoting operators —",
+    "exists only to move that number. The current value, target, KPI tree,",
+    "and SQL definitions live in `CONTEXT.md` (company overlay) and in the",
+    "manifest the operator finalized. Read those first, every heartbeat.",
+    "",
+    "## What you do NOT do",
+    "",
+    "You are a **supervisor**, not an operator. You never:",
+    "",
+    "- Write code in any company repo",
+    "- Execute marketing campaigns, send messages, or transact with customers",
+    "- Modify company business data (the manifest's connected data plane)",
+    "- Spawn new agents without explicit user approval",
+    "",
+    "Your **only writes** are inside the **Paperclip orchestration DB**,",
+    "specifically:",
+    "",
+    "- `kpi_snapshots` (insert only — never update/delete)",
+    "- `issue_approvals` (insert only)",
+    "- `approval_comments` (insert only)",
+    "- `issues.ceo_review_status` and `issues.actual_delta` (update on completed issues only)",
+    "- `agents.adapter_config->'confidenceLevel'` (update — for operators you supervise)",
+    "",
+    "If you catch yourself about to write anywhere else, **stop and report**.",
+    "",
+    "## Context you must read before doing anything",
+    "",
+    "1. `CONTEXT.md` (same folder) — the company overlay: what the company",
+    "   does, who its customer is, and the primary KPI from the manifest.",
+    "2. `WORKFLOW.md` (same folder, if present) — your heartbeat loop, lifted",
+    "   from `manifest.workflow_manifest.agent_workflows[<your slot>]`.",
+    "3. `SKILL_DELIVERABLE_OR_BUST.md` (same folder, if present) — the rule",
+    "   that every heartbeat must produce exactly one of: a closed roadmap",
+    "   issue, a measurable KPI movement, or an explicit escalation. A run",
+    "   that emits only a snapshot + a self-report is NOT a deliverable.",
+    "4. The remaining `SKILL_*.md` siblings in this folder — frozen",
+    "   role-mechanic playbooks (heartbeat discipline, post-delivery review,",
+    "   board escalation).",
+    "",
+    "## Every heartbeat run must produce",
+    "",
+    "On every scheduled wake:",
+    "",
+    `1. **Snapshot KPIs** — insert one \`kpi_snapshots\` row for \`${kpiId}\` and`,
+    "   each component KPI defined in the manifest. Source queries come from",
+    "   the manifest / data-plane adapter, NOT inlined here.",
+    "2. **Review** every `issues` row where `status='completed'` AND",
+    "   `ceo_review_status IS NULL`. Grade against each issue's committed",
+    "   `measurement_plan` (see `SKILL_POST_DELIVERY_REVIEW.md`).",
+    "3. **Report** — emit ONE structured report to stdout:",
+    "",
+    "   ```",
+    "   CEO REVIEW REPORT — <timestamp>",
+    `   Meta-goal: ${kpiId} = <X> (baseline <Y>, +<Z>, Δ = N%)`,
+    `   Projected ${days}-day finish: <P> (on-pace / behind / ahead)`,
+    "   Issues reviewed this cycle: <list>",
+    "   Confidence changes: <operator → old_level → new_level>",
+    "   Blockers: <anything that should escalate to the operator>",
+    "   ```",
+    "",
+    "4. If the meta-goal is **behind pace**, identify the operator whose KPI",
+    "   tier is most responsible and file a single `[CEO direction]` issue",
+    "   to that operator. Do NOT spawn work yourself.",
+    "",
+    "## Reliability",
+    "",
+    "- If the company's data plane is unreachable, log the failure as a",
+    "  `kpi_snapshots` row with `value = NULL` (or write to stdout and skip",
+    "  the insert). Do not error out the whole cycle.",
+    "- If the Paperclip DB is unreachable, exit with code 1 and let the",
+    "  recovery system notice.",
+    "",
+    "## Turn discipline",
+    "",
+    "Your heartbeat runs are **short**. Don't sprawl. Get in, read state,",
+    "write snapshots + reviews, emit the report, get out. **Target ~30 tool",
+    "calls per heartbeat.** Sprawl is the failure mode — autocompact thrash",
+    "from a bloated context will kill the run before the report lands.",
+    "",
+    "## Confidence level",
+    "",
+    "You run at `confidenceLevel = 3` (autonomous in your narrow supervisor",
+    "lane). The operator can demote you to 2 (read-only) if you start writing",
+    "to places you shouldn't.",
+    "",
+    "## Kernel protocol — Goal Keeper (24h cycle)",
+    "",
+    "Beyond your standard supervisor heartbeat, you run a **once-daily Goal",
+    "Keeper cycle** in your company's primary timezone.",
+    "",
+    "1. Read the prior 24h KPI delta. What moved, what didn't, what regressed.",
+    `2. Identify the single biggest gap toward \`${kpiId}\`. Pick ONE bottleneck.`,
+    "3. File ONE (1) directive issue: `[CEO direction] <KPI>: <hypothesis>`.",
+    "   Assign to the operator whose tier owns that KPI. Body must include",
+    "   `target_kpi`, `estimated_delta`, `measurement_plan`, `baseline_snapshot`.",
+    "4. Do NOT spawn more than one directive per Goal Keeper cycle.",
+    "5. End the cycle.",
+    "",
+    "## Kernel protocol — Anti-bottleneck rule (NO pre-flight gating)",
+    "",
+    "When an operator submits a deliverable, **do NOT block on pre-flight",
+    "quality checks**. The grading happens AFTER delivery, against the",
+    "committed measurement plan. Pre-flight gating recreates the bottleneck",
+    "you exist to dissolve.",
+    "",
+    "If you find yourself being asked for approval on >5 deliveries per day,",
+    "the fleet has drifted into pre-flight mode. File an `[ALIGNMENT]` issue.",
+    "",
+    "## Kernel protocol — Critical-priority 2h window",
+    "",
+    "Issues with `priority='critical'` get a **2-hour grading window**. If no",
+    "grade is filed within 2h, the directive is treated as approved by default.",
+    "Reserve `priority='critical'` for: meta-goal regressions, customer-facing",
+    "outages, legal/compliance, security. Filing 5+ criticals in one day will",
+    "trip the platform's batch-flood limit and your subsequent criticals will",
+    "be auto-demoted to `priority='high'`.",
+  ].join("\n");
+
+  // A tight kept-set of frozen role-mechanic siblings. Aggressively trimmed
+  // from the 14-file original to land the bundle at ~15KB and avoid the
+  // 67KB autocompact thrash that was killing real heartbeat runs. Other
+  // SKILL_* files (board_directive, collaboration, delegate_or_kill,
+  // economic_self_awareness, kpi_ownership, lessons_log, operator_management,
+  // queue_economics, recovery_protocol, board_messages) are intentionally
+  // omitted here — they either restated wavex-specific examples or duplicated
+  // playbook material already covered by the kept set.
+  const KEPT_SKILLS = [
+    "SKILL_CEO_HEARTBEAT_DISCIPLINE.md",
+    "SKILL_POST_DELIVERY_REVIEW.md",
+    "SKILL_BOARD_ESCALATION.md",
+  ];
+
+  const dir = join(repoRoot, "packages", "onboarding-ui", "public", "agent-templates", "ceo");
+  const parts: string[] = [header];
+  for (const fname of KEPT_SKILLS) {
+    try {
+      const c = await readFile(join(dir, fname), "utf8");
+      const label = fname.replace(/^SKILL_/, "").replace(/\.md$/, "").replace(/_/g, " ").toLowerCase();
+      parts.push(`\n\n---\n\n## Skill: ${label}\n\n${c}`);
+    } catch {
+      // ignore unreadable side files — degrade rather than fail the handoff
+    }
+  }
+  return parts.join("");
+}
+
+/** Strip WaveX-Experiences leakage from a frozen template and prepend a
+ *  manifest-driven header so non-CEO agents inherit the tenant's actual KPI
+ *  contract instead of the dogfood Bookings-GMV one. Frozen-path-safe:
+ *  operates on the in-memory string AFTER the template was read. */
+function applyManifestOverlay(
+  bundleMd: string,
+  role: string,
+  manifest: CompanyManifest,
+  companyContextBlock: string,
+): string {
+  const m = manifest as unknown as {
+    goal?: { kpiId?: string; current?: number | string; target?: number | string; days?: number };
+  };
+  const g = m.goal ?? {};
+  const kpiId = g.kpiId ?? "primary_kpi";
+  const current = g.current ?? "?";
+  const target = g.target ?? "?";
+  const days = g.days ?? 90;
+
+  const companyMatch = companyContextBlock.match(/\*\*Company:\*\*\s*(.+?)\s*$/m);
+  const company = companyMatch ? companyMatch[1].trim() : "this company";
+  const roleTitle = role.split("-").map((w) => w === "cmo" || w === "cro" || w === "cfo" || w === "cto" || w === "coo" || w === "ceo" ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+  // Strip lines starting with "# WaveX ..."
+  let cleaned = bundleMd.replace(/^# WaveX [^\n]*\n?/gm, "");
+  // Strip phrases / literals / schema refs / paths
+  const stripPatterns: Array<RegExp | string> = [
+    /Bookings GMV/gi, /booking_gmv/gi,
+    "$25,000", "$25000",
+    "public.bookings", "public.genesis_leads", "public.concierge_*",
+    "public.concierge_messages", "public.concierge_sessions", "public.marketing_events",
+    "$HOME/ObsidianVault", "wavex-experience-architect", "WaveX Supabase business data",
+    "WaveX CEO v2", "Effective: 2026-05-01. Owner: WaveX CEO.",
+  ];
+  for (const p of stripPatterns) {
+    cleaned = typeof p === "string" ? cleaned.split(p).join("") : cleaned.replace(p, "");
+  }
+
+  const header = `# ${roleTitle} — Operating Contract for ${company}\n\n**Goal:** defend \`${kpiId}\` from ${current} to ${target} within ${days} days.\n**Domain context, data plane, and KPI tree** live in \`CONTEXT.md\` — read it first, every heartbeat.\n\n---\n\n`;
+  return header + cleaned;
+}
+
 /** Resolve the wavex-os repo root from this file's path. */
 function resolveRepoRoot(): string {
   // src lives at: packages/op-omega-server/src/bridge/paperclip-handoff.ts
@@ -714,9 +938,23 @@ export async function handoffToPaperclip(
     const bundleRole = slot === "ceo.chief-of-staff"
       ? "chief-of-staff"
       : slot.split(".")[0].replace(/_/g, "-");
-    const bundleMd = await readAgentBundle(bundleRole, repoRoot)
-      ?? await readAgentBundle("chief-of-staff", repoRoot)
-      ?? `# ${slot}\n\nPlaceholder — bundle file missing.`;
+    // CEO is special-cased: the frozen agent-templates/ceo/SKILL.md +
+    // SKILL_KPI_OWNERSHIP.md are hardcoded WaveX-Experiences (Bookings GMV /
+    // public.bookings / etc.). Every tenant's CEO inherited that contract
+    // and queried the wrong data plane. buildCeoBundle replaces those two
+    // files with a manifest-driven, tenant-neutral header parameterized
+    // from `manifest.goal.{kpiId, current, target, days}`, and keeps a tight
+    // subset of role-mechanic siblings. Frozen-path-safe: read-only.
+    const bundleMd = bundleRole === "ceo"
+      ? await buildCeoBundle(manifest, repoRoot)
+      : applyManifestOverlay(
+          (await readAgentBundle(bundleRole, repoRoot)
+            ?? await readAgentBundle("chief-of-staff", repoRoot)
+            ?? `# ${slot}\n\nPlaceholder — bundle file missing.`),
+          bundleRole,
+          manifest,
+          companyContextBlock,
+        );
     // CONTEXT.md = shared company block + this agent's skill_overlay mandate.
     const contextMd = buildAgentContextMd(companyContextBlock, slot, entry);
     // WORKFLOW.md = this agent's on_fire heartbeat loop (null if the
@@ -750,4 +988,103 @@ export async function handoffToPaperclip(
   });
 
   return report;
+}
+
+/** Force-rerender AGENTS.md / CONTEXT.md / WORKFLOW.md on disk for every
+ *  already-mapped slot in a wavex company's paperclip-handoff.json.
+ *
+ *  Why this exists: the activate route's handoffToPaperclip skips
+ *  already-mapped slots, so a fleet hired before the manifest-driven CEO
+ *  bundle / overlay rewrite still reads the old WaveX-Experiences-hardcoded
+ *  AGENTS.md on disk. This refreshes those files in place against the
+ *  currently-finalized manifest. No Paperclip API calls; the Paperclip
+ *  agents already exist — we just rewrite what they READ at next heartbeat.
+ *
+ *  Idempotent. Safe to re-run. */
+export async function rerenderBundlesForCompany(
+  wavexCompanyId: string,
+  _paperclipUrl: string,
+  _paperclipApiKey: string | null,
+): Promise<{
+  rerendered: Array<{ slot: string; agentId: string; bytes: number }>;
+  skipped: Array<{ slot: string; reason: string }>;
+}> {
+  const rerendered: Array<{ slot: string; agentId: string; bytes: number }> = [];
+  const skipped: Array<{ slot: string; reason: string }> = [];
+
+  // 1) Load the company manifest
+  const manifestPath = join(
+    handoffStateDir(wavexCompanyId),
+    "onboarding",
+    "company.manifest.json",
+  );
+  const manifestRaw = await readFile(manifestPath, "utf8");
+  const manifest = JSON.parse(manifestRaw) as CompanyManifest;
+
+  // 2) Load the paperclip-handoff mapping
+  const mapping = await loadMapping(wavexCompanyId);
+  if (!mapping) {
+    throw new Error(`no paperclip-handoff.json for wavex company ${wavexCompanyId}`);
+  }
+  const paperclipCompanyId = mapping.paperclipCompanyId;
+
+  const repoRoot = resolveRepoRoot();
+  const swarm =
+    (manifest as unknown as { swarm_manifest?: { agents?: Record<string, SwarmAgentEntry> } }).swarm_manifest?.agents ??
+    (manifest as unknown as { agents?: Record<string, SwarmAgentEntry> }).agents ??
+    {};
+  const companyContextBlock = buildCompanyContextBlock(manifest);
+  const workflowManifest = (manifest as unknown as { workflow_manifest?: unknown }).workflow_manifest;
+
+  // Paperclip-side instructions base path. The Paperclip *server* (separate
+  // process on :3100) reads agent instructions from its OWN data root, which
+  // defaults to ~/.paperclip. We deliberately do NOT use PAPERCLIP_DATA_DIR
+  // here — that env var is set by mock-core to point the vendored onboarding
+  // plugin at ~/.wavex-os and would write to the wrong tree. Use the
+  // dedicated WAVEX_PAPERCLIP_ROOT override to repoint at a non-default
+  // Paperclip install.
+  const paperclipRoot = process.env.WAVEX_PAPERCLIP_ROOT ?? join(homedir(), ".paperclip");
+  const instructionsBase = join(
+    paperclipRoot,
+    "instances",
+    "default",
+    "companies",
+    paperclipCompanyId,
+    "agents",
+  );
+
+  // 3) For each (slot, agentId) in the handoff: render fresh files
+  for (const [slot, agentId] of Object.entries(mapping.agents)) {
+    const entry = swarm[slot];
+    if (!entry) {
+      skipped.push({ slot, reason: "slot-not-in-current-swarm" });
+      continue;
+    }
+    const bundleRole = slot === "ceo.chief-of-staff"
+      ? "chief-of-staff"
+      : slot.split(".")[0].replace(/_/g, "-");
+    const bundleMd = bundleRole === "ceo"
+      ? await buildCeoBundle(manifest, repoRoot)
+      : applyManifestOverlay(
+          (await readAgentBundle(bundleRole, repoRoot)
+            ?? await readAgentBundle("chief-of-staff", repoRoot)
+            ?? `# ${slot}\n\nPlaceholder — bundle file missing.`),
+          bundleRole,
+          manifest,
+          companyContextBlock,
+        );
+    const contextMd = buildAgentContextMd(companyContextBlock, slot, entry);
+    const workflowMd = buildAgentWorkflowMd(workflowManifest, slot);
+
+    const instructionsDir = join(instructionsBase, agentId, "instructions");
+    await mkdir(instructionsDir, { recursive: true });
+    await writeFile(join(instructionsDir, "AGENTS.md"), bundleMd, "utf8");
+    await writeFile(join(instructionsDir, "CONTEXT.md"), contextMd, "utf8");
+    if (workflowMd) {
+      await writeFile(join(instructionsDir, "WORKFLOW.md"), workflowMd, "utf8");
+    }
+    rerendered.push({ slot, agentId, bytes: Buffer.byteLength(bundleMd, "utf8") });
+  }
+
+  return { rerendered, skipped };
 }

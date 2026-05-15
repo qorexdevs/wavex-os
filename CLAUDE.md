@@ -2,6 +2,8 @@
 
 Codebase context + AI-agent rules of engagement. **Read this before any task on this repo.**
 
+> **Behavioral guardrails:** see [`~/.claude/CLAUDE.md` → Karpathy Behavioral Guidelines](~/.claude/CLAUDE.md).
+
 ## What this repo is
 
 WaveX OS — open-source operating system for running an AI agent company on

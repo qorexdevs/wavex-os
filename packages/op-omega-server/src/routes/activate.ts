@@ -16,7 +16,7 @@ import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim
 import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
 import { bridgeAgents } from "../bridge/finalize-bridge.js";
-import { handoffToPaperclip } from "../bridge/paperclip-handoff.js";
+import { handoffToPaperclip, rerenderBundlesForCompany } from "../bridge/paperclip-handoff.js";
 import { ignite } from "../bridge/ignition.js";
 
 function authReq(req: FastifyRequest) {
@@ -309,5 +309,30 @@ export function registerActivateRoute(app: FastifyInstance): void {
 
     const ignition = await ignite(manifest, companyId, handoff);
     return reply.send({ ok: true, ignition });
+  });
+
+  // Force-rerender AGENTS.md / CONTEXT.md / WORKFLOW.md on disk for every
+  // already-mapped agent in this wavex company. Used to refresh fleets that
+  // were hired before the manifest-driven CEO bundle / overlay rewrite —
+  // activate's handoff path skips already-mapped slots, so the files on disk
+  // need an out-of-band refresh.
+  app.post("/api/instance/:companyId/rerender-bundles", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    try {
+      const paperclipUrl = process.env.PAPERCLIP_HANDOFF_URL ?? "http://127.0.0.1:3100";
+      const report = await rerenderBundlesForCompany(companyId, paperclipUrl, null);
+      return reply.send({ ok: true, ...report });
+    } catch (e) {
+      return reply.status(500).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   });
 }
