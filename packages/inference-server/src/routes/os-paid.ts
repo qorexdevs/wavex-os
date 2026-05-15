@@ -56,26 +56,23 @@ interface SubscriptionRow {
   tier: string;
 }
 
-/** Subscription lookup by device.user_id — Pool C does it by sub_id, but
- *  here the JWT only carries `sub` (user_id), so we resolve via a
- *  user→subscription RPC. If only the existing `wavex_os_subscription_lookup`
- *  RPC (keyed on sub_id) is wired, we treat the JWT's sub-claim as the
- *  subscription_id for now — this is the same shortcut the optimizer route
- *  uses and matches what the cloud minter already does. */
+/** Subscription lookup by device.user_id — the JWT carries `sub` (user_id),
+ *  so we resolve via the wavex_os_subscription_lookup_by_user RPC which
+ *  returns the most recent active/trialing/past_due row for that user_id. */
 async function lookupActiveSubscription(
   subjectId: string,
 ): Promise<{ ok: true; row: SubscriptionRow } | { ok: false; status: number; error: string }> {
   if (!SUPABASE_URL || !SUPABASE_SVC) {
     return { ok: false, status: 503, error: "supabase_not_configured" };
   }
-  const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/wavex_os_subscription_lookup`, {
+  const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/wavex_os_subscription_lookup_by_user`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_SVC,
       Authorization: `Bearer ${SUPABASE_SVC}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ p_subscription_id: subjectId }),
+    body: JSON.stringify({ p_user_id: subjectId }),
   });
   if (!resp.ok) return { ok: false, status: resp.status, error: "subscription_lookup_failed" };
   const rows = (await resp.json()) as SubscriptionRow[];

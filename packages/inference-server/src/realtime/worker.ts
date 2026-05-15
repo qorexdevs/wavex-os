@@ -94,10 +94,11 @@ async function lookupActiveSubscription(
   supabase: SupabaseClient,
   subjectId: string,
 ): Promise<{ ok: true; row: SubscriptionRow } | { ok: false; error: string }> {
-  // Mirrors the pattern in routes/os-paid.ts — the JWT's sub-claim is
-  // treated as the subscription_id, matching what the cloud minter does.
-  const { data, error } = await supabase.rpc("wavex_os_subscription_lookup", {
-    p_subscription_id: subjectId,
+  // Resolve subscription via user_id (JWT's sub-claim). Uses the
+  // wavex_os_subscription_lookup_by_user RPC which returns the most recent
+  // active/trialing/past_due row for the given user_id.
+  const { data, error } = await supabase.rpc("wavex_os_subscription_lookup_by_user", {
+    p_user_id: subjectId,
   });
   if (error) return { ok: false, error: "subscription_lookup_failed" };
   const rows = data as SubscriptionRow[] | null;
