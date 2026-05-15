@@ -18,7 +18,7 @@
  *      approvals" + WhatsApp/email, return `{ ok: true, status: "pending" }`.
  */
 import { getValidAccessToken } from "./token-store.js";
-import { loadConfig, fnUrl, type CloudConfig } from "./config.js";
+import { loadConfig, hubUrl, type CloudConfig } from "./config.js";
 
 export type SpendKind =
   | "subscription"     // pay a SaaS recurring fee
@@ -102,7 +102,10 @@ export async function submitSpendIntent(
   const c = cfg ?? loadConfig();
   const token = await getValidAccessToken(c);
 
-  const url = fnUrl(c, "os-spend-intent");
+  // Hits the inference-server directly via the Cloudflare Tunnel. The
+  // hub verifies the device JWT then routes the intent through the
+  // policy/bridge stack (stub until the execution path lands).
+  const url = hubUrl(c, "/v1/os/spend-intent");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), c.timeoutMs);
 
@@ -112,7 +115,6 @@ export async function submitSpendIntent(
       Authorization: `Bearer ${token}`,
       "Idempotency-Key": req.idempotency_key,
     };
-    if (c.publicKey) headers["apikey"] = c.publicKey;
 
     const res = await fetch(url, {
       method: "POST",
@@ -133,7 +135,7 @@ export async function submitSpendIntent(
       return {
         ok: false,
         error: "internal",
-        message: `os-spend-intent returned HTTP ${res.status} with no parseable body`,
+        message: `/v1/os/spend-intent returned HTTP ${res.status} with no parseable body`,
       };
     }
     return body;

@@ -15,7 +15,7 @@
  *   tier ∈ {founder, growth, custom}   → call cloudInference()
  */
 import { getValidAccessToken } from "./token-store.js";
-import { loadConfig, fnUrl, type CloudConfig } from "./config.js";
+import { loadConfig, hubUrl, type CloudConfig } from "./config.js";
 
 export interface CloudInferenceRequest {
   prompt: string;
@@ -75,7 +75,11 @@ export async function cloudInference(
   const c = cfg ?? loadConfig();
   const token = await getValidAccessToken(c); // throws no_paired_device if missing
 
-  const url = fnUrl(c, "os-inference");
+  // Hits the inference-server directly via the Cloudflare Tunnel (or
+  // 127.0.0.1:8787 in local dev). The hub verifies the device JWT against
+  // WAVEX_DEVICE_JWT_SECRET, checks the subscription is ACTIVE, then
+  // forwards to Anthropic via the operator's Claude Max OAuth.
+  const url = hubUrl(c, "/v1/os/inference");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), c.timeoutMs);
   try {
@@ -83,7 +87,6 @@ export async function cloudInference(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     };
-    if (c.publicKey) headers["apikey"] = c.publicKey;
 
     const res = await fetch(url, {
       method: "POST",
@@ -97,9 +100,9 @@ export async function cloudInference(
       signal: controller.signal,
     });
 
-    // Cloud convention: even 4xx-class business errors return a JSON
-    // body the client can switch on. Only true network/timeout failures
-    // bubble up as thrown exceptions.
+    // Hub convention matches the original Supabase contract: 4xx-class
+    // business errors return a JSON body the client can switch on. Only
+    // true network/timeout failures bubble up as thrown exceptions.
     const body = (await res.json().catch(() => null)) as
       | CloudInferenceResponse
       | CloudInferenceError
@@ -109,7 +112,7 @@ export async function cloudInference(
       return {
         ok: false,
         error: "internal",
-        message: `os-inference returned HTTP ${res.status} with no parseable body`,
+        message: `/v1/os/inference returned HTTP ${res.status} with no parseable body`,
       };
     }
     return body;
