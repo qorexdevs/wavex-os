@@ -33,7 +33,14 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const SECRET = process.env.WAVEX_DEVICE_JWT_SECRET ?? "";
+// Read the secret lazily on each call so callers that load `.env` AFTER
+// import-time (e.g. inference-server's `loadEnvFile()` in src/index.ts —
+// ESM hoists `import` statements above top-level statements) still see
+// the configured secret. The cost of re-reading process.env each call
+// is negligible compared to the HMAC compute.
+function getSecret(): string {
+  return process.env.WAVEX_DEVICE_JWT_SECRET ?? "";
+}
 
 const EXPECTED_AUD = "os-device";
 const EXPECTED_SCOPE = "os_device";
@@ -87,7 +94,8 @@ export interface VerifyResult {
  * "soft-fail + caller-decides" posture.
  */
 export function verifyDeviceJwt(token: string | undefined): VerifyResult {
-  if (!SECRET) return { ok: false, reason: "no_secret" };
+  const secret = getSecret();
+  if (!secret) return { ok: false, reason: "no_secret" };
   if (!token || typeof token !== "string") return { ok: false, reason: "malformed" };
 
   const parts = token.split(".");
@@ -108,7 +116,7 @@ export function verifyDeviceJwt(token: string | undefined): VerifyResult {
 
   // Constant-time signature compare.
   const expectedSig = base64UrlEncode(
-    createHmac("sha256", SECRET)
+    createHmac("sha256", secret)
       .update(`${headerB64}.${payloadB64}`)
       .digest(),
   );
@@ -150,7 +158,8 @@ export function _signDeviceJwt_TEST_ONLY(
     iat?: number;
   },
 ): string {
-  if (!SECRET) throw new Error("WAVEX_DEVICE_JWT_SECRET not set");
+  const secret = getSecret();
+  if (!secret) throw new Error("WAVEX_DEVICE_JWT_SECRET not set");
   const header = { alg: "HS256", typ: "JWT" };
   const full: DeviceJwtPayload = {
     aud: EXPECTED_AUD,
@@ -162,6 +171,6 @@ export function _signDeviceJwt_TEST_ONLY(
   };
   const h = base64UrlEncode(Buffer.from(JSON.stringify(header)));
   const p = base64UrlEncode(Buffer.from(JSON.stringify(full)));
-  const sig = base64UrlEncode(createHmac("sha256", SECRET).update(`${h}.${p}`).digest());
+  const sig = base64UrlEncode(createHmac("sha256", secret).update(`${h}.${p}`).digest());
   return `${h}.${p}.${sig}`;
 }

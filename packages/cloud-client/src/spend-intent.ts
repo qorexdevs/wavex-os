@@ -1,6 +1,14 @@
 /**
  * Client for the `os-spend-intent` edge function.
  *
+ * TODO(realtime): port spend-intent to Supabase Realtime when the
+ * Bridge/Stripe execution path lands. The inference call path moved off
+ * the Cloudflare-Tunnel HTTP transport to Realtime pub/sub (see
+ * `inference.ts`); spend-intent is still on the HTTP stub until there is
+ * a non-stub backend to point it at. Until then this remains HTTP, which
+ * is also why `config.ts` still exposes `hubUrl()` despite that being
+ * legacy for the rest of the package.
+ *
  * Local agents NEVER call this directly — the Liaison agent observes
  * `spend_request`-labeled issues in Paperclip, validates the request
  * against the local manifest + policy, then proxies through this

@@ -28,6 +28,7 @@ import { registerOptimizer } from "./routes/optimizer.js";
 import { registerAdmin } from "./routes/admin.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerOsPaid } from "./routes/os-paid.js";
+import { startRealtimeWorker, type RealtimeWorkerHandle } from "./realtime/worker.js";
 
 // Load `~/.wavex-os/state/.env` (or STATE_DIR/.env) before reading any env vars.
 // Keeps secrets out of the launchd plist while letting the daemon boot
@@ -87,10 +88,27 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Start the Supabase Realtime worker after the HTTP listener is up.
+  // The worker MUST NOT crash the server if Supabase env is missing — it
+  // gracefully skips and we still serve HTTP. See realtime/worker.ts.
+  let realtimeHandle: RealtimeWorkerHandle | null = null;
+  try {
+    realtimeHandle = await startRealtimeWorker({
+      log: {
+        info: (m, ...a) => app.log.info(m as object, ...(a as [])),
+        warn: (m, ...a) => app.log.warn(m as object, ...(a as [])),
+        error: (m, ...a) => app.log.error(m as object, ...(a as [])),
+      },
+    });
+  } catch (err) {
+    app.log.error({ err }, "realtime worker failed to start (HTTP still healthy)");
+  }
+
   // Graceful shutdown
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, async () => {
       app.log.info(`got ${sig}, shutting down`);
+      if (realtimeHandle) await realtimeHandle.stop().catch(() => {});
       await app.close();
       process.exit(0);
     });

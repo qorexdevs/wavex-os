@@ -1,7 +1,7 @@
 {
   "name": "@wavex-os/cloud-client",
   "version": "0.1.0",
-  "description": "HTTP clients for the WaveX OS Console edge functions: os-link-device, os-claim-device, os-device-token, os-device-refresh, os-inference, os-spend-intent. Reads/writes the device token bundle at ~/.wavex-os/device-token.json. Imported by Liaison + future tier-router + the wavex-os login CLI.",
+  "description": "Clients for the WaveX OS Console: HTTP for the device-pairing edge functions (os-link-device, os-claim-device, os-device-token, os-device-refresh) and the spend-intent stub, plus a Supabase Realtime channel for routing inference calls to the operator Mac (replaces the previous Cloudflare-Tunnel HTTP path). Reads/writes the device token bundle at ~/.wavex-os/device-token.json. Imported by Liaison + future tier-router + the wavex-os login CLI.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -28,6 +28,7 @@
     "wavex-os": "node ./bin/wavex-os.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.46.1",
     "@wavex-os/auth-shim": "workspace:*"
   },
   "devDependencies": {
