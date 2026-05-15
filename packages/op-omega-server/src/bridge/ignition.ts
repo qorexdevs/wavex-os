@@ -196,8 +196,22 @@ export async function ignite(
   }
   state.steps.workflow_load = { status: "ok" };
 
-  const swarm = (manifest as unknown as { swarm_manifest?: { agents?: SwarmAgent[] } }).swarm_manifest;
-  const swarmAgents: SwarmAgent[] = swarm?.agents ?? [];
+  // swarm_manifest.agents is an OBJECT keyed by slot in real manifests
+  // (e.g. { "ceo.orchestrator": {...}, "cpo": {...} }) — 35 entries. The old
+  // type assertion claimed `SwarmAgent[]` (an array), which was a lie: at
+  // runtime `swarmAgents.filter(...)` threw "filter is not a function", and
+  // because activate.ts swallowed ignite() into a soft "deferred", EVERY
+  // incepted company silently ended up orphan-from-planning. Normalize both
+  // shapes; when it's the slot-keyed object, the key IS the canonical slot.
+  const swarm = (manifest as unknown as {
+    swarm_manifest?: { agents?: SwarmAgent[] | Record<string, SwarmAgent> };
+  }).swarm_manifest;
+  const rawAgents = swarm?.agents;
+  const swarmAgents: SwarmAgent[] = Array.isArray(rawAgents)
+    ? rawAgents
+    : rawAgents && typeof rawAgents === "object"
+      ? Object.entries(rawAgents).map(([slot, cfg]) => ({ ...(cfg as SwarmAgent), slot }))
+      : [];
   const nonMuted = swarmAgents.filter((a) => !a.muted);
 
   // ── Step 2: ensure Goal exists in Paperclip ──────────────────────────
