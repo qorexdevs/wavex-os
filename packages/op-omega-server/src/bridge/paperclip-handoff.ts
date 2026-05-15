@@ -591,6 +591,143 @@ async function saveMapping(wavexCompanyId: string, m: PaperclipMapping): Promise
   await writeFile(join(dir, "paperclip-handoff.json"), JSON.stringify(m, null, 2), "utf8");
 }
 
+/** Per-tenant MCP scoping.
+ *
+ *  Root cause of pre-fix bug: Paperclip's claude-local adapter spawned the
+ *  global `claude` CLI which transitively inherited the operator's installed
+ *  MCP plugins (Supabase, Amplitude, Meta Ads, etc.). Every tenant's agent
+ *  saw the operator's entire toolbelt — a cross-tenant data leak AND an
+ *  autocompact thrash multiplier (multi-KB JSON tool outputs filling the
+ *  context within ~10 turns).
+ *
+ *  Fix: emit a per-tenant mcp.json under the paperclip company's home and
+ *  point each agent's claude CLI at it via `--mcp-config <path>
+ *  --strict-mcp-config`. The strict flag tells claude to ignore the global
+ *  registry entirely. Tenants that connected nothing get an empty
+ *  {"mcpServers":{}} — zero tools, deterministic — rather than inheriting
+ *  the operator's globally-installed MCPs.
+ *
+ *  Schema mapping (connector id -> MCP server spec) is intentionally a
+ *  small static allowlist. This file does NOT write secrets — connector
+ *  credentials live in the operator's keychain / Composio brokerage and
+ *  the MCP server entries here only specify the executable + args; the
+ *  MCP server itself reads credentials from env or its own config. */
+const KNOWN_MCP_SERVERS: Record<string, { command: string; args: string[]; env?: Record<string, string> } | null> = {
+  // Operator's installed MCP set as of 2026-05-15 doesn't include any
+  // tenant-side servers. When a tenant later connects e.g. Composio or a
+  // first-party Supabase MCP, add the spec here. For now every connector
+  // in the matrix maps to null (no MCP available yet) — which means an
+  // empty mcp.json is written, which is exactly what we want vs leaking
+  // the operator's global Supabase MCP.
+  "supabase": null,
+  "github": null,
+  "shopify": null,
+  "stripe": null,
+  "hubspot": null,
+  "mixpanel": null,
+  "whatsapp": null,
+  "telegram": null,
+  "slack": null,
+  "meta-ads-api": null,
+  "google-ads-api": null,
+  "linkedin-sales-nav": null,
+  "twilio-sms": null,
+  "posthog": null,
+  "segment": null,
+  "plaid": null,
+  "claude-code": null, // inference bootstrap; no MCP surface
+};
+
+interface ConnectorEntry { id: string; status?: string }
+interface ConnectorManifestShape {
+  required?: ConnectorEntry[];
+  suggested?: ConnectorEntry[];
+  deferred?: ConnectorEntry[];
+}
+
+function paperclipCompanyDir(paperclipCompanyId: string): string {
+  const paperclipRoot = process.env.WAVEX_PAPERCLIP_ROOT ?? join(homedir(), ".paperclip");
+  return join(paperclipRoot, "instances", "default", "companies", paperclipCompanyId);
+}
+
+function tenantMcpConfigPath(paperclipCompanyId: string): string {
+  return join(paperclipCompanyDir(paperclipCompanyId), ".claude", "mcp.json");
+}
+
+/** Write `~/.paperclip/instances/default/companies/<paperclipCompanyId>/.claude/mcp.json`
+ *  containing ONLY the MCP servers this tenant authorized through onboarding.
+ *  Returns the absolute path written. */
+export async function generatePerTenantMcpConfig(
+  wavexCompanyId: string,
+  paperclipCompanyId: string,
+): Promise<string> {
+  const onboardingDir = join(handoffStateDir(wavexCompanyId), "onboarding");
+  let manifest: ConnectorManifestShape = {};
+  try {
+    const raw = await readFile(join(onboardingDir, "connector_manifest.json"), "utf8");
+    manifest = JSON.parse(raw) as ConnectorManifestShape;
+  } catch {
+    // No manifest = no connectors authorized = empty scope. Still write the
+    // file so the agent's --mcp-config arg points somewhere valid.
+  }
+
+  const authorized = new Set<string>();
+  const allEntries = [
+    ...(manifest.required ?? []),
+    ...(manifest.suggested ?? []),
+    ...(manifest.deferred ?? []),
+  ];
+  for (const entry of allEntries) {
+    if (!entry?.id) continue;
+    if (entry.status === "configured") authorized.add(entry.id);
+  }
+
+  const mcpServers: Record<string, { command: string; args: string[]; env?: Record<string, string> }> = {};
+  for (const id of authorized) {
+    const spec = KNOWN_MCP_SERVERS[id];
+    if (spec) mcpServers[id] = spec;
+  }
+
+  const configPath = tenantMcpConfigPath(paperclipCompanyId);
+  await mkdir(join(paperclipCompanyDir(paperclipCompanyId), ".claude"), { recursive: true });
+  await writeFile(configPath, JSON.stringify({ mcpServers }, null, 2), "utf8");
+  return configPath;
+}
+
+/** Patch every paperclip agent in `mapping` so its claude_local adapter
+ *  invokes claude with `--mcp-config <tenantPath> --strict-mcp-config`,
+ *  isolating it from the operator's globally-installed MCP servers.
+ *
+ *  Idempotent: re-running just rewrites the same extraArgs. Paperclip's
+ *  PATCH /api/agents/:id deep-merges adapterConfig, so we only need to
+ *  send the extraArgs field. */
+async function applyMcpConfigToAgents(
+  paperclipUrl: string,
+  agents: Record<string, string>,
+  tenantMcpPath: string,
+): Promise<{ patched: string[]; failed: Array<{ agentId: string; reason: string }> }> {
+  const extraArgs = ["--mcp-config", tenantMcpPath, "--strict-mcp-config"];
+  const patched: string[] = [];
+  const failed: Array<{ agentId: string; reason: string }> = [];
+  for (const agentId of Object.values(agents)) {
+    try {
+      const r = await fetch(`${paperclipUrl}/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adapterConfig: { extraArgs } }),
+      });
+      if (!r.ok) {
+        failed.push({ agentId, reason: `HTTP ${r.status}` });
+      } else {
+        patched.push(agentId);
+      }
+    } catch (e) {
+      failed.push({ agentId, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { patched, failed };
+}
+
 /** Per-slot live handoff progress. Written after each hire so the UI can
  *  poll it for a real slot-by-slot reveal during activate, then cleared
  *  when handoff completes. Lives next to paperclip-handoff.json. */
@@ -834,6 +971,11 @@ export async function handoffToPaperclip(
   const { paperclipCompanyId } = await ensurePaperclipCompany(paperclipUrl, wavexCompanyId, manifest, existing);
   report.paperclipCompanyId = paperclipCompanyId;
 
+  // Emit per-tenant MCP scope BEFORE hiring any agent so the first heartbeat
+  // already sees a scoped --mcp-config. (Hires below come up paused; first
+  // spawn is on heartbeat.)
+  const tenantMcpPath = await generatePerTenantMcpConfig(wavexCompanyId, paperclipCompanyId);
+
   const repoRoot = resolveRepoRoot();
   // The signed CompanyManifest nests the swarm under `swarm_manifest.agents`.
   // (Stand-alone swarm_manifest.json has it at top-level; CompanyManifest doesn't.)
@@ -987,6 +1129,11 @@ export async function handoffToPaperclip(
     agents: slotToPaperclipId,
   });
 
+  // Apply --mcp-config to every freshly-mapped agent so their next spawn
+  // ignores the operator's global MCP registry. Best-effort: failures here
+  // don't fail the handoff (we still surface them in the log).
+  await applyMcpConfigToAgents(paperclipUrl, slotToPaperclipId, tenantMcpPath);
+
   return report;
 }
 
@@ -1027,6 +1174,13 @@ export async function rerenderBundlesForCompany(
     throw new Error(`no paperclip-handoff.json for wavex company ${wavexCompanyId}`);
   }
   const paperclipCompanyId = mapping.paperclipCompanyId;
+
+  // Refresh per-tenant MCP scope alongside the bundle rerender. Same root
+  // cause: existing tenants hired before this fix have agents that still
+  // spawn claude with no --mcp-config, so they pick up the operator's
+  // global MCPs on every heartbeat.
+  const tenantMcpPath = await generatePerTenantMcpConfig(wavexCompanyId, paperclipCompanyId);
+  await applyMcpConfigToAgents(mapping.paperclipUrl, mapping.agents, tenantMcpPath);
 
   const repoRoot = resolveRepoRoot();
   const swarm =
