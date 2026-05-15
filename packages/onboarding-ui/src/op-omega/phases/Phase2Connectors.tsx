@@ -7,6 +7,7 @@ import { opOmegaOnboardingApi, ApiError } from "../lib/api";
 import type { ConnectorManifest, ConnectorEntry } from "@op-omega/plugin-onboarding";
 import { Card, H2, NavRow, P } from "../components/primitives";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
+import { AddConnectorWidget } from "../components/AddConnectorWidget";
 import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
@@ -124,6 +125,20 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
           )}
         </>
       )}
+
+      {/* Add anything the derived manifest missed. The widget surfaces the
+       *  MCP → OAuth → API-key hierarchy so the operator picks the
+       *  lowest-friction path per tool. Adding hands off to the credential
+       *  concierge, where the actual paste/OAuth capture happens. */}
+      <div style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.6rem" }}>
+          Add another tool
+        </h3>
+        <AddConnectorWidget
+          companyId={companyId}
+          onAdded={() => onComplete()}
+        />
+      </div>
 
       <NavRow next={{ onClick: onComplete, label: "Continue → swarm" }} nextDisabled={busy || !manifest} />
     </div>
