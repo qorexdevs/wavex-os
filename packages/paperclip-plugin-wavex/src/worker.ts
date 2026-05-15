@@ -136,6 +136,210 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // company-goals — Mission Control goal/KPI progress from the
+    //   wavex_os_ops_company_goals RPC (current → target per goal).
+    //   Empty list when supabase config absent or no manifests provisioned.
+    // -------------------------------------------------------------------
+    ctx.data.register("company-goals", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      if (!cfg?.supabaseUrl || !cfg.supabasePublishableKey) {
+        return { goals: [], source: "no-supabase-config" };
+      }
+      try {
+        const r = await ctx.http.fetch(
+          `${cfg.supabaseUrl}/rest/v1/rpc/wavex_os_ops_company_goals`,
+          {
+            method: "POST",
+            headers: {
+              apikey: cfg.supabasePublishableKey,
+              Authorization: `Bearer ${cfg.supabasePublishableKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+        );
+        if (!r.ok) {
+          ctx.logger.warn("ops_company_goals RPC failed", { status: r.status });
+          return { goals: [], source: "rpc-failed", status: r.status };
+        }
+        type Row = {
+          company_id: string;
+          goal_id: string;
+          label: string;
+          metric: string;
+          current_value: number | null;
+          target_value: number | null;
+          unit: string;
+          status: string;
+        };
+        const data = (await r.json()) as Row[];
+        return {
+          goals: data.map((row) => ({
+            id: `${row.company_id}:${row.goal_id}`,
+            label: row.label,
+            metric: row.metric,
+            current: row.current_value ?? 0,
+            target: row.target_value ?? 0,
+            unit: row.unit,
+            status: row.status,
+          })),
+          source: "supabase",
+        };
+      } catch (err) {
+        ctx.logger.error("company-goals handler crashed", { err: String(err) });
+        return { goals: [], source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // deliverable-throughput — same RPC as deliverables-list, but the worker
+    //   pre-aggregates: count by status + total token cost. Keeps the chart
+    //   widget render cheap (no client-side reduce over 50 rows each tick).
+    // -------------------------------------------------------------------
+    ctx.data.register("deliverable-throughput", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      if (!cfg?.supabaseUrl || !cfg.supabasePublishableKey) {
+        return { byStatus: {}, totalTokens: 0, total: 0, source: "no-supabase-config" };
+      }
+      try {
+        const r = await ctx.http.fetch(
+          `${cfg.supabaseUrl}/rest/v1/rpc/wavex_os_ops_deliverable_summary`,
+          {
+            method: "POST",
+            headers: {
+              apikey: cfg.supabasePublishableKey,
+              Authorization: `Bearer ${cfg.supabasePublishableKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+        );
+        if (!r.ok) {
+          ctx.logger.warn("ops_deliverable_summary RPC failed (throughput)", {
+            status: r.status,
+          });
+          return { byStatus: {}, totalTokens: 0, total: 0, source: "rpc-failed", status: r.status };
+        }
+        type Row = { status: string; total_tokens: number };
+        const data = (await r.json()) as Row[];
+        const byStatus: Record<string, number> = {};
+        let totalTokens = 0;
+        for (const row of data) {
+          byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+          totalTokens += Number(row.total_tokens ?? 0);
+        }
+        return { byStatus, totalTokens, total: data.length, source: "supabase" };
+      } catch (err) {
+        ctx.logger.error("deliverable-throughput handler crashed", { err: String(err) });
+        return {
+          byStatus: {},
+          totalTokens: 0,
+          total: 0,
+          source: "exception",
+          error: String(err),
+        };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // fleet-agent-status — running/idle/error agent counts aggregated from
+    //   the wavex_os_ops_fleet_health RPC (sums across all reporting devices).
+    //   The RPC exposes agent_count + agents_error; agents_running/agents_idle
+    //   are read opportunistically (forward-compat) and otherwise derived:
+    //   running ≈ devices reporting a "running" fleet_status, idle = rest.
+    // -------------------------------------------------------------------
+    ctx.data.register("fleet-agent-status", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      if (!cfg?.supabaseUrl || !cfg.supabasePublishableKey) {
+        return {
+          running: 0,
+          idle: 0,
+          error: 0,
+          devices: 0,
+          source: "no-supabase-config",
+        };
+      }
+      try {
+        const r = await ctx.http.fetch(
+          `${cfg.supabaseUrl}/rest/v1/rpc/wavex_os_ops_fleet_health`,
+          {
+            method: "POST",
+            headers: {
+              apikey: cfg.supabasePublishableKey,
+              Authorization: `Bearer ${cfg.supabasePublishableKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+        );
+        if (!r.ok) {
+          ctx.logger.warn("ops_fleet_health RPC failed (agent-status)", {
+            status: r.status,
+          });
+          return {
+            running: 0,
+            idle: 0,
+            error: 0,
+            devices: 0,
+            source: "rpc-failed",
+            status: r.status,
+          };
+        }
+        type Row = {
+          fleet_status: string | null;
+          agent_count: number | null;
+          agents_error: number | null;
+          agents_idle?: number | null;
+          agents_running?: number | null;
+        };
+        const data = (await r.json()) as Row[];
+        let running = 0;
+        let idle = 0;
+        let errored = 0;
+        for (const row of data) {
+          const total = Number(row.agent_count ?? 0);
+          const errc = Number(row.agents_error ?? 0);
+          errored += errc;
+          if (row.agents_running != null || row.agents_idle != null) {
+            // Forward-compat: RPC gained explicit running/idle columns.
+            const runc = Number(row.agents_running ?? 0);
+            running += runc;
+            idle +=
+              row.agents_idle != null
+                ? Number(row.agents_idle)
+                : Math.max(0, total - errc - runc);
+          } else {
+            // Today's RPC: split the device's non-errored agents by whether
+            // the device's fleet_status reads as actively running.
+            const healthy = Math.max(0, total - errc);
+            if ((row.fleet_status ?? "").toLowerCase().includes("run")) {
+              running += healthy;
+            } else {
+              idle += healthy;
+            }
+          }
+        }
+        return {
+          running,
+          idle,
+          error: errored,
+          devices: data.length,
+          source: "supabase",
+        };
+      } catch (err) {
+        ctx.logger.error("fleet-agent-status handler crashed", { err: String(err) });
+        return {
+          running: 0,
+          idle: 0,
+          error: 0,
+          devices: 0,
+          source: "exception",
+          errorMessage: String(err),
+        };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // inception-status — reads /api/companies/<id>/agents from op-omega
     //   server. Returns ready/total counts + manifest goal/signed_at.
     // -------------------------------------------------------------------

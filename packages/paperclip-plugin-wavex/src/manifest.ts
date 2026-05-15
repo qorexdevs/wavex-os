@@ -20,6 +20,10 @@ const EXPERT_AGENTS_SLOT = "wavex-expert-agents-status";
 const INCEPTION_STATUS_SLOT = "wavex-inception-status";
 const WAVEX_SETTINGS_SLOT = "wavex-preferences";
 const DELIVERABLES_SLOT = "wavex-deliverables";
+// Mission Control visual dashboard widgets (read-only, inline-SVG charts).
+const FLEET_KPIS_SLOT = "wavex-fleet-kpis";
+const DELIVERABLES_THROUGHPUT_SLOT = "wavex-deliverables-throughput";
+const AGENT_STATUS_SLOT = "wavex-agent-status";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -56,6 +60,24 @@ const manifest: PaperclipPluginManifestV1 = {
         id: DELIVERABLES_SLOT,
         displayName: "WaveX Deliverables",
         exportName: "DeliverablesWidget",
+      },
+      {
+        type: "dashboardWidget",
+        id: FLEET_KPIS_SLOT,
+        displayName: "WaveX Fleet KPIs",
+        exportName: "FleetKpisWidget",
+      },
+      {
+        type: "dashboardWidget",
+        id: DELIVERABLES_THROUGHPUT_SLOT,
+        displayName: "WaveX Deliverables Throughput",
+        exportName: "DeliverablesThroughputWidget",
+      },
+      {
+        type: "dashboardWidget",
+        id: AGENT_STATUS_SLOT,
+        displayName: "WaveX Agent Status",
+        exportName: "AgentStatusWidget",
       },
       {
         type: "sidebar",

@@ -198,6 +198,238 @@ export function DeliverablesWidget(_: PluginWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Mission Control — Fleet KPIs: goal progress as progress gauges
+// ---------------------------------------------------------------------------
+
+interface CompanyGoal {
+  id: string;
+  label: string;
+  metric: string;
+  current: number;
+  target: number;
+  unit: string;
+  status: string;
+}
+
+interface CompanyGoalsResponse {
+  goals: CompanyGoal[];
+  source: string;
+}
+
+function formatNum(n: number): string {
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+export function FleetKpisWidget(_: PluginWidgetProps) {
+  const { data, loading, error } = usePluginData<CompanyGoalsResponse>(
+    "company-goals",
+    {},
+  );
+
+  if (loading) return <SkeletonCard label="WaveX Fleet KPIs" />;
+  if (error) {
+    return (
+      <Card label="WaveX Fleet KPIs">
+        <div style={{ color: "#ff6b6b" }}>Couldn't reach WaveX: {error.message}</div>
+      </Card>
+    );
+  }
+  if (!data || data.goals.length === 0) {
+    return (
+      <Card label="WaveX Fleet KPIs">
+        <div style={{ opacity: 0.7 }}>
+          {data?.source === "no-supabase-config"
+            ? "Configure Supabase URL + publishable key in WaveX Preferences to enable this widget."
+            : "No company goals defined yet. Goals appear once a company manifest is provisioned."}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card label="WaveX Fleet KPIs">
+      <div style={{ display: "grid", gap: 14 }}>
+        {data.goals.map((g) => (
+          <ProgressGauge
+            key={g.id}
+            label={g.label}
+            current={g.current}
+            target={g.target}
+            unit={g.unit}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mission Control — Deliverables throughput: count by status + token cost
+// ---------------------------------------------------------------------------
+
+interface ThroughputResponse {
+  byStatus: Record<string, number>;
+  totalTokens: number;
+  total: number;
+  source: string;
+}
+
+// Stable status ordering for the bar chart (matches the deliverable lifecycle).
+const STATUS_ORDER = ["open", "in_progress", "delivered", "verified", "failed"];
+
+export function DeliverablesThroughputWidget(_: PluginWidgetProps) {
+  const { data, loading, error } = usePluginData<ThroughputResponse>(
+    "deliverable-throughput",
+    {},
+  );
+
+  if (loading) return <SkeletonCard label="WaveX Deliverables Throughput" />;
+  if (error) {
+    return (
+      <Card label="WaveX Deliverables Throughput">
+        <div style={{ color: "#ff6b6b" }}>Couldn't reach WaveX: {error.message}</div>
+      </Card>
+    );
+  }
+  if (!data || data.total === 0) {
+    return (
+      <Card label="WaveX Deliverables Throughput">
+        <div style={{ opacity: 0.7 }}>
+          {data?.source === "no-supabase-config"
+            ? "Configure Supabase URL + publishable key in WaveX Preferences to enable this widget."
+            : "No deliverables recorded yet."}
+        </div>
+      </Card>
+    );
+  }
+
+  const max = Math.max(1, ...Object.values(data.byStatus));
+  const rows = STATUS_ORDER.filter((s) => (data.byStatus[s] ?? 0) > 0).concat(
+    // Include any unexpected status values the RPC may surface.
+    Object.keys(data.byStatus).filter((s) => !STATUS_ORDER.includes(s)),
+  );
+
+  return (
+    <Card label="WaveX Deliverables Throughput">
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((status) => (
+          <Bar
+            key={status}
+            label={status.replace(/_/g, " ")}
+            value={data.byStatus[status] ?? 0}
+            max={max}
+            color={STATUS_TINT[status] ?? "#8a8f98"}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          marginTop: 12,
+          paddingTop: 10,
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 13,
+        }}
+      >
+        <span style={{ opacity: 0.7 }}>
+          {data.total} deliverable{data.total === 1 ? "" : "s"}
+        </span>
+        <span style={{ fontWeight: 600, color: WAVEX_COLOR }}>
+          {formatTokens(data.totalTokens)} tok total
+        </span>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mission Control — Agent status: running / idle / error as a compact donut
+// ---------------------------------------------------------------------------
+
+interface AgentStatusResponse {
+  running: number;
+  idle: number;
+  error: number;
+  devices: number;
+  source: string;
+}
+
+export function AgentStatusWidget(_: PluginWidgetProps) {
+  const { data, loading, error } = usePluginData<AgentStatusResponse>(
+    "fleet-agent-status",
+    {},
+  );
+
+  if (loading) return <SkeletonCard label="WaveX Agent Status" />;
+  if (error) {
+    return (
+      <Card label="WaveX Agent Status">
+        <div style={{ color: "#ff6b6b" }}>Couldn't reach WaveX: {error.message}</div>
+      </Card>
+    );
+  }
+  const total = data ? data.running + data.idle + data.error : 0;
+  if (!data || total === 0) {
+    return (
+      <Card label="WaveX Agent Status">
+        <div style={{ opacity: 0.7 }}>
+          {data?.source === "no-supabase-config"
+            ? "Configure Supabase URL + publishable key in WaveX Preferences to enable this widget."
+            : "No fleet agents reporting yet."}
+        </div>
+      </Card>
+    );
+  }
+
+  const segments = [
+    { label: "running", value: data.running, color: "#4ade80" },
+    { label: "idle", value: data.idle, color: "#8a8f98" },
+    { label: "error", value: data.error, color: "#ff6b6b" },
+  ];
+
+  return (
+    <Card label="WaveX Agent Status">
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <DonutMini segments={segments} total={total} centerLabel="agents" />
+        <div style={{ display: "grid", gap: 6, flex: 1 }}>
+          {segments.map((s) => (
+            <div
+              key={s.label}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  background: s.color,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ opacity: 0.7, textTransform: "capitalize" }}>
+                {s.label}
+              </span>
+              <span style={{ marginLeft: "auto", fontWeight: 600 }}>{s.value}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>
+            across {data.devices} device{data.devices === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar — current company's inception status
 // ---------------------------------------------------------------------------
 
@@ -363,5 +595,193 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span style={{ opacity: 0.7 }}>{label}</span>
       <span>{children}</span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tiny dependency-free chart primitives — inline CSS/SVG only. Deliberately
+// not a charting library: the plugin is read-only and the bundle stays small.
+// ---------------------------------------------------------------------------
+
+/** Horizontal labelled bar — value relative to `max`, full-width track. */
+function Bar({
+  label,
+  value,
+  max,
+  color,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+}) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div style={{ fontSize: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 3,
+        }}
+      >
+        <span style={{ opacity: 0.75, textTransform: "capitalize" }}>{label}</span>
+        <span style={{ fontWeight: 600 }}>{value}</span>
+      </div>
+      <div
+        style={{
+          height: 8,
+          borderRadius: 4,
+          background: "rgba(255,255,255,0.06)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            borderRadius: 4,
+            background: color,
+            transition: "width 200ms ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Goal progress gauge — current → target, with a WAVEX-tinted fill bar. */
+function ProgressGauge({
+  label,
+  current,
+  target,
+  unit,
+}: {
+  label: string;
+  current: number;
+  target: number;
+  unit: string;
+}) {
+  const pct =
+    target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0;
+  const reached = target > 0 && current >= target;
+  const fill = reached ? "#4ade80" : WAVEX_COLOR;
+  const suffix = unit ? ` ${unit}` : "";
+  return (
+    <div style={{ fontSize: 13 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 4,
+        }}
+      >
+        <span style={{ fontWeight: 500 }}>{label}</span>
+        <span style={{ opacity: 0.7 }}>
+          {formatNum(current)}
+          <span style={{ opacity: 0.5 }}> / {formatNum(target)}</span>
+          {suffix}
+        </span>
+      </div>
+      <div
+        style={{
+          height: 10,
+          borderRadius: 5,
+          background: "rgba(255,255,255,0.06)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            borderRadius: 5,
+            background: `linear-gradient(90deg, color-mix(in srgb, ${fill} 55%, transparent), ${fill})`,
+            transition: "width 250ms ease",
+          }}
+        />
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.55, marginTop: 3 }}>
+        {target > 0 ? `${Math.round(pct)}% of target` : "no target set"}
+        {reached ? " — reached" : ""}
+      </div>
+    </div>
+  );
+}
+
+/** Compact SVG donut — segments rendered as stroke-dasharray arcs. */
+function DonutMini({
+  segments,
+  total,
+  centerLabel,
+}: {
+  segments: Array<{ label: string; value: number; color: string }>;
+  total: number;
+  centerLabel: string;
+}) {
+  const size = 76;
+  const stroke = 12;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`${total} ${centerLabel}`}
+      style={{ flexShrink: 0 }}
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth={stroke}
+      />
+      {segments.map((s) => {
+        if (s.value <= 0 || total <= 0) return null;
+        const len = (s.value / total) * circumference;
+        const seg = (
+          <circle
+            key={s.label}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={stroke}
+            strokeDasharray={`${len} ${circumference - len}`}
+            strokeDashoffset={-offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+        offset += len;
+        return seg;
+      })}
+      <text
+        x="50%"
+        y="46%"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill={WAVEX_COLOR}
+        style={{ fontSize: 18, fontWeight: 600 }}
+      >
+        {total}
+      </text>
+      <text
+        x="50%"
+        y="63%"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="currentColor"
+        style={{ fontSize: 8, opacity: 0.55, letterSpacing: "0.04em" }}
+      >
+        {centerLabel.toUpperCase()}
+      </text>
+    </svg>
   );
 }
