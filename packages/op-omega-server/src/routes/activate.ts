@@ -30,6 +30,67 @@ async function ensureMigrations(): Promise<void> {
   migrationsRun = true;
 }
 
+/** Best-effort sync of the finalized, signed manifest to Supabase
+ *  (wavex_os.company_manifests) so it stops being local-disk-only and a
+ *  cross-device story becomes possible. The wavex_os schema is not
+ *  REST-exposed, so this goes through the service-role SECURITY DEFINER RPC
+ *  `wavex_os_record_company_manifest` (keyed on company_id, idempotent).
+ *
+ *  Best-effort: any failure (missing env, network, RPC error) is logged and
+ *  swallowed — it must NEVER fail activate. The manifest is already safely
+ *  on disk by the time this runs. */
+async function syncManifestToCloud(
+  companyId: string,
+  manifest: CompanyManifest,
+  manifestSha256: string,
+): Promise<void> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn(
+      `[activate] manifest cloud-sync skipped for ${companyId}: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set`,
+    );
+    return;
+  }
+  // goal / finalized_at / signed_at are wavex-layered sidecar fields (not on
+  // the upstream CompanyManifest type) — read defensively via a cast.
+  const m = manifest as unknown as {
+    goal?: { kpiId?: string; current?: number; target?: number; days?: number };
+    finalized_at?: string;
+    signed_at?: string;
+  };
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/wavex_os_record_company_manifest`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        p_company_id: companyId,
+        p_manifest: manifest,
+        p_manifest_sha256: manifestSha256,
+        p_goal: m.goal ?? null,
+        p_finalized_at: m.finalized_at ?? null,
+        p_signed_at: m.signed_at ?? null,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error(
+        `[activate] manifest cloud-sync failed for ${companyId}: ${res.status} ${res.statusText} ${detail}`,
+      );
+      return;
+    }
+    console.log(`[activate] manifest cloud-synced for ${companyId} (sha ${manifestSha256.slice(0, 12)})`);
+  } catch (e) {
+    console.error(
+      `[activate] manifest cloud-sync error for ${companyId}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
 /** Best-effort Telegram alert when a company activates but ignition leaves
  *  it planning-orphaned. The operator MUST know — the fleet looks live but
  *  has no goal / roadmap / kickoff, so the agents wake with nothing to
@@ -113,6 +174,11 @@ export function registerActivateRoute(app: FastifyInstance): void {
       manifest.signatures = { ...manifest.signatures, manifest_hash: newHash };
       await writeFile(join(dir, "company.manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
       await writeFile(join(dir, "company.manifest.yaml"), yaml.dump(manifest), "utf8");
+
+      // Best-effort cloud sync — the manifest is now safely on disk; mirror it
+      // to wavex_os.company_manifests so it's no longer local-disk-only. Never
+      // fails activate (see syncManifestToCloud).
+      await syncManifestToCloud(companyId, manifest, newHash);
 
       // Phase D — opt-in handoff to a running Paperclip instance. When
       // PAPERCLIP_HANDOFF_URL is set, the C-Suite is mirrored as real
@@ -200,17 +266,46 @@ export function registerActivateRoute(app: FastifyInstance): void {
       return reply.status(404).send({ ok: false, error: "manifest not found" });
     }
 
-    // Re-discover handoff state. The activate step persists it in the
-    // paperclip-handoff.json file; in a future commit we'll read it from
-    // there. For now we re-run handoff (idempotent).
-    const handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
-      enabled: true,
-      paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
-      paperclipCompanyId: null,
-      created: [],
-      skipped: [],
-      errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
-    }));
+    // Read the PERSISTED handoff state from paperclip-handoff.json — it
+    // carries the real, verified paperclipUrl + paperclipCompanyId + agent
+    // map. Re-running handoffToPaperclip() depended on PAPERCLIP_HANDOFF_URL
+    // being in the process env, which it often is NOT (and isn't in the
+    // standalone /ignite path) — so ignition's Paperclip steps silently
+    // skipped and the company stayed orphan-from-planning. Only fall back to
+    // re-running handoff when there's no persisted file.
+    let handoff: Awaited<ReturnType<typeof handoffToPaperclip>>;
+    try {
+      const hp = join(getOnboardingDir(companyId), "..", "paperclip-handoff.json");
+      const j = JSON.parse(await readFile(hp, "utf8")) as {
+        paperclipUrl?: string;
+        paperclipCompanyId?: string;
+        agents?: Record<string, string>;
+      };
+      handoff = {
+        enabled: true,
+        paperclipUrl: j.paperclipUrl ?? process.env.PAPERCLIP_HANDOFF_URL ?? null,
+        paperclipCompanyId: j.paperclipCompanyId ?? null,
+        // The persisted handoff.json records agents as { slot: agentId } — if
+        // it's on disk, the agent was hired, so status is "spawned".
+        created: Object.entries(j.agents ?? {}).map(([slot, agentId]) => ({
+          slot,
+          agentId,
+          status: "spawned",
+        })),
+        skipped: [],
+        errors: [],
+      } as Awaited<ReturnType<typeof handoffToPaperclip>>;
+    } catch {
+      // No persisted handoff — fall back to re-running it (idempotent).
+      handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
+        enabled: true,
+        paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
+        paperclipCompanyId: null,
+        created: [],
+        skipped: [],
+        errors: [{ slot: "<bootstrap>", message: e instanceof Error ? e.message : String(e) }],
+      })) as Awaited<ReturnType<typeof handoffToPaperclip>>;
+    }
 
     const ignition = await ignite(manifest, companyId, handoff);
     return reply.send({ ok: true, ignition });

@@ -24,7 +24,12 @@ import { join, dirname } from "node:path";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
 import { getOnboardingDir, getInstanceDir } from "../state-bridge.js";
 
-const PAPERCLIP_URL = process.env.PAPERCLIP_HANDOFF_URL ?? "";
+// Base URL Paperclip is reachable at. Seeded from the process env, but
+// ignite() overrides it per-run from the handoff arg — the env read is
+// empty in some server contexts (and in the standalone /ignite path), and
+// when it's empty EVERY Paperclip step silently skips and the company ends
+// up orphan-from-planning. The handoff carries the real, verified URL.
+let PAPERCLIP_URL = process.env.PAPERCLIP_HANDOFF_URL ?? "";
 
 export type IgnitionStepStatus = "pending" | "ok" | "error" | "skipped";
 
@@ -164,7 +169,11 @@ function hashSlotToOffset(slot: string): number {
 export async function ignite(
   manifest: CompanyManifest,
   companyId: string,
-  paperclipHandoff: { paperclipCompanyId: string | null; created: Array<{ slot: string; agentId: string }> } | null,
+  paperclipHandoff: {
+    paperclipCompanyId: string | null;
+    paperclipUrl?: string | null;
+    created: Array<{ slot: string; agentId: string }>;
+  } | null,
 ): Promise<IgnitionResult> {
   const state = (await readState(companyId)) ?? freshState(companyId);
   // Back-compat: an ignition-state.json written before seed_roadmap /
@@ -195,6 +204,14 @@ export async function ignite(
     };
   }
   state.steps.workflow_load = { status: "ok" };
+
+  // Prefer the URL the handoff actually used — see the `let PAPERCLIP_URL`
+  // note above. Without this, the standalone /ignite path (and any server
+  // started without PAPERCLIP_HANDOFF_URL in its env) skips every Paperclip
+  // step → no goal, no issues, no roadmap, no kickoff → orphan-from-planning.
+  if (paperclipHandoff?.paperclipUrl) {
+    PAPERCLIP_URL = paperclipHandoff.paperclipUrl;
+  }
 
   // swarm_manifest.agents is an OBJECT keyed by slot in real manifests
   // (e.g. { "ceo.orchestrator": {...}, "cpo": {...} }) — 35 entries. The old
