@@ -110,24 +110,56 @@ export async function pollForToken(
       const text = await res.text().catch(() => "");
       throw new Error(`os-device-token failed: HTTP ${res.status} ${text.slice(0, 200)}`);
     }
-    const body = (await res.json()) as {
-      access_token: string;
-      refresh_token: string;
-      access_token_expires_at: number;
-      user_id: string;
-      device_id: string;
-    };
-    if (!body.access_token) {
-      // Server convention may use { status: "pending" } instead of HTTP 202
-      const status = (body as unknown as { status?: string }).status;
-      if (status === "pending") {
-        await new Promise((r) => setTimeout(r, interval));
-        continue;
-      }
+    // The edge fn always returns HTTP 200 and discriminates via the body:
+    //   pending  →  { ok: false, error: "authorization_pending" }
+    //   success  →  { ok: true,  access_token, refresh_token, ... }  (or unflagged shape)
+    //   error    →  { ok: false, error: "<terminal-error>" }
+    const body = (await res.json()) as
+      | { ok: true; access_token: string; refresh_token: string;
+          access_token_expires_at?: number; expires_in?: number;
+          user_id: string; device_id: string }
+      | { ok: false; error: string }
+      | { access_token?: string; status?: string };
+
+    // OAuth device-flow standard pending signals — keep polling.
+    const errorCode = (body as { error?: string }).error;
+    const statusField = (body as { status?: string }).status;
+    if (
+      errorCode === "authorization_pending" ||
+      errorCode === "slow_down" ||
+      statusField === "pending"
+    ) {
+      await new Promise((r) => setTimeout(r, interval));
+      continue;
+    }
+    // Terminal errors — surface clearly instead of "malformed".
+    if (errorCode) {
+      throw new Error(`pairing_failed: ${errorCode}`);
+    }
+    const accessToken = (body as { access_token?: string }).access_token;
+    if (!accessToken) {
       throw new Error("os-device-token returned a malformed body");
     }
-    options.events?.onPaired?.({ user_id: body.user_id, device_id: body.device_id });
-    return body;
+    // Successful claim. The edge fn returns { expires_in: 3600 } (seconds)
+    // rather than access_token_expires_at; compute the absolute timestamp here
+    // so the on-disk bundle matches DeviceTokenBundle's schema.
+    const b = body as {
+      access_token: string; refresh_token: string;
+      access_token_expires_at?: number; expires_in?: number;
+      user_id?: string; device_id: string;
+    };
+    const userId = (b as { user_id?: string }).user_id ?? "";
+    const expiresAt = b.access_token_expires_at
+      ?? Math.floor(Date.now() / 1000) + (b.expires_in ?? 3600);
+    const result = {
+      access_token: b.access_token,
+      refresh_token: b.refresh_token,
+      access_token_expires_at: expiresAt,
+      user_id: userId,
+      device_id: b.device_id,
+    };
+    options.events?.onPaired?.({ user_id: userId, device_id: b.device_id });
+    return result;
   }
   throw new Error("pairing_timeout: user did not claim the device code in time");
 }
