@@ -26,6 +26,8 @@ import { registerActivateRoute } from "./routes/activate.js";
 import { registerResetRoute } from "./routes/reset.js";
 import { registerSwapTemplateRoute } from "./routes/swap-template.js";
 import { registerInferenceStatusRoute } from "./routes/inference-status.js";
+import { registerDeviceStatusRoute } from "./routes/device-status.js";
+import { registerPillarSuggestPoolBRoute } from "./routes/pillar-suggest-pool-b.js";
 import { registerAddAgentRoute } from "./routes/add-agent.js";
 import { registerRecommendAgentRoute } from "./routes/recommend-agent.js";
 import { registerTokenUsageRoute } from "./routes/token-usage.js";
@@ -65,6 +67,8 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerResetRoute(app);
   registerSwapTemplateRoute(app);
   registerInferenceStatusRoute(app);
+  registerDeviceStatusRoute(app);
+  registerPillarSuggestPoolBRoute(app);
   registerAddAgentRoute(app);
   registerRecommendAgentRoute(app);
   registerTokenUsageRoute(app);

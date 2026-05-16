@@ -1299,52 +1299,57 @@ function EmptyState({
 
 // ── Top bar ───────────────────────────────────────────────────────────────
 
-/** Inference-source chip — probes /claude-code-check on mount and surfaces
- *  to the customer which inference backend is serving their wizard:
+/** Inference-source chip — reflects what's TRUE for a paying customer's
+ *  Pool B path. Replaces the old probe-of-local-CLI which always reported
+ *  "offline" on customer machines (no local hosted-shim, no local Claude
+ *  CLI) even when their Supabase-Realtime Pool B inference was fully
+ *  functional.
  *
- *    "✓ WaveX hub · Pool A"  (hosted mode, hub on operator's Mac)
- *    "✓ Claude Max · oauth"  (customer's own Claude OAuth)
- *    "✓ API key"              (apikey mode — production deploy)
- *    "○ Inference offline"    (probe failed)
+ *  Source of truth: GET /api/inference-status on the wavex-os server
+ *  (reads ~/.wavex-os/device-token.json + verifies JWT, no network).
  *
- *  This was the missing piece of the chat-first refactor: the legacy
- *  wizard's Pillar 2 explicitly verified the inference source and showed
- *  a "Connected to WaveX hub" card. The new flow auto-skips that pillar
- *  in hosted mode (see Pillar2.tsx) so the customer otherwise never sees
- *  the confirmation. This chip restores the transparency without forcing
- *  a UI step. */
+ *    online + mode="pool_b"  → "✓ Inference online · Pool B"
+ *    offline                 → "○ Inference offline" + pair-device hint
+ *
+ *  Polls on mount + every 30 s so a fresh `wavex-os login` reflects
+ *  without a page reload. */
+interface InferenceStatusResp {
+  ok: boolean;
+  online: boolean;
+  mode: "pool_b" | "offline";
+  user_id?: string;
+  expires_at?: number;
+  reason?: string;
+}
+
 function HubTransparencyChip() {
-  const [info, setInfo] = useState<{ source: string; sub: string; tone: "ok" | "warn" } | null>(null);
+  const [status, setStatus] = useState<InferenceStatusResp | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const poll = async () => {
       try {
-        const r = await opOmegaOnboardingApi.claudeCodeCheck();
-        if (cancelled) return;
-        if (r.ok && r.probe?.billing_type === "wavex_pool_a") {
-          setInfo({ source: "WaveX hub", sub: "Pool A", tone: "ok" });
-        } else if (r.ok && r.probe?.installed && r.probe?.authenticated) {
-          setInfo({ source: "Claude", sub: "local", tone: "ok" });
-        } else if (r.ok && r.probe?.installed) {
-          setInfo({ source: "Claude", sub: "not signed in", tone: "warn" });
-        } else {
-          setInfo({ source: "Inference", sub: "offline", tone: "warn" });
-        }
+        const r = await fetch("/api/inference-status");
+        const j = (await r.json()) as InferenceStatusResp;
+        if (!cancelled) setStatus(j);
       } catch {
-        if (!cancelled) setInfo({ source: "Inference", sub: "offline", tone: "warn" });
+        if (!cancelled) setStatus({ ok: true, online: false, mode: "offline", reason: "fetch_failed" });
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    void poll();
+    const t = window.setInterval(() => void poll(), 30_000);
+    return () => { cancelled = true; window.clearInterval(t); };
   }, []);
-  if (!info) return null;
-  const isOk = info.tone === "ok";
+  if (!status) return null;
+  const isOk = status.online;
+  const label = isOk ? "Inference online · Pool B" : "Inference offline";
+  const title = isOk
+    ? `Pool B reachable — paired as ${status.user_id ?? "device"}, token valid until ${
+        status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : "unknown"
+      }. Inference runs on the operator's Mac via Supabase Realtime, billed under your subscription.`
+    : `No paired device — run \`wavex-os login\` to pair this machine (${status.reason ?? "no_bundle"}).`;
   return (
     <span
-      title={
-        info.source === "WaveX hub"
-          ? "Inference is served by the operator's Mac-mini hub via Cloudflare Tunnel. Free for you during onboarding (Pool A) — no Claude plan or API key needed on your machine."
-          : `Inference: ${info.source} · ${info.sub}`
-      }
+      title={title}
       style={{
         fontSize: 10, padding: "0.1rem 0.45rem",
         border: `1px solid ${isOk ? "var(--accent)" : "var(--warning)"}`,
@@ -1356,7 +1361,12 @@ function HubTransparencyChip() {
         whiteSpace: "nowrap",
       }}
     >
-      {isOk ? "✓ " : "○ "}{info.source} · {info.sub}
+      {isOk ? "✓ " : "○ "}{label}
+      {!isOk && (
+        <span style={{ marginLeft: "0.35rem", textDecoration: "underline", opacity: 0.8 }}>
+          Pair device
+        </span>
+      )}
     </span>
   );
 }

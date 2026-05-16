@@ -41,6 +41,27 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return json as T;
 }
 
+/** Cached check of /api/inference-status. Pool-B-aware surfaces (today:
+ *  Pillar 3 suggest) call this before deciding whether to route through
+ *  the customer's cloud-client path or fall back to the operator's Pool A
+ *  hub. Cached for 30 s so a burst of card mounts doesn't fan out into
+ *  N status fetches. */
+let poolBCache: { value: boolean; expiresAt: number } | null = null;
+async function isPoolBReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (poolBCache && now < poolBCache.expiresAt) return poolBCache.value;
+  try {
+    const r = await fetch("/api/inference-status");
+    const j = (await r.json()) as { online?: boolean; mode?: string };
+    const value = Boolean(j.online && j.mode === "pool_b");
+    poolBCache = { value, expiresAt: now + 30_000 };
+    return value;
+  } catch {
+    poolBCache = { value: false, expiresAt: now + 30_000 };
+    return false;
+  }
+}
+
 export interface StatusResponse {
   ok: boolean;
   companyId: string;
@@ -156,15 +177,35 @@ export const opOmegaOnboardingApi = {
    *  matches your $50K MRR B2B SaaS signal") instead of a static form.
    *
    *  Supported for pillars 3, 4, 5. recommended is a partial object keyed
-   *  by the pillar's fields; reasoning is a short why-this-pick string. */
-  pillarSuggest: (pillar: 3 | 4 | 5, companyId: string) =>
-    call<{
+   *  by the pillar's fields; reasoning is a short why-this-pick string.
+   *
+   *  Pillar 3 is wired through Pool B when the customer has a valid
+   *  device-token (the new Supabase-Realtime path). The other pillars
+   *  stay on Pool A until that path is proven. Pool B falls back to
+   *  Pool A on any failure — never blocks the wizard. */
+  pillarSuggest: async (pillar: 3 | 4 | 5, companyId: string) => {
+    const usePoolB = pillar === 3 && await isPoolBReachable();
+    if (usePoolB) {
+      try {
+        return await call<{
+          ok: boolean;
+          pillar: number;
+          recommended: Record<string, unknown>;
+          reasoning: string | null;
+          error?: string;
+        }>("POST", `/op-omega/onboarding/pillar/${pillar}/suggest-pool-b`, { companyId });
+      } catch {
+        // fall through to Pool A — Pool B is best-effort
+      }
+    }
+    return call<{
       ok: boolean;
       pillar: number;
       recommended: Record<string, unknown>;
       reasoning: string | null;
       error?: string;
-    }>("POST", `/op-omega/onboarding/pillar/${pillar}/suggest`, { companyId }),
+    }>("POST", `/op-omega/onboarding/pillar/${pillar}/suggest`, { companyId });
+  },
 
   /** One-shot phase-transition narration grounded in pillar context. The
    *  shell calls this between phases (e.g., "Got the picture" → "let me

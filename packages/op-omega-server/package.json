@@ -16,6 +16,7 @@
     "@op-omega/plugin-tier-router": "workspace:*",
     "@op-omega/plugin-flywheel-kernel": "workspace:*",
     "@wavex-os/auth-shim": "workspace:*",
+    "@wavex-os/cloud-client": "workspace:*",
     "@wavex-os/composio-shim": "workspace:*",
     "@wavex-os/db": "workspace:*",
     "@wavex-os/healing": "workspace:*",
