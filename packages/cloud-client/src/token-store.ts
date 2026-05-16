@@ -68,20 +68,58 @@ export async function deleteBundle(cfg?: CloudConfig): Promise<void> {
 
 /**
  * Inspect a stored bundle without making any network call. Useful for
- * the `wavex-os doctor` CLI to surface "paired as <user>, expires in N
- * min" without disturbing the refresh flow.
+ * the `wavex-os doctor` CLI + the UI's `/api/inference-status` chip to
+ * surface "paired as <user>, expires in N min" without disturbing the
+ * refresh flow.
  *
- * Returns the JWT verify result OR { ok: false, reason: "no_bundle" }
- * if no file is on disk.
+ * Two assurance levels depending on whether `WAVEX_DEVICE_JWT_SECRET`
+ * is available:
+ *
+ *   - STRONG (secret present, e.g. on the operator's Mac running the
+ *     inference-server): full HS256 signature verify via auth-shim.
+ *
+ *   - WEAK (secret absent, e.g. on a customer's machine where the
+ *     secret deliberately doesn't ship): parse the JWT payload, check
+ *     `exp > now`, accept. The real security gate is the Mac-side
+ *     worker that does verify the signature before serving an
+ *     inference request — this introspection is a UI hint only and
+ *     must not fail just because the local side can't crypto-verify.
+ *
+ * Returns `{ ok: true, bundle }` on either level of success and
+ * `{ ok: false, reason }` otherwise. `reason` distinguishes between
+ * `no_bundle` (no file), `expired` (parsed exp is past), and the
+ * specific auth-shim reasons when STRONG verify failed.
  */
 export async function introspectBundle(
   cfg?: CloudConfig,
 ): Promise<{ ok: boolean; reason?: string; bundle?: DeviceTokenBundle }> {
   const bundle = await readBundle(cfg);
   if (!bundle) return { ok: false, reason: "no_bundle" };
-  const v = verifyDeviceJwt(bundle.access_token);
-  if (!v.ok) return { ok: false, reason: v.reason, bundle };
-  return { ok: true, bundle };
+
+  // STRONG path — secret is available locally.
+  if (process.env.WAVEX_DEVICE_JWT_SECRET) {
+    const v = verifyDeviceJwt(bundle.access_token);
+    if (!v.ok) return { ok: false, reason: v.reason, bundle };
+    return { ok: true, bundle };
+  }
+
+  // WEAK path — no secret on this machine (normal for customer
+  // installs). Parse the JWT payload non-verifyingly and check exp.
+  try {
+    const parts = bundle.access_token.split(".");
+    if (parts.length !== 3) return { ok: false, reason: "malformed", bundle };
+    const b64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 ? 4 - (b64.length % 4) : 0;
+    const payload = JSON.parse(
+      Buffer.from(b64 + "=".repeat(pad), "base64").toString("utf8"),
+    ) as { exp?: unknown };
+    const exp = typeof payload.exp === "number" ? payload.exp : undefined;
+    if (!exp) return { ok: false, reason: "bad_payload", bundle };
+    if (exp < Math.floor(Date.now() / 1000)) return { ok: false, reason: "expired", bundle };
+    return { ok: true, bundle };
+  } catch {
+    return { ok: false, reason: "malformed", bundle };
+  }
 }
 
 /**
