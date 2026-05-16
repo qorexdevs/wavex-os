@@ -133,24 +133,42 @@ async function callRefresh(cfg: CloudConfig, refreshToken: string): Promise<Devi
       const text = await res.text().catch(() => "");
       throw new Error(`refresh_failed: HTTP ${res.status} ${text.slice(0, 200)}`);
     }
-    type RefreshResponse = {
-      access_token: string;
-      refresh_token: string;
-      access_token_expires_at: number;
-      user_id: string;
-      device_id: string;
-    };
-    const body = (await res.json()) as RefreshResponse;
-    if (!body.access_token || !body.refresh_token || !body.access_token_expires_at) {
+    // Deployed `os-device-refresh` edge fn returns:
+    //   { ok: true, access_token, token_type: "Bearer", expires_in: 3600 }
+    //   { ok: false, error: "invalid_refresh_token" | "refresh_expired" | ... }
+    // It does NOT rotate the refresh_token and does NOT echo user_id/device_id —
+    // we keep those from the previously-loaded bundle on disk.
+    const body = (await res.json()) as
+      | { ok: true; access_token: string;
+          access_token_expires_at?: number; expires_in?: number;
+          refresh_token?: string; user_id?: string; device_id?: string }
+      | { ok: false; error: string };
+
+    if ((body as { ok?: boolean }).ok === false || "error" in body) {
+      throw new Error(`refresh_failed: ${(body as { error?: string }).error ?? "unknown"}`);
+    }
+    const b = body as { access_token?: string; expires_in?: number;
+                         access_token_expires_at?: number;
+                         refresh_token?: string; user_id?: string; device_id?: string };
+    if (!b.access_token) {
       throw new Error("refresh_failed: malformed response from os-device-refresh");
     }
+    // Merge with the existing bundle for fields the edge fn doesn't echo
+    // (refresh_token reused — edge fn doesn't rotate; user_id + device_id
+    // carry forward).
+    const existing = await readBundle(cfg);
+    if (!existing) {
+      throw new Error("refresh_failed: no existing bundle to merge from");
+    }
+    const expiresAt = b.access_token_expires_at
+      ?? Math.floor(Date.now() / 1000) + (b.expires_in ?? 3600);
     return {
-      access_token: body.access_token,
-      refresh_token: body.refresh_token,
-      access_token_expires_at: body.access_token_expires_at,
+      access_token: b.access_token,
+      refresh_token: b.refresh_token ?? existing.refresh_token,
+      access_token_expires_at: expiresAt,
       obtained_at: Math.floor(Date.now() / 1000),
-      user_id: body.user_id,
-      device_id: body.device_id,
+      user_id: b.user_id ?? existing.user_id,
+      device_id: b.device_id ?? existing.device_id,
     };
   } finally {
     clearTimeout(timer);
