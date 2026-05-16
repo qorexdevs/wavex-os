@@ -1320,6 +1320,10 @@ interface InferenceStatusResp {
   user_id?: string;
   expires_at?: number;
   reason?: string;
+  /** Set when the route auto-refreshed an expired access_token during this
+   *  poll. The chip shows a brief "(refreshed)" tag so the customer sees the
+   *  self-heal happened. */
+  refreshed?: boolean;
 }
 
 function HubTransparencyChip() {
@@ -1341,12 +1345,27 @@ function HubTransparencyChip() {
   }, []);
   if (!status) return null;
   const isOk = status.online;
-  const label = isOk ? "Inference online · Pool B" : "Inference offline";
+  // Map server-side reasons to a CUSTOMER-FACING message that never asks
+  // for a terminal command. "expired" no longer appears as a terminal
+  // state — the server auto-refreshes; only "refresh_failed" or "no_bundle"
+  // reach the user.
+  const offlineCopy =
+    status.reason === "refresh_failed"  ? "Reconnect device"  :
+    status.reason === "no_bundle"       ? "Pair device"       :
+    status.reason === "fetch_failed"    ? "Reconnecting…"     :
+    "Pair device";
+  const label = isOk
+    ? (status.refreshed ? "Inference online · Pool B (refreshed)" : "Inference online · Pool B")
+    : "Inference offline";
   const title = isOk
     ? `Pool B reachable — paired as ${status.user_id ?? "device"}, token valid until ${
         status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : "unknown"
       }. Inference runs on the operator's Mac via Supabase Realtime, billed under your subscription.`
-    : `No paired device — run \`wavex-os login\` to pair this machine (${status.reason ?? "no_bundle"}).`;
+    : status.reason === "refresh_failed"
+      ? `Could not refresh the device token — the refresh token may have been revoked or your network is offline. Click "Reconnect device" to pair again.`
+      : status.reason === "fetch_failed"
+        ? `Could not reach the local wavex-os server. It may still be starting up — this resolves itself within a few seconds.`
+        : `This machine isn't paired yet. Click "Pair device" to set it up.`;
   return (
     <span
       title={title}
@@ -1362,9 +1381,9 @@ function HubTransparencyChip() {
       }}
     >
       {isOk ? "✓ " : "○ "}{label}
-      {!isOk && (
+      {!isOk && status.reason !== "fetch_failed" && (
         <span style={{ marginLeft: "0.35rem", textDecoration: "underline", opacity: 0.8 }}>
-          Pair device
+          {offlineCopy}
         </span>
       )}
     </span>
