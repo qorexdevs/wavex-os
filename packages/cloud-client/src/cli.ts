@@ -140,24 +140,29 @@ async function login(): Promise<number> {
       },
     });
 
-    const introspect = await introspectBundle();
-    if (!introspect.ok) {
+    // Customer machines never have WAVEX_DEVICE_JWT_SECRET — local verify is
+    // meaningless there and the "no_secret" warning was just noise. Skip the
+    // check silently when the env var is absent; only surface real failures.
+    if (process.env.WAVEX_DEVICE_JWT_SECRET) {
+      const introspect = await introspectBundle();
+      if (!introspect.ok) {
+        console.log(
+          `  ${c.yellow}⚠${c.reset} Token written but local verify failed: ${introspect.reason}`,
+        );
+        console.log(
+          `    This usually means WAVEX_DEVICE_JWT_SECRET differs between local and cloud.`,
+        );
+        console.log(
+          `    Cloud team needs to confirm both sides agree on the same key.`,
+        );
+        console.log("");
+        return 0; // still paired — refresh works; just no local verify
+      }
       console.log(
-        `  ${c.yellow}⚠${c.reset} Token written but local verify failed: ${introspect.reason}`,
-      );
-      console.log(
-        `    This usually means WAVEX_DEVICE_JWT_SECRET differs between local and cloud.`,
-      );
-      console.log(
-        `    Cloud team needs to confirm both sides agree on the same key.`,
+        "  Token verified locally. Ready for os-inference + spend rail.",
       );
       console.log("");
-      return 0; // still paired — refresh works; just no local verify
     }
-    console.log(
-      "  Token verified locally. Ready for os-inference + spend rail.",
-    );
-    console.log("");
     return 0;
   } catch (err) {
     console.log("");

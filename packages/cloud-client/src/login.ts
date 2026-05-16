@@ -14,6 +14,23 @@
 import { writeBundle } from "./token-store.js";
 import { loadConfig, fnUrl, type CloudConfig } from "./config.js";
 
+/** Decode a JWT's `sub` claim without verifying. Returns undefined on any
+ *  parse failure — caller falls back to "". Library-free, same approach the
+ *  rest of cloud-client uses (see inference.ts:extractSub). */
+function decodeJwtSub(accessToken: string): string | undefined {
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length !== 3) return undefined;
+    const b64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 ? 4 - (b64.length % 4) : 0;
+    const json = Buffer.from(b64 + "=".repeat(pad), "base64").toString("utf8");
+    const payload = JSON.parse(json) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub ? payload.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface LinkDeviceResponse {
   user_code: string;
   device_code: string;
@@ -148,7 +165,11 @@ export async function pollForToken(
       access_token_expires_at?: number; expires_in?: number;
       user_id?: string; device_id: string;
     };
-    const userId = (b as { user_id?: string }).user_id ?? "";
+    // os-device-token doesn't currently return a top-level user_id — pull it
+    // from the JWT's `sub` claim (same pattern inference.ts uses). Keeps the
+    // bundle's user_id populated so the success message + on-disk token both
+    // carry the real id and downstream callers don't need to re-decode.
+    const userId = b.user_id || decodeJwtSub(b.access_token) || "";
     const expiresAt = b.access_token_expires_at
       ?? Math.floor(Date.now() / 1000) + (b.expires_in ?? 3600);
     const result = {
