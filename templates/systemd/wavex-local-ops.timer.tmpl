@@ -1,0 +1,13 @@
+[Unit]
+Description=Run WaveX OS local-ops daemon every 5 minutes
+Requires=wavex-local-ops.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=wavex-local-ops.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

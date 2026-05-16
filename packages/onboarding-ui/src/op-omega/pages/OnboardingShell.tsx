@@ -34,6 +34,7 @@ import { AvatarVoiceCard } from "../components/inline-cards/AvatarVoiceCard";
 import { AvatarTrustCard } from "../components/inline-cards/AvatarTrustCard";
 import { AvatarSuggestionsCard } from "../components/inline-cards/AvatarSuggestionsCard";
 import { CredentialDrawer } from "../components/CredentialDrawer";
+import { SystemHealthChip } from "../components/SystemHealthChip";
 import { detectScope, type Department } from "../lib/scope-detect";
 import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
@@ -1413,6 +1414,7 @@ function TopBar({
           </span>
         )}
         <HubTransparencyChip />
+        <SystemHealthChip />
         {t0 && (
           <span
             title="Fast mode (?t0=1): every T2 inference call returns a deterministic fallback. No claude CLI required, no token cost. Drop the ?t0=1 from the URL for real inference."

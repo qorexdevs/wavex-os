@@ -1,0 +1,15 @@
+[Unit]
+Description=WaveX OS local self-healing daemon (one shot per timer fire)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=WAVEX_OS_REPO_ROOT=${WAVEX_OS_ROOT}
+Environment=WAVEX_OS_STATE_DIR=${STATE_DIR}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node ${WAVEX_OS_ROOT}/scripts/wavex-local-ops-cycle.mjs
+StandardOutput=append:${STATE_DIR}/wavex-local-ops.log
+StandardError=append:${STATE_DIR}/wavex-local-ops.log
+
+[Install]
+WantedBy=default.target
