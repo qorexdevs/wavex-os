@@ -78,3 +78,6 @@ test-results/
 
 # Supabase CLI temp state (project ref, version markers)
 supabase/.temp/
+
+# Operator-local QA spec fixtures (not shipped in customer installs)
+e2e/_qa-*.spec.ts
