@@ -103,7 +103,9 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan and [docs/ARCHITECTURE
 
 ## Quickstart
 
-You need [Node ≥18](https://nodejs.org), [pnpm ≥8](https://pnpm.io), [git](https://git-scm.com), and a [Claude Max](https://claude.ai/upgrade) subscription on the same machine (the wizard reads from the system keychain).
+You need [Node ≥18](https://nodejs.org), [pnpm ≥9](https://pnpm.io), [git](https://git-scm.com), and a [Claude Max](https://claude.ai/upgrade) subscription on the same machine (the wizard reads from the system keychain).
+
+If you have [corepack](https://nodejs.org/api/corepack.html) enabled (`corepack enable`), pnpm is pinned automatically via the `packageManager` field — you don't need to install pnpm separately.
 
 ```bash
 git clone https://github.com/aimerdoux/wavex-os.git
@@ -112,6 +114,10 @@ pnpm install
 pnpm -r --filter "./vendor/op-omega/*" build   # build the vendored op-omega packages
 pnpm dev
 ```
+
+`pnpm dev` also re-runs `pnpm install --prefer-offline` automatically as a safety net — so if you skip the explicit install step, `pnpm dev` will still bootstrap cleanly the first time.
+
+> **Note on a benign warning.** During `pnpm install` you'll see two `WARN` lines about a `pnpm` field in `packages/core/package.json`. That's expected — `packages/core` is the vendored Paperclip subtree with its own install lifecycle (`cd packages/core && pnpm install`), and its `patchedDependencies` / `overrides` apply there, not at the outer wavex workspace. Safe to ignore.
 
 This boots two servers in parallel:
 

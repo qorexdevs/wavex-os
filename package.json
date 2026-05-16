@@ -14,7 +14,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "pnpm dev:everything",
+    "dev": "pnpm install --prefer-offline && pnpm dev:everything",
     "dev:everything": "pnpm dev:paperclip:install && pnpm dev:wavex-plugin:build && pnpm --parallel --filter \"./packages/onboarding-ui\" --filter \"./packages/mock-core\" --filter \"paperclip\" dev",
     "dev:no-paperclip": "pnpm --parallel --filter \"./packages/onboarding-ui\" --filter \"./packages/mock-core\" dev",
     "dev:ui": "pnpm --filter \"./packages/onboarding-ui\" dev",
@@ -41,7 +41,7 @@
     "wavex:link": "cd packages/cloud-client && pnpm link --global && echo 'wavex-os linked globally — run: wavex-os login'",
     "wavex:cloud-client:smoke": "node_modules/.pnpm/node_modules/.bin/tsx packages/cloud-client/scripts/smoke-offline.mjs"
   },
-  "packageManager": "pnpm@8.15.0",
+  "packageManager": "pnpm@9.15.9",
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/node": "^25.6.2"
