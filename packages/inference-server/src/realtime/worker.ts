@@ -67,7 +67,19 @@ interface SubscriptionRow {
   tier?: string;
 }
 
-function calcCostCents(
+// USD per 1M tokens — public list-price table keyed by model id.
+// Source: anthropic.com/pricing as of 2026-05.
+const ANTHROPIC_PRICING: Record<
+  string,
+  { input: number; output: number; cached_input: number; cache_creation: number }
+> = {
+  "claude-sonnet-4-6": { input: 3, output: 15, cached_input: 0.3, cache_creation: 3.75 },
+  "claude-sonnet-4-5": { input: 3, output: 15, cached_input: 0.3, cache_creation: 3.75 },
+  "claude-opus-4-7": { input: 15, output: 75, cached_input: 1.5, cache_creation: 18.75 },
+  "claude-haiku-4-5": { input: 0.8, output: 4, cached_input: 0.08, cache_creation: 1 },
+};
+
+function calcCostUsd(
   model: string,
   usage: {
     input_tokens: number;
@@ -76,17 +88,17 @@ function calcCostCents(
     cache_creation_input_tokens?: number;
   },
 ): number {
-  // Sonnet 4.6 blended; same numbers as routes/onboarding.ts so the ledger
-  // is comparable across Pool A / HTTP / Realtime paths.
-  if (model.includes("haiku")) {
-    return Math.round((usage.input_tokens * 0.001 + usage.output_tokens * 0.005) / 10);
-  }
-  return Math.round(
-    (usage.input_tokens * 0.0003 +
-      usage.output_tokens * 0.0015 +
-      (usage.cache_read_input_tokens ?? 0) * 0.00003 +
-      (usage.cache_creation_input_tokens ?? 0) * 0.000375) *
-      100,
+  // Resolve pricing by exact id, then prefix-match fallback (e.g. "claude-haiku-…").
+  const p =
+    ANTHROPIC_PRICING[model] ??
+    Object.entries(ANTHROPIC_PRICING).find(([k]) => model.startsWith(k))?.[1] ??
+    ANTHROPIC_PRICING["claude-sonnet-4-6"];
+  return (
+    (usage.input_tokens * p.input +
+      usage.output_tokens * p.output +
+      (usage.cache_read_input_tokens ?? 0) * p.cached_input +
+      (usage.cache_creation_input_tokens ?? 0) * p.cache_creation) /
+    1_000_000
   );
 }
 
@@ -113,7 +125,6 @@ async function writeLedger(
   row: {
     pool: "C";
     subscription_id: string;
-    user_id: string;
     request_id: string;
     model: string;
     prompt_tokens: number;
@@ -122,16 +133,30 @@ async function writeLedger(
     cache_creation_tokens: number;
     cost_cents: number;
     status: "ok" | "error" | "rate_limited" | "cap_hit";
+    device_id?: string;
     error_class?: string;
   },
   log: Logger,
 ): Promise<void> {
   // Fire-and-forget — don't block the response on ledger latency.
-  // Same schema/from() pattern as routes/onboarding.ts:writeLedger.
+  // Routes through public.wavex_os_record_usage (SECURITY DEFINER RPC) because
+  // `wavex_os` is not in PostgREST's db-schemas list, so a direct
+  // .schema('wavex_os').from('usage_ledger').insert() returns PGRST106.
   void supabase
-    .schema("wavex_os")
-    .from("usage_ledger")
-    .insert(row)
+    .rpc("wavex_os_record_usage", {
+      p_pool: row.pool,
+      p_subscription_id: row.subscription_id,
+      p_request_id: row.request_id,
+      p_model: row.model,
+      p_prompt_tokens: row.prompt_tokens,
+      p_completion_tokens: row.completion_tokens,
+      p_cache_read_tokens: row.cache_read_tokens,
+      p_cache_creation_tokens: row.cache_creation_tokens,
+      p_cost_cents: row.cost_cents,
+      p_status: row.status,
+      p_device_id: row.device_id ?? null,
+      p_error_class: row.error_class ?? null,
+    })
     .then((r: { error: unknown }) => {
       if (r.error) log.warn({ err: r.error, request_id: row.request_id }, "usage_ledger insert failed");
     });
@@ -222,7 +247,12 @@ async function handleRequest(args: {
   }
   responseUserId = v.payload.sub;
 
-  // Subscription gating
+  // Subscription gating. We capture subscriptionId here regardless of the
+  // SKIP_SUB hook so the ledger row can attribute cost to the right sub.
+  // (If SKIP_SUB=1 there's no active sub to attribute to → leave undefined
+  // and skip the insert below; we don't have a subscription_id NOT NULL
+  // requirement but FK integrity matters more than a synthetic row.)
+  let subscriptionId: string | null = null;
   if (process.env.WAVEX_OS_INFERENCE_SKIP_SUB !== "1") {
     const sub = await lookupActiveSubscription(supabase, v.payload.sub);
     if (!sub.ok) {
@@ -244,6 +274,7 @@ async function handleRequest(args: {
       );
       return;
     }
+    subscriptionId = sub.row.id;
   }
 
   // Anthropic call (or mock for tests)
@@ -283,12 +314,13 @@ async function handleRequest(args: {
     }
 
     const durationMs = Date.now() - started;
-    const costCents = calcCostCents(model, {
+    const costUsd = calcCostUsd(model, {
       input_tokens: usageInput,
       output_tokens: usageOutput,
       cache_read_input_tokens: usageCacheRead,
       cache_creation_input_tokens: usageCacheCreate,
     });
+    const costCents = Math.round(costUsd * 100);
 
     await respond({
       request_id,
@@ -299,28 +331,32 @@ async function handleRequest(args: {
         input_tokens: usageInput,
         output_tokens: usageOutput,
         cached_input_tokens: usageCacheRead,
-        cost_usd: costCents / 100,
+        cost_usd: costUsd,
         duration_ms: durationMs,
       },
     });
 
-    void writeLedger(
-      supabase,
-      {
-        pool: "C",
-        subscription_id: v.payload.sub,
-        user_id: v.payload.sub,
-        request_id,
-        model,
-        prompt_tokens: usageInput,
-        completion_tokens: usageOutput,
-        cache_read_tokens: usageCacheRead,
-        cache_creation_tokens: usageCacheCreate,
-        cost_cents: costCents,
-        status: "ok",
-      },
-      log,
-    );
+    // Skip the ledger insert when SKIP_SUB=1: no subscription_id means we
+    // can't attribute cost — better to no-op than to insert a synthetic row.
+    if (subscriptionId) {
+      void writeLedger(
+        supabase,
+        {
+          pool: "C",
+          subscription_id: subscriptionId,
+          request_id,
+          model,
+          prompt_tokens: usageInput,
+          completion_tokens: usageOutput,
+          cache_read_tokens: usageCacheRead,
+          cache_creation_tokens: usageCacheCreate,
+          cost_cents: costCents,
+          status: "ok",
+          device_id: v.payload.device_id,
+        },
+        log,
+      );
+    }
 
     log.info(
       { request_id, user_id: v.payload.sub, outcome: "ok", duration_ms: durationMs, cost_cents: costCents },
