@@ -179,12 +179,18 @@ export const opOmegaOnboardingApi = {
    *  Supported for pillars 3, 4, 5. recommended is a partial object keyed
    *  by the pillar's fields; reasoning is a short why-this-pick string.
    *
-   *  Pillar 3 is wired through Pool B when the customer has a valid
-   *  device-token (the new Supabase-Realtime path). The other pillars
-   *  stay on Pool A until that path is proven. Pool B falls back to
-   *  Pool A on any failure — never blocks the wizard. */
+   *  ALL pillars route through Pool B (Supabase Realtime → operator's Mac
+   *  → Anthropic) when the customer has a valid device-token. Pillar 3
+   *  was the canary in Subagent C's first pass; extending to 4 + 5 here
+   *  closes the loop so a paying customer's onboarding wizard fires all
+   *  five pillars through the same Realtime path their fleet will use.
+   *
+   *  The Pool B server-side route (`pillar-suggest-pool-b.ts`) already
+   *  handles all pillar numbers — it dispatches the same prompt the
+   *  Pool A route builds, just over Realtime instead of HTTP. Pool B
+   *  falls back to Pool A on any failure — never blocks the wizard. */
   pillarSuggest: async (pillar: 3 | 4 | 5, companyId: string) => {
-    const usePoolB = pillar === 3 && await isPoolBReachable();
+    const usePoolB = await isPoolBReachable();
     if (usePoolB) {
       try {
         return await call<{
