@@ -42,11 +42,18 @@ function getSecret(): string {
   return process.env.WAVEX_DEVICE_JWT_SECRET ?? "";
 }
 
-const EXPECTED_AUD = "os-device";
+// The original 2026-05-13 spec called for `aud: "os-device"`. The deployed
+// cloud `os-device-token` edge fn mints `aud: "authenticated"` instead so the
+// same token can also authenticate against Supabase Realtime (which gates on
+// `aud="authenticated"`). The real distinguishing claim is `scope: "os_device"`
+// — that's what makes this a device token vs a generic Supabase auth token.
+// Accept both auds; reject anything else. The signature + scope checks remain
+// the actual security boundary.
+const EXPECTED_AUDS: ReadonlySet<string> = new Set(["os-device", "authenticated"]);
 const EXPECTED_SCOPE = "os_device";
 
 export interface DeviceJwtPayload {
-  aud: typeof EXPECTED_AUD;
+  aud: "os-device" | "authenticated";
   sub: string;
   device_id: string;
   scope: string;
@@ -137,7 +144,7 @@ export function verifyDeviceJwt(token: string | undefined): VerifyResult {
   if (typeof payload?.iat !== "number") return { ok: false, reason: "bad_payload" };
   if (typeof payload?.exp !== "number") return { ok: false, reason: "bad_payload" };
 
-  if (payload.aud !== EXPECTED_AUD) return { ok: false, reason: "wrong_aud", payload };
+  if (!EXPECTED_AUDS.has(payload.aud)) return { ok: false, reason: "wrong_aud", payload };
   if (payload.scope !== EXPECTED_SCOPE) return { ok: false, reason: "wrong_scope", payload };
 
   const now = Math.floor(Date.now() / 1000);
@@ -162,7 +169,7 @@ export function _signDeviceJwt_TEST_ONLY(
   if (!secret) throw new Error("WAVEX_DEVICE_JWT_SECRET not set");
   const header = { alg: "HS256", typ: "JWT" };
   const full: DeviceJwtPayload = {
-    aud: EXPECTED_AUD,
+    aud: "os-device",
     scope: EXPECTED_SCOPE,
     sub: payload.sub,
     device_id: payload.device_id,
