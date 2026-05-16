@@ -33,6 +33,13 @@ const SCHEMA_VERSION = 1;
 const CYCLE_INTERVAL_SEC = 300;
 const TOKEN_REFRESH_THRESHOLD_SEC = 600; // 10 min
 const STATE_FILE = path.join(homedir(), ".wavex-os", "local-ops-state.json");
+const DEVICE_TOKEN_FILE = path.join(homedir(), ".wavex-os", "device-token.json");
+const CLOUD_PUSH_LAST_FILE = path.join(homedir(), ".wavex-os", "cloud-push-last.json");
+const CLOUD_PUSH_URL =
+  process.env.WAVEX_OS_HEALTH_PUSH_URL ??
+  "https://ngvtgraldybxdbgkihfj.supabase.co/functions/v1/os-instance-health";
+const CLOUD_PUSH_MIN_INTERVAL_SEC = 15 * 60; // heartbeat even when nothing changes
+const CLOUD_PUSH_TIMEOUT_MS = 5000;
 const IS_WIN = platform() === "win32";
 
 // Ports we expect dev servers to bind. Cheap and reliable cross-platform
@@ -427,6 +434,96 @@ function deriveUserAction(checks) {
   return null;
 }
 
+// ---------- cloud push ----------
+
+async function readDeviceBundle() {
+  try {
+    const raw = await fs.readFile(DEVICE_TOKEN_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function readLastPush() {
+  try {
+    const raw = await fs.readFile(CLOUD_PUSH_LAST_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function stateFingerprint(state) {
+  // Cheap content hash: stringify just the fields the operator UI cares about.
+  // If checks + requires_user_action are unchanged, we skip pushing (unless
+  // the heartbeat window has elapsed).
+  return JSON.stringify({
+    checks: state.checks,
+    requires_user_action: state.requires_user_action,
+  });
+}
+
+async function pushStateToCloud(state) {
+  const bundle = await readDeviceBundle();
+  if (!bundle?.access_token) {
+    return { status: "skipped", detail: "no_bundle" };
+  }
+
+  const last = await readLastPush();
+  const fp = stateFingerprint(state);
+  const now = Math.floor(Date.now() / 1000);
+  const ageSec = last?.pushed_at ? now - last.pushed_at : Infinity;
+  if (last?.fingerprint === fp && ageSec < CLOUD_PUSH_MIN_INTERVAL_SEC) {
+    return { status: "skipped", detail: "unchanged_within_heartbeat" };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLOUD_PUSH_TIMEOUT_MS);
+  try {
+    const res = await fetch(CLOUD_PUSH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_jwt: bundle.access_token,
+        state_file_content: state,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const text = await res.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { status: "failed", detail: `non_json_response: ${text.slice(0, 200)}` };
+    }
+    if (parsed?.ok) {
+      await atomicWriteJson(CLOUD_PUSH_LAST_FILE, {
+        fingerprint: fp,
+        pushed_at: now,
+        inserted_id: parsed.inserted_id ?? null,
+      });
+      return {
+        status: "ok",
+        detail: null,
+        inserted_id: parsed.inserted_id ?? null,
+        fleet_status: parsed.fleet_status ?? null,
+      };
+    }
+    return {
+      status: "failed",
+      detail: parsed?.error ? `${parsed.error}${parsed.reason ? `: ${parsed.reason}` : ""}` : "unknown",
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      status: "failed",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 // ---------- main ----------
 
 async function main() {
@@ -520,8 +617,27 @@ async function main() {
     requires_user_action: deriveUserAction(checks),
   };
 
+  // Push to cloud so Mission Control admin fleet can see this customer's
+  // installation in real time. Fire-and-forget: a failed push never crashes
+  // the cycle, but we record the outcome on the state object so the operator
+  // UI can see whether cloud is in sync. Note: we run the push BEFORE writing
+  // the state file so cloud_push is part of the persisted state.
+  let cloud_push;
+  try {
+    cloud_push = await pushStateToCloud(state);
+  } catch (err) {
+    cloud_push = {
+      status: "failed",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  state.cloud_push = cloud_push;
+
   await atomicWriteJson(STATE_FILE, state);
-  console.log(`[wavex-local-ops] cycle ok in ${state.cycle_duration_ms}ms → ${STATE_FILE}`);
+  console.log(
+    `[wavex-local-ops] cycle ok in ${state.cycle_duration_ms}ms → ${STATE_FILE}` +
+      ` (cloud_push=${cloud_push.status}${cloud_push.detail ? `: ${cloud_push.detail}` : ""})`,
+  );
   process.exit(0);
 }
 

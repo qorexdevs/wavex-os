@@ -55,6 +55,13 @@ const AGENT_SPEC = [
     capabilities: "Verifies Expert Agents keep their promise — injection delivery_score, acted-rate, fleet effectiveness." },
   { slug: "incident-responder", file: "incident-responder.md", name: "Incident Responder", icon: "wrench", reportsTo: "admin-ceo",
     capabilities: "Runs the remediation playbooks — applies fixes to operator-local instances, escalates customer-box incidents." },
+  // Phase 5 — autonomous fix-application layer (issue #126).
+  { slug: "customer-success-engineer", file: "customer-success-engineer.md", name: "Customer Success Engineer", icon: "heart", reportsTo: "admin-ceo",
+    capabilities: "Per-customer issue resolution — diagnoses individual paying customers and either Pool-C-injects guidance to their Concierge Ops or escalates the failure to the operator." },
+  { slug: "platform-reliability-engineer", file: "platform-reliability-engineer.md", name: "Platform Reliability Engineer", icon: "radar", reportsTo: "admin-ceo",
+    capabilities: "Aggregate fleet + operator-local platform health — files P1 issues on fleet-wide regressions and SEV0 on operator-local launchd outages." },
+  { slug: "build-engineer", file: "build-engineer.md", name: "Build Engineer", icon: "git-branch", reportsTo: "admin-ceo",
+    capabilities: "Owns the wavex-os codebase: watches CI on main, watches customer-machine build failures, reviews PRs touching sensitive paths, ships fixes via Git Engineer." },
 ];
 
 function log(...a) { console.log("[provision-admin]", ...a); }
