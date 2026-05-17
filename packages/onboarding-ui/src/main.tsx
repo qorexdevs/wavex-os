@@ -10,6 +10,7 @@ import { Signup } from "./pages/Signup";
 import { CompanyProvider } from "./wavex-os/lib/CompanyContext";
 import { OnboardingShell } from "./wavex-os/pages/OnboardingShell";
 import { OnboardingWizard } from "./wavex-os/components/OnboardingWizard";
+import { QaCelebrationController } from "./wavex-os/components/QaCelebrationController";
 import { AvatarDashboard } from "./pages/AvatarDashboard";
 import { AvatarSettings } from "./pages/AvatarSettings";
 import "./styles.css";
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <CompanyProvider>
           <OnboardingWizard />
+          <QaCelebrationController />
           <Routes>
             <Route path="/" element={<MissionControl />} />
             {/* Legacy wizard route redirected to the chat-first flow.
