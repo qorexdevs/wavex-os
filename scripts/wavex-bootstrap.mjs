@@ -42,7 +42,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const STATE_DIR = path.join(homedir(), ".wavex-os");
 const DEVICE_TOKEN_FILE = path.join(STATE_DIR, "device-token.json");
+const COMPANIES_DIR = path.join(STATE_DIR, "instances", "default", "companies");
 const DAEMON_SCRIPT = path.join(REPO_ROOT, "scripts", "wavex-local-ops-cycle.mjs");
+// Supabase project (same defaults as packages/cloud-client/src/config.ts).
+const SUPABASE_URL =
+  process.env.WAVEX_SUPABASE_URL ?? "https://ngvtgraldybxdbgkihfj.supabase.co";
+const SUPABASE_ANON_KEY =
+  process.env.WAVEX_SUPABASE_ANON_KEY ??
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnRncmFsZHlieGRiZ2tpaGZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MDg4MzMsImV4cCI6MjA3NDQ4NDgzM30.Xbm9AWZ3QYjkyzjFkuXAS1YR--VRd7fB-9eK14daQ8Q";
 const IS_WIN = platform() === "win32";
 const IS_MAC = platform() === "darwin";
 const IS_LINUX = platform() === "linux";
@@ -325,6 +332,110 @@ async function stageClaudeAuth() {
   }
 }
 
+async function stagePullManifest() {
+  // Cross-machine sync (5th wavex-os product feature). After device
+  // pairing succeeds, check the cloud for any company_manifests this
+  // customer has finalized on a previous machine. If a manifest exists
+  // and we DON'T have a matching company on local disk yet, restore it
+  // so Paperclip can boot the existing fleet without re-running
+  // onboarding.
+  //
+  // Idempotent: re-runs are safe — we only write when (a) the company
+  // dir doesn't exist locally, OR (b) the local manifest_sha256 differs
+  // from the cloud one. Never destroys local work-in-progress.
+  //
+  // Failure-isolated: if the call fails for any reason, just warn and
+  // continue. The customer can still onboard fresh.
+
+  // Read the access_token from the bundle. We use the customer's own
+  // JWT (aud=authenticated, sub=user_id) so the RPC's WHERE filter
+  // returns only THEIR rows.
+  let accessToken = null;
+  try {
+    const raw = await fs.readFile(DEVICE_TOKEN_FILE, "utf8");
+    const bundle = JSON.parse(raw);
+    accessToken = bundle.access_token ?? null;
+  } catch {
+    printStage("cloud manifest sync", "warn", "no device bundle (skipped)");
+    return;
+  }
+  if (!accessToken) {
+    printStage("cloud manifest sync", "warn", "no access_token in bundle");
+    return;
+  }
+
+  // Call the RPC.
+  let manifests;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/wavex_os_get_my_company_manifests`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    if (!r.ok) {
+      const detail = (await r.text()).slice(0, 120);
+      printStage("cloud manifest sync", "warn", `rpc ${r.status}: ${detail}`);
+      return;
+    }
+    manifests = await r.json();
+  } catch (err) {
+    printStage("cloud manifest sync", "warn", err?.message ?? String(err));
+    return;
+  }
+
+  if (!Array.isArray(manifests) || manifests.length === 0) {
+    printStage("cloud manifest sync", "ok", "no cloud manifests for this account");
+    return;
+  }
+
+  // Walk each manifest. Write to disk only if the company dir doesn't
+  // exist OR the manifest_sha256 differs.
+  await fs.mkdir(COMPANIES_DIR, { recursive: true });
+  let restored = 0;
+  let upToDate = 0;
+  for (const row of manifests) {
+    const companyId = row.company_id;
+    if (typeof companyId !== "string") continue;
+    const dir = path.join(COMPANIES_DIR, companyId, "onboarding");
+    const manifestPath = path.join(dir, "company.manifest.json");
+
+    let existingMatches = false;
+    if (existsSync(manifestPath)) {
+      try {
+        const localRaw = await fs.readFile(manifestPath, "utf8");
+        const local = JSON.parse(localRaw);
+        const localSha = local?.signatures?.manifest_hash;
+        if (localSha && row.manifest_sha256 && localSha === row.manifest_sha256) {
+          existingMatches = true;
+        }
+      } catch { /* ignore — re-write below */ }
+    }
+
+    if (existingMatches) {
+      upToDate++;
+      continue;
+    }
+
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      manifestPath,
+      JSON.stringify(row.manifest, null, 2),
+      "utf8",
+    );
+    restored++;
+  }
+
+  if (restored > 0) {
+    printStage("cloud manifest sync", "ok", `restored ${restored} company manifest${restored === 1 ? "" : "s"}`);
+  } else {
+    printStage("cloud manifest sync", "ok", `${upToDate} already in sync`);
+  }
+}
+
 async function stageDeregisterProxy() {
   // BYOC pivot: the claude-code-proxy is deprecated. Earlier installs of
   // this bootstrap (commit be435a89) registered it as a system service.
@@ -493,6 +604,12 @@ async function main() {
     printInfo("The wizard's inference runs on YOUR Claude subscription (BYOC model).");
     printInfo("Re-run `pnpm wavex:start` after `claude auth login` succeeds, or set ANTHROPIC_API_KEY.");
     process.exit(1);
+  }
+
+  try {
+    await stagePullManifest();
+  } catch (err) {
+    printStage("cloud manifest sync", "warn", err.message ?? String(err));
   }
 
   try {
