@@ -161,4 +161,4 @@ The phase plan is in [docs/ROADMAP.md](docs/ROADMAP.md). If you have a feature r
 
 ## Code of Conduct
 
-Be kind. Disagree on technical merit, not personal grounds. We don't have a long CoC document yet; the [Contributor Covenant](https://www.contributor-covenant.org/) applies in spirit.
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Short version: be kind, disagree on technical merit, and treat every contributor with respect.
