@@ -15,7 +15,7 @@ import { computeManifestHash, type CompanyManifest } from "@wavex-os/plugin-onbo
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
-import { bridgeAgents } from "../bridge/finalize-bridge.js";
+import { bridgeAgents, bridgeKpis } from "../bridge/finalize-bridge.js";
 import { handoffToPaperclip, rerenderBundlesForCompany } from "../bridge/paperclip-handoff.js";
 import { ignite } from "../bridge/ignition.js";
 
@@ -165,6 +165,8 @@ export function registerActivateRoute(app: FastifyInstance): void {
       await ensureMigrations();
       const db = await getDb();
       const result = await bridgeAgents(manifest, companyId, db);
+      const kpiResult = await bridgeKpis(manifest, companyId, db);
+      result.kpis = kpiResult.kpis;
 
       // bridgeAgents mutated the manifest with template_selections (rationale
       // for each matrix pick). Persist back to disk + re-sign so the dashboard
@@ -260,7 +262,7 @@ export function registerActivateRoute(app: FastifyInstance): void {
 
       return {
         ok: true,
-        inserted: { companies: result.companies, agents: result.agents },
+        inserted: { companies: result.companies, agents: result.agents, kpis: result.kpis },
         warnings: result.warnings,
         sha256: newHash,
         paperclipHandoff: handoff,

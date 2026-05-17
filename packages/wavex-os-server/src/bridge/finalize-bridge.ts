@@ -1,16 +1,20 @@
-/** Finalize → DB bridge (Slice 1: agents only).
+/** Finalize → DB bridge (Slice 1: agents, Slice 2: KPIs).
  *
  *  Translates a signed company.manifest.json into runtime DB state. Idempotent
  *  via deterministic agent ids + ON CONFLICT DO UPDATE. Slice 1 writes:
  *    - 1 row in `companies` (state flips to 'active')
  *    - N rows in `agents` (one per swarm_manifest.agents.* slot)
  *
- *  Out of scope (later slices): company_kpis, kpi_snapshots, cost_events,
- *  heartbeat_runs, issues, task_outcome_attributions, credentials sanity. */
+ *  Slice 2 writes:
+ *    - 4 rows in `company_kpis` (canonical unit-economics definitions)
+ *    - 4 rows in `kpi_snapshots` (value=0 baselines; real measurement in WAVAAAA-118)
+ *
+ *  Out of scope (later slices): cost_events, heartbeat_runs, issues,
+ *  task_outcome_attributions, credentials sanity. */
 
 import type { CompanyManifest } from "@wavex-os/plugin-onboarding";
 import { sql } from "drizzle-orm";
-import { agents, companies, type Db } from "@wavex-os/db";
+import { agents, companies, companyKpis, kpiSnapshots, type Db } from "@wavex-os/db";
 import {
   agentIdForSlot, modelForTier, slotToHumanName, templateIdForSlot, tierForSlot,
 } from "./catalog.js";
@@ -40,6 +44,7 @@ interface ManifestWithOverlays extends CompanyManifest {
 export interface BridgeReport {
   companies: number;
   agents: number;
+  kpis: number;
   warnings: string[];
 }
 
@@ -224,6 +229,63 @@ export async function bridgeAgents(
   return {
     companies: 1,
     agents: insertedCount,
+    kpis: 0,
     warnings,
   };
+}
+
+/** Canonical KPI definitions seeded for every company at activation time.
+ *  Directions: "up" = higher is better, "down" = lower is better. */
+const CANONICAL_KPIS = [
+  { kpiId: "burn_multiple", label: "Burn Multiple", direction: "down" },
+  { kpiId: "cac", label: "Customer Acquisition Cost (USD)", direction: "down" },
+  { kpiId: "cac_payback_months", label: "CAC Payback Months", direction: "down" },
+  { kpiId: "monthly_recurring_revenue", label: "Monthly Recurring Revenue (USD)", direction: "up" },
+] as const;
+
+/** Slice 2 — writes KPI definitions + baseline snapshots.
+ *
+ *  Idempotent: deletes then re-inserts company_kpis for this company.
+ *  kpi_snapshots are append-only; each call inserts a fresh value=0 baseline
+ *  row (real measurements follow in WAVAAAA-118). */
+export async function bridgeKpis(
+  manifest: CompanyManifest,
+  companyId: string,
+  db: Db,
+): Promise<{ kpis: number }> {
+  // Delete existing KPI definitions so re-running activate is idempotent.
+  await db.delete(companyKpis).where(sql`${companyKpis.companyId} = ${companyId}`);
+
+  // Use mc_winner.mean_burn_multiple as initial target for burn_multiple (micros = value × 1e6).
+  const burnMultipleTargetMicros =
+    typeof manifest.mc_winner?.mean_burn_multiple === "number"
+      ? BigInt(Math.round(manifest.mc_winner.mean_burn_multiple * 1_000_000))
+      : null;
+
+  const now = new Date();
+
+  for (const kpi of CANONICAL_KPIS) {
+    await db.insert(companyKpis).values({
+      companyId,
+      kpiId: kpi.kpiId,
+      label: kpi.label,
+      direction: kpi.direction,
+      targetMicros: kpi.kpiId === "burn_multiple" ? burnMultipleTargetMicros : null,
+      windowDays: "30",
+      kpiOwnerAgentId: null,
+      ownerRole: null,
+      createdAt: now,
+    });
+
+    // Baseline snapshot: value = 0. Real snapshots written by observability layer.
+    await db.insert(kpiSnapshots).values({
+      companyId,
+      kpiName: kpi.kpiId,
+      value: BigInt(0),
+      measuredAt: now,
+      metadata: { source: "activate_baseline" },
+    });
+  }
+
+  return { kpis: CANONICAL_KPIS.length };
 }
