@@ -7,6 +7,8 @@
 
 import { z } from "zod";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { spawn } from "node:child_process";
+import { platform } from "node:os";
 import {
   handlePillar1, handlePillar2, handlePillar3, handlePillar4, handlePillar5,
   loadPillarResponses, savePillarResponses, updatePillar,
@@ -20,6 +22,163 @@ import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim
 import { getInferenceMode } from "@wavex-os/inference-adapter";
 import { withTokenAccounting, type PhaseKey } from "../lib/token-accounting.js";
 import { BudgetExhaustedError } from "../lib/token-budget.js";
+
+// QA P0-2: BYOC always-enrich for Pillar 1. The vendored handlePillar1
+// short-circuits to regex heuristics when manual_context >= 40 chars
+// (`enrichment_status: "manual_capture"`). The heuristic invents fields
+// like `ideal_customer_profile: "enterprise ops teams"` which then leak
+// into every downstream agent's CONTEXT.md. This helper detects the
+// short-circuit and runs a follow-up BYOC claude call to refine.
+const IS_WIN_P1 = platform() === "win32";
+const PILLAR1_CLAUDE_TIMEOUT_MS = 25_000;
+
+/** Spawn local claude with a bounded prompt, parse a single-line JSON
+ *  envelope from stdout. Returns null on any failure (claude missing,
+ *  not authed, parse fail, timeout). Caller falls back to the
+ *  heuristic in that case. */
+function runClaudeForPillar1Enrichment(prompt: string): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    const claudeBin = IS_WIN_P1 ? "claude.cmd" : "claude";
+    const child = spawn(
+      claudeBin,
+      [
+        "-p", prompt,
+        "--output-format", "text",
+        "--disallowedTools", "*",
+        "--exclude-dynamic-system-prompt-sections",
+      ],
+      { shell: IS_WIN_P1 },
+    );
+    let stdout = "";
+    child.stdout?.on("data", (d) => { stdout += d.toString(); });
+    const timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } catch { /* ignore */ }
+      resolve(null);
+    }, PILLAR1_CLAUDE_TIMEOUT_MS);
+    child.on("error", () => { clearTimeout(timer); resolve(null); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) { resolve(null); return; }
+      try {
+        const cleaned = stdout.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
+        const parsed = JSON.parse(cleaned);
+        if (parsed && typeof parsed === "object") {
+          resolve(parsed as Record<string, unknown>);
+        } else {
+          resolve(null);
+        }
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
+/** Build the enrichment prompt. We pass the raw input + manual_context
+ *  + the heuristic-derived starting point so claude can either confirm
+ *  or correct the regex-output. */
+function buildPillar1EnrichmentPrompt(opts: {
+  orgName: string;
+  rawInput: string;
+  manualContext: string | undefined;
+  heuristicGuess: {
+    industry_hint?: string;
+    business_model_hint?: string;
+    ideal_customer_profile?: string;
+    competitive_position?: string;
+    primary_acquisition_channel?: string;
+    product_maturity_signal?: string;
+    has_product?: boolean;
+    differentiator_hypothesis?: string;
+    primary_friction_hypothesis?: string;
+  };
+}): string {
+  const heuristic = JSON.stringify(opts.heuristicGuess, null, 2);
+  const ctx = opts.manualContext ?? "";
+  return `You are refining a customer's Pillar 1 onboarding capture. We already ran a regex-based heuristic to extract structured signals from the founder's free-text. Your job is to CORRECT and TIGHTEN the heuristic output using the actual context — the heuristic often invents plausible-sounding fields (e.g. "ideal_customer_profile: enterprise ops teams") that don't match the founder's actual description.
+
+ORG NAME: ${opts.orgName}
+
+RAW INPUT FROM FOUNDER:
+${opts.rawInput}
+
+FOUNDER'S DETAILED CONTEXT:
+${ctx}
+
+HEURISTIC OUTPUT (refine this):
+${heuristic}
+
+Return ONLY a single-line JSON object with the following keys, each derived from the founder's ACTUAL words (not invented):
+{
+  "industry_hint": "<short tag, lowercase_snake_case>",
+  "business_model_hint": "<short tag, lowercase_snake_case>",
+  "ideal_customer_profile": "<one short phrase describing who specifically uses this>",
+  "competitive_position": "<emerging | challenger | leader>",
+  "primary_acquisition_channel": "<lowercase_snake_case>",
+  "product_maturity_signal": "<pre_alpha | alpha | beta | ga>",
+  "has_product": <boolean>,
+  "differentiator_hypothesis": "<one sentence, founder-authored phrasing if possible>",
+  "primary_friction_hypothesis": "<one sentence naming the most plausible go-to-market friction>"
+}
+
+Hard rules:
+- If the founder's context names a specific ICP (e.g. "mobile-app teams"), use that — never substitute generic categories like "enterprise ops teams".
+- If they say "pre-revenue" or "no paying customers yet", set competitive_position to "emerging".
+- If they describe a working product, has_product = true.
+- For differentiator_hypothesis, paraphrase the founder's own framing — don't invent benefits they didn't claim.
+- Do not output prose. JSON only. No backticks.`;
+}
+
+async function maybeEnrichPillar1WithBYOC(
+  body: { org_name: string; raw_input: string; manual_context?: string },
+  heuristicResult: Awaited<ReturnType<typeof handlePillar1>>,
+): Promise<typeof heuristicResult | null> {
+  // Only fire when the vendored handler took the manual_capture path.
+  const result = heuristicResult as unknown as Record<string, unknown>;
+  if (result.enrichment_status !== "manual_capture") return null;
+  // Need enough context to do better than regex.
+  if (!body.manual_context || body.manual_context.length < 40) return null;
+
+  const prompt = buildPillar1EnrichmentPrompt({
+    orgName: body.org_name,
+    rawInput: body.raw_input,
+    manualContext: body.manual_context,
+    heuristicGuess: {
+      industry_hint: result.industry_hint as string | undefined,
+      business_model_hint: result.business_model_hint as string | undefined,
+      ideal_customer_profile: result.ideal_customer_profile as string | undefined,
+      competitive_position: result.competitive_position as string | undefined,
+      primary_acquisition_channel: result.primary_acquisition_channel as string | undefined,
+      product_maturity_signal: result.product_maturity_signal as string | undefined,
+      has_product: result.has_product as boolean | undefined,
+      differentiator_hypothesis: result.differentiator_hypothesis as string | undefined,
+      primary_friction_hypothesis: result.primary_friction_hypothesis as string | undefined,
+    },
+  });
+
+  const refined = await runClaudeForPillar1Enrichment(prompt);
+  if (!refined) return null;
+
+  // Merge the refined fields over the heuristic. Only overwrite keys
+  // claude provided AND that look well-formed. Stamp `enrichment_status`
+  // and `enriched_via` so the audit trail shows the BYOC pass ran.
+  const merged = {
+    ...result,
+    industry_hint: typeof refined.industry_hint === "string" ? refined.industry_hint : result.industry_hint,
+    business_model_hint: typeof refined.business_model_hint === "string" ? refined.business_model_hint : result.business_model_hint,
+    ideal_customer_profile: typeof refined.ideal_customer_profile === "string" ? refined.ideal_customer_profile : result.ideal_customer_profile,
+    competitive_position: typeof refined.competitive_position === "string" ? refined.competitive_position : result.competitive_position,
+    primary_acquisition_channel: typeof refined.primary_acquisition_channel === "string" ? refined.primary_acquisition_channel : result.primary_acquisition_channel,
+    product_maturity_signal: typeof refined.product_maturity_signal === "string" ? refined.product_maturity_signal : result.product_maturity_signal,
+    has_product: typeof refined.has_product === "boolean" ? refined.has_product : result.has_product,
+    differentiator_hypothesis: typeof refined.differentiator_hypothesis === "string" ? refined.differentiator_hypothesis : result.differentiator_hypothesis,
+    primary_friction_hypothesis: typeof refined.primary_friction_hypothesis === "string" ? refined.primary_friction_hypothesis : result.primary_friction_hypothesis,
+    enrichment_status: "byoc_refined",
+    enriched_via: "claude_oauth" as const,
+    enriched_at: new Date().toISOString(),
+  };
+  return merged as unknown as typeof heuristicResult;
+}
 
 const pillar1Schema = z.object({
   companyId: z.string().min(1),
@@ -142,8 +301,19 @@ export function registerPillarRoutes(app: FastifyInstance): void {
         companyId: body.companyId,
         manual_context: body.manual_context,
       });
-      await updatePillar(body.companyId, "pillar_1", result);
-      return { ok: true, response: result };
+      // BYOC always-enrich (QA P0-2): the vendored handlePillar1 short-
+      // circuits to regex heuristics when manual_context >= 40 chars
+      // (`enrichment_status: "manual_capture"`). Heuristic-only outputs
+      // include fabricated fields like `ideal_customer_profile:
+      // "enterprise ops teams"` that leak into every downstream agent.
+      // If we detect that path, fire a follow-up BYOC claude call to
+      // refine the heuristic fields. Customer's claude, customer's bill.
+      // Falls through silently if claude isn't available — better the
+      // heuristic than no answer at all.
+      const enriched = await maybeEnrichPillar1WithBYOC(body, result).catch(() => null);
+      const final = enriched ?? result;
+      await updatePillar(body.companyId, "pillar_1", final);
+      return { ok: true, response: final };
     });
   });
 

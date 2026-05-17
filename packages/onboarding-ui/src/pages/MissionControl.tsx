@@ -8,6 +8,7 @@ import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
 import { AllocationSlider } from "../components/AllocationSlider";
+import { OnboardingChecklist } from "../components/mission/OnboardingChecklist";
 import { useCompany } from "../wavex-os/lib/CompanyContext";
 import { getSupabase } from "../lib/supabase";
 import { CoachmarkOverlay, type CoachmarkStep } from "../wavex-os/components/Coachmark";
@@ -151,48 +152,60 @@ export default function MissionControl() {
           </div>
         )}
 
-        {/* Inception CTA — when a company is selected, surface the "your
-            fleet is live, here's what to do next" card BEFORE the KPIs so
-            the customer has an obvious path forward. The legacy mission
-            control was a dead-end after activate. */}
-        {companyId && <InceptionCTA />}
+        <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start" }}>
+          {/* ── main content column ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Inception CTA — when a company is selected, surface the "your
+                fleet is live, here's what to do next" card BEFORE the KPIs so
+                the customer has an obvious path forward. The legacy mission
+                control was a dead-end after activate. */}
+            {companyId && <InceptionCTA />}
 
-        <div data-tour="mc-kpis" style={{ marginBottom: "2.5rem" }}>
-          <KpiBoard />
+            <div data-tour="mc-kpis" style={{ marginBottom: "2.5rem" }}>
+              <KpiBoard />
+            </div>
+
+            <div data-tour="mc-fleet" style={{ marginBottom: "2.5rem" }}>
+              <FleetGraph />
+            </div>
+
+            {/* Live-adjustable Claude Max allocation — operator tunes the
+                swarm-vs-Pool-A split as they watch consumption. Changes apply
+                to the next fleet cycle (heartbeat intervals re-scale at the
+                next hire / re-ignition). */}
+            <div data-tour="mc-allocation" style={{ marginBottom: "2.5rem" }}>
+              <AllocationSlider variant="console" />
+            </div>
+
+            <div data-tour="mc-privacy" style={{ marginBottom: "2.5rem" }}>
+              <PrivacyPanel session={session} />
+            </div>
+
+            <div className="card">
+              <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Coming next
+              </h3>
+              <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--text-dim)", lineHeight: 1.8, fontSize: 13 }}>
+                <li>Workflows queue (issues by status, filterable)</li>
+                <li>Approvals tray (board approvals routed via Telegram + UI)</li>
+                <li>Workspace tray (ngrok status, Composio health, etc.)</li>
+                <li>Real Paperclip core in place of mock-core</li>
+                <li>System Optimizer daily injections</li>
+              </ul>
+            </div>
+
+            <p className="text-dim" style={{ fontSize: 11, marginTop: "2rem", textAlign: "center" }}>
+              WaveX OS · MIT · <a href="https://github.com/aimerdoux/wavex-os" target="_blank" rel="noreferrer">github.com/aimerdoux/wavex-os</a>
+            </p>
+          </div>
+
+          {/* ── sidebar: onboarding checklist (design partners) ── */}
+          {companyId && (
+            <aside style={{ width: 240, flexShrink: 0, position: "sticky", top: "5rem" }}>
+              <OnboardingChecklist />
+            </aside>
+          )}
         </div>
-
-        <div data-tour="mc-fleet" style={{ marginBottom: "2.5rem" }}>
-          <FleetGraph />
-        </div>
-
-        {/* Live-adjustable Claude Max allocation — operator tunes the
-            swarm-vs-Pool-A split as they watch consumption. Changes apply
-            to the next fleet cycle (heartbeat intervals re-scale at the
-            next hire / re-ignition). */}
-        <div data-tour="mc-allocation" style={{ marginBottom: "2.5rem" }}>
-          <AllocationSlider variant="console" />
-        </div>
-
-        <div data-tour="mc-privacy" style={{ marginBottom: "2.5rem" }}>
-          <PrivacyPanel session={session} />
-        </div>
-
-        <div className="card">
-          <h3 style={{ marginTop: 0, fontSize: 14, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Coming next
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--text-dim)", lineHeight: 1.8, fontSize: 13 }}>
-            <li>Workflows queue (issues by status, filterable)</li>
-            <li>Approvals tray (board approvals routed via Telegram + UI)</li>
-            <li>Workspace tray (ngrok status, Composio health, etc.)</li>
-            <li>Real Paperclip core in place of mock-core</li>
-            <li>System Optimizer daily injections</li>
-          </ul>
-        </div>
-
-        <p className="text-dim" style={{ fontSize: 11, marginTop: "2rem", textAlign: "center" }}>
-          WaveX OS · MIT · <a href="https://github.com/aimerdoux/wavex-os" target="_blank" rel="noreferrer">github.com/aimerdoux/wavex-os</a>
-        </p>
       </main>
       {!tour.dismissed && (
         <CoachmarkOverlay steps={tourSteps} onDone={tour.dismiss} />

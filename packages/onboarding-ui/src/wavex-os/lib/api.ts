@@ -714,6 +714,20 @@ export const wavexOsOnboardingApi = {
       error?: string;
     }>("GET", `/wavex-os/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`),
 
+  // BYOC narration of the MC report. Spawns the customer's local
+  // claude with pillar context + the report's per-strategy stats so
+  // the customer reads a 2-3 paragraph reasoning of the winner
+  // instead of just a deterministic "BALANCED won" line. Falls back
+  // to a deterministic narrative if claude isn't installed/authed.
+  mcNarrate: (input: { companyId: string }) =>
+    call<{
+      ok: boolean;
+      narrative?: string;
+      model_attribution?: "byoc-claude" | "fallback-deterministic";
+      warning?: string;
+      error?: string;
+    }>("POST", "/wavex-os/onboarding/mc-narrate", input),
+
   // Finalize
   finalize: (input: {
     companyId: string;

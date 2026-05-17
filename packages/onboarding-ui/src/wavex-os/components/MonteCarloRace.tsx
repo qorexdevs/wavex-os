@@ -9,6 +9,7 @@
  *  highlights with full opacity at the end of the animation. */
 
 import { useEffect, useState } from "react";
+import { wavexOsOnboardingApi } from "../lib/api";
 
 /** Local shape of MonteCarloReport — plugin-onboarding's barrel doesn't
  *  re-export the type, so we narrow to the fields the chart consumes.
@@ -45,8 +46,23 @@ const STRATEGY_LABELS: Record<string, string> = {
 
 interface Props {
   report: MonteCarloReportLike;
+  /** Wavex-os company ID. When provided, the component fetches a BYOC
+   *  narration of the report from /wavex-os/onboarding/mc-narrate in
+   *  parallel with the race animation and renders it below the legend
+   *  once it arrives. Omitting falls back to no narration (the
+   *  static legend alone). */
+  companyId?: string;
   durationMs?: number;
   onComplete?: () => void;
+}
+
+interface NarrativeState {
+  status: "loading" | "ready" | "skipped";
+  text: string | null;
+  /** Provenance chip: distinguishes a real BYOC claude reading from a
+   *  deterministic fallback so the customer doesn't get a misleading
+   *  "AI explanation" badge when claude was unreachable. */
+  attribution: "byoc-claude" | "fallback-deterministic" | null;
 }
 
 const WIDTH = 720;
@@ -54,8 +70,13 @@ const HEIGHT = 280;
 const PAD_X = 60;
 const PAD_Y = 30;
 
-export function MonteCarloRace({ report, durationMs = 6000, onComplete }: Props) {
+export function MonteCarloRace({ report, companyId, durationMs = 6000, onComplete }: Props) {
   const [progress, setProgress] = useState(0);
+  const [narrative, setNarrative] = useState<NarrativeState>({
+    status: companyId ? "loading" : "skipped",
+    text: null,
+    attribution: null,
+  });
 
   useEffect(() => {
     const startedAt = performance.now();
@@ -70,6 +91,38 @@ export function MonteCarloRace({ report, durationMs = 6000, onComplete }: Props)
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [durationMs, onComplete]);
+
+  // BYOC narration. Fire on mount in parallel with the animation. Claude
+  // typically returns in ~10-20s vs. the 6s animation, so the customer
+  // sees the race finish, then the narrative slides in. Failure is
+  // silent — we just leave the legend without the extra paragraphs.
+  useEffect(() => {
+    if (!companyId) {
+      setNarrative({ status: "skipped", text: null, attribution: null });
+      return;
+    }
+    let cancelled = false;
+    setNarrative({ status: "loading", text: null, attribution: null });
+    wavexOsOnboardingApi
+      .mcNarrate({ companyId })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && res.narrative) {
+          setNarrative({
+            status: "ready",
+            text: res.narrative,
+            attribution: res.model_attribution ?? null,
+          });
+        } else {
+          setNarrative({ status: "skipped", text: null, attribution: null });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNarrative({ status: "skipped", text: null, attribution: null });
+      });
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   // Normalize end-values across strategies into a 0..1 range for the chart's
   // y-axis. A strategy with mean_mrr_growth=0 sits at 0; the maximum sits
@@ -140,6 +193,60 @@ export function MonteCarloRace({ report, durationMs = 6000, onComplete }: Props)
           </div>
         ))}
       </div>
+      <NarrativeBlock narrative={narrative} raceDone={progress >= 1} />
+    </div>
+  );
+}
+
+/** Renders the BYOC narration below the race. Only shows once the race
+ *  animation has completed (progress >= 1) so the narrative doesn't
+ *  steal attention while the chart is still drawing. Stays out of the
+ *  way (just dim text) when narration is skipped or claude failed. */
+function NarrativeBlock({ narrative, raceDone }: { narrative: NarrativeState; raceDone: boolean }) {
+  if (!raceDone) return null;
+  if (narrative.status === "skipped") return null;
+  if (narrative.status === "loading") {
+    return (
+      <div className="text-dim" style={{ fontSize: 11, marginTop: "0.5rem", textAlign: "center", fontStyle: "italic" }}>
+        Reading the simulation…
+      </div>
+    );
+  }
+  // ready
+  const badge = narrative.attribution === "byoc-claude"
+    ? { text: "Read by your Claude", bg: "rgba(78,201,176,0.16)", fg: "#4ec9b0" }
+    : { text: "Deterministic reading", bg: "rgba(154,160,166,0.18)", fg: "#9aa0a6" };
+  return (
+    <div
+      style={{
+        marginTop: "0.85rem",
+        maxWidth: 620,
+        padding: "0.75rem 0.95rem",
+        background: "var(--surface-soft, rgba(255,255,255,0.03))",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        fontSize: 12,
+        lineHeight: 1.6,
+        color: "var(--text)",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.35rem" }}>
+        <span
+          style={{
+            fontSize: 10,
+            padding: "0.1rem 0.45rem",
+            borderRadius: 999,
+            background: badge.bg,
+            color: badge.fg,
+            fontWeight: 600,
+            letterSpacing: 0.2,
+          }}
+        >
+          {badge.text}
+        </span>
+      </div>
+      {narrative.text}
     </div>
   );
 }

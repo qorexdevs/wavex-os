@@ -132,7 +132,7 @@ export function ImprintTheater({ companyId, onLaunch }: Props) {
       )}
 
       {!error && act === 1 && result && mcReport && (
-        <MonteCarloRace report={mcReport} />
+        <MonteCarloRace report={mcReport} companyId={companyId} />
       )}
       {!error && act === 1 && result && !mcReport && (
         <div className="text-dim" style={{ fontSize: 12 }}>Simulations complete…</div>
