@@ -11,6 +11,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userApi, smokeTestApi, type SmokeTestPhase } from "../lib/api";
+import { Step2PlatformCard, type PlatformTarget } from "./Step2PlatformCard";
+import { Step2PlatformCard, type PlatformTarget } from "./Step2PlatformCard";
 
 const TOTAL_STEPS = 3;
 
@@ -49,6 +51,27 @@ const PHASE_LABELS: Record<SmokeTestPhase, string> = {
   timed_out:    "Still running",
   cancelled:    "Cancelled",
 };
+
+// ─── step 2 persistence ──────────────────────────────────────────────────────
+
+const LS_KEY = "wavex_wizard_platform_target";
+
+function loadPlatformTarget(): PlatformTarget {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PlatformTarget>;
+      return { platform: parsed.platform ?? null, identifier: parsed.identifier ?? "", file: null };
+    }
+  } catch { /* ignore */ }
+  return { platform: null, identifier: "", file: null };
+}
+
+function savePlatformTarget(t: PlatformTarget) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ platform: t.platform, identifier: t.identifier }));
+  } catch { /* ignore */ }
+}
 
 function fireWizardEvent(userId: string, payload: Record<string, unknown>): void {
   fetch("/api/wizard-events", {
@@ -296,6 +319,7 @@ export function OnboardingWizard() {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [platformTarget, setPlatformTarget] = useState<PlatformTarget>(loadPlatformTarget);
 
   useEffect(() => {
     userApi.me()
@@ -327,12 +351,16 @@ export function OnboardingWizard() {
     }
   }, [userId]);
 
+  const step2Valid =
+    platformTarget.platform !== null && platformTarget.identifier.trim().length > 0;
+
   const handleNext = useCallback(async () => {
+    if (step === 2) savePlatformTarget(platformTarget);
     if (step < TOTAL_STEPS) {
       await persist(step + 1);
     }
     // Step 3 completion is handled by the Step3 sub-component calling onComplete.
-  }, [step, persist]);
+  }, [step, persist, platformTarget]);
 
   const handleBack = useCallback(async () => {
     if (step > 1) await persist(step - 1);
@@ -403,8 +431,26 @@ export function OnboardingWizard() {
             onComplete={handleComplete}
           />
         )
+      ) : step === 2 ? (
+        /* Step 2: iOS/Android platform selector + app identifier */
+        <div style={{ maxWidth: 480, width: "100%", padding: "2rem" }}>
+          <h1 style={{ fontSize: 24, marginBottom: "1.5rem", letterSpacing: "-0.02em" }}>
+            Pick your test target
+          </h1>
+          <div style={{ marginBottom: "2rem" }}>
+            <Step2PlatformCard value={platformTarget} onChange={setPlatformTarget} />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button className="secondary" onClick={handleBack} disabled={saving}>
+              ← Back
+            </button>
+            <button onClick={handleNext} disabled={saving || !step2Valid}>
+              {saving ? "Saving…" : "Next →"}
+            </button>
+          </div>
+        </div>
       ) : (
-        /* Steps 1–2: static orientation */
+        /* Step 1: static orientation */
         <div style={{ maxWidth: 480, width: "100%", padding: "2rem", textAlign: "center" }}>
           <h1 style={{ fontSize: 28, marginBottom: "1rem", letterSpacing: "-0.02em" }}>
             {current.title}
@@ -413,11 +459,6 @@ export function OnboardingWizard() {
             {current.body}
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            {step > 1 && (
-              <button className="secondary" onClick={handleBack} disabled={saving}>
-                ← Back
-              </button>
-            )}
             <button onClick={handleNext} disabled={saving}>
               {saving ? "Saving…" : "Next →"}
             </button>
