@@ -10,7 +10,7 @@
  *
  * Data sources, in order of preference:
  *
- *   1. wavex-os op-omega-server (default http://127.0.0.1:3101) — fetches
+ *   1. wavex-os wavex-os-server (default http://127.0.0.1:3101) — fetches
  *      finalized manifest + handoff state. Works on the customer's local
  *      install OR an operator-side deployment.
  *
@@ -340,7 +340,7 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
-    // inception-status — reads /api/companies/<id>/agents from op-omega
+    // inception-status — reads /api/companies/<id>/agents from wavex-os
     //   server. Returns ready/total counts + manifest goal/signed_at.
     // -------------------------------------------------------------------
     ctx.data.register("inception-status", async ({ companyId }) => {
@@ -378,7 +378,7 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
-    // connectors-marketplace — proxies the wavex-os op-omega-server's
+    // connectors-marketplace — proxies the wavex-os wavex-os-server's
     //   /api/connectors/marketplace endpoint. Returns the FEATURED_TOOLKITS
     //   catalog merged with the customer's live connector state for the
     //   most-recently-active company on this install.

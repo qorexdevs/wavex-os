@@ -2,7 +2,7 @@
 
 **Purpose:** When the operator sends a Telegram message to the WaveX bot, classify it into one of: directive (file an issue), question (answer inline), noise (acknowledge but don't act).
 
-**Caller:** `packages/op-omega-server/src/routes/pillar5-test-send.ts` + future Telegram-bridge worker.
+**Caller:** `packages/wavex-os-server/src/routes/pillar5-test-send.ts` + future Telegram-bridge worker.
 
 **Pool:** platform — small T1 call (~1K input, ~500 output). The classification matters more than the prose; Haiku is sufficient.
 
@@ -110,7 +110,7 @@ This buys ~30s for retry without ever silently dropping operator input. Silent d
 
 ## Why this isn't an agent skill
 
-The classifier runs in the platform layer (`op-omega-server`), not as an agent's heartbeat output, because:
+The classifier runs in the platform layer (`wavex-os-server`), not as an agent's heartbeat output, because:
 
 1. **Latency.** Operator expects a reply within seconds. Agent heartbeats are minute-scale.
 2. **Determinism.** The four categories are platform contract; agents shouldn't be able to redefine them.

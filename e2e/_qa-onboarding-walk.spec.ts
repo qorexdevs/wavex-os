@@ -33,7 +33,7 @@ test("wizard E2E walk in hosted mode v2", async ({ page }) => {
   );
   page.on("response", async (resp) => {
     const url = resp.url();
-    if (/op-omega|composio|connectors|inference|claude-code-check/.test(url)) {
+    if (/wavex-os|composio|connectors|inference|claude-code-check/.test(url)) {
       networkLog.push({
         ts: new Date().toISOString(),
         method: resp.request().method(),

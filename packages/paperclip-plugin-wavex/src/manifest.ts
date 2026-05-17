@@ -40,7 +40,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "ui.dashboardWidget.register",
     "ui.sidebar.register",
     "ui.page.register",
-    // The worker reads from the wavex-os op-omega-server + (optionally) the
+    // The worker reads from the wavex-os wavex-os-server + (optionally) the
     // Supabase REST endpoint. No outbound HTTP to third parties — only
     // localhost and the configured operator infra.
     "http.outbound",
@@ -109,7 +109,7 @@ const manifest: PaperclipPluginManifestV1 = {
       wavexApiBase: {
         type: "string",
         format: "uri",
-        title: "WaveX op-omega-server base URL",
+        title: "WaveX wavex-os-server base URL",
         description:
           "Where the plugin reads inception manifests + Expert Agent hire state. Defaults to the wavex-os mock-core endpoint.",
         default: "http://127.0.0.1:3101",

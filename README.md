@@ -43,20 +43,20 @@ The screenshots below come straight out of the e2e suite — every one is the re
 
 ### The wizard (5 pillars + 3 phases + finalize)
 
-Owned by **op-omega** — a full-fidelity onboarding pipeline (12K LOC plugin + 2.4K LOC server + 5.4K LOC UI) vendored at [`vendor/op-omega/`](vendor/op-omega/). It does:
+Owned by **wavex-os** — a full-fidelity onboarding pipeline (12K LOC plugin + 2.4K LOC server + 5.4K LOC UI) vendored at [`vendor/wavex-os/`](vendor/wavex-os/). It does:
 
 - **10-field Pillar 1 inference** with T2 enrichment + confirm/correct preview
 - **Phase 2 decision matrix** for connector recommendation, with Composio fold-in when the live integration is configured
-- **Phase 3 swarm generation** from a 33-slot base roster, **165 agent templates** (165 ingested via op-omega + WaveX-authored), and a matrix that overrides defaults based on stage + GTM
+- **Phase 3 swarm generation** from a 33-slot base roster, **165 agent templates** (165 ingested via wavex-os + WaveX-authored), and a matrix that overrides defaults based on stage + GTM
 - **Phase 4 workflow allocation** with budget enforcement
 - **Finalize** → signed `company.manifest.json` + Monte Carlo simulation
 
 ### The runtime (Paperclip-backed)
 
-Activate hits [`POST /api/instance/:companyId/activate`](packages/op-omega-server/src/routes/activate.ts) which:
+Activate hits [`POST /api/instance/:companyId/activate`](packages/wavex-os-server/src/routes/activate.ts) which:
 
 1. Bridges the signed manifest into the wavex DB (Drizzle, PGlite in dev / Postgres in prod) — companies + agents tables get their rows
-2. Optionally **hands off the C-Suite to a running Paperclip instance** via [`paperclip-handoff.ts`](packages/op-omega-server/src/bridge/paperclip-handoff.ts) — opt-in via `PAPERCLIP_HANDOFF_URL`. Each agent gets:
+2. Optionally **hands off the C-Suite to a running Paperclip instance** via [`paperclip-handoff.ts`](packages/wavex-os-server/src/bridge/paperclip-handoff.ts) — opt-in via `PAPERCLIP_HANDOFF_URL`. Each agent gets:
    - The role's full vendored skill bundle as `AGENTS.md` (~60KB for CEO)
    - The company's auth wrapper as adapter `command`
    - `reportsTo` chain wired in dependency order
@@ -73,7 +73,7 @@ Once handed off, agents heartbeat every 5min via Paperclip's launchd timer, spaw
 | **Self-healing reference impl** ([packages/healing/](packages/healing/)) | Layer 1 (wrapper 401 self-heal + Sonnet fallback), Layer 2 (OAuth refresh with concurrency lock + invalid_grant retry), Layer 3 (worker restart with SIGTERM→SIGKILL). |
 | **Observability reference impl** ([packages/observability/](packages/observability/)) | Bottleneck scoring, outcome attribution, token budget + adaptive throttle, mission-control aggregator, fleet-observer markdown synthesis. |
 | **Operations** ([templates/launchd/](templates/launchd/), [scripts/](scripts/)) | Six launchd templates (recovery-on-boot, recovery-12h, fleet-assessment, economics-refresh, attribution-sweep, bottleneck-digest). Sample provisioning scripts for the Chief of Staff and KPI registry. |
-| **Paperclip handoff bridge** ([packages/op-omega-server/src/bridge/paperclip-handoff.ts](packages/op-omega-server/src/bridge/paperclip-handoff.ts)) | After bridgeAgents, mirror the C-Suite into a running Paperclip instance. Idempotent via on-disk mapping; auto-creates the Paperclip company + auto-approves hires. |
+| **Paperclip handoff bridge** ([packages/wavex-os-server/src/bridge/paperclip-handoff.ts](packages/wavex-os-server/src/bridge/paperclip-handoff.ts)) | After bridgeAgents, mirror the C-Suite into a running Paperclip instance. Idempotent via on-disk mapping; auto-creates the Paperclip company + auto-approves hires. |
 
 After Phase H, **fleet burn dropped 96%** on the production deployment that produced this release. Single-agent burn dropped 95% on the heaviest agent. Spinner patterns became visible and auto-pauseable in one click.
 
@@ -87,7 +87,7 @@ A clean-slate rebuild that backports five weeks of production-fleet learnings in
 | **5 kernel lessons** ([_shared/SKILL_KERNEL_LESSONS](packages/onboarding-ui/public/agent-templates/_shared/SKILL_KERNEL_LESSONS.md)) | CEO + CoS read these every cycle: SDK returns aren't delivery, forecasted deltas are inflated (require N≥3), migrations are half the work, OVERRIDE prefixes trip prompt-injection defenses, internal traffic looks like organic until you split it. |
 | **WAV-6388 measurement contract** ([ceo/SKILL_KPI_OWNERSHIP](packages/onboarding-ui/public/agent-templates/ceo/SKILL_KPI_OWNERSHIP.md)) | Every issue needs target_kpi + estimated_delta + measurement_plan + baseline_snapshot. Missing any → auto-F grade. Plus the structural-zero vs measured-zero distinction. |
 | **Role collapse** ([_shared/SKILL_ROLE_COLLAPSE](packages/onboarding-ui/public/agent-templates/_shared/SKILL_ROLE_COLLAPSE.md)) | Wizard now picks roster shape by Pillar 3 stage: minimal_kernel (pre_product) → collapsed_6 → hybrid → formal_9. Solo founders get further-collapsed 5-agent kernel regardless of stage. |
-| **Ignition phase** ([docs/IGNITION.md](docs/IGNITION.md), [packages/op-omega-server/src/bridge/ignition.ts](packages/op-omega-server/src/bridge/ignition.ts)) | After activate, the fleet now boots itself: seeds first-task issues from workflow_manifest, creates the Goal, fires CEO + CoS kickoff probe, staggers heartbeat offsets. Idempotent re-run via `POST /api/instance/:id/ignite`. |
+| **Ignition phase** ([docs/IGNITION.md](docs/IGNITION.md), [packages/wavex-os-server/src/bridge/ignition.ts](packages/wavex-os-server/src/bridge/ignition.ts)) | After activate, the fleet now boots itself: seeds first-task issues from workflow_manifest, creates the Goal, fires CEO + CoS kickoff probe, staggers heartbeat offsets. Idempotent re-run via `POST /api/instance/:id/ignite`. |
 | **System Reliability agent** ([system-reliability/SKILL](packages/onboarding-ui/public/agent-templates/system-reliability/SKILL.md)) | New role added to every V2 fleet. Owns disk + RAM + inference burn as KPIs. Calls `paperclipai worktree:cleanup` (never raw rm). Pages operator via Telegram on RED. |
 | **15min resource sweep** ([scripts/wrappers/resource-sweep.sh](scripts/wrappers/resource-sweep.sh)) | Platform-level launchd job, runs even when fleet is paused. Prunes reproducible artifacts at 70% disk, throttles spawns at 80%, pages operator at 90%. The disk-crash failure mode is now blocked at three layers. |
 | **Stripe + Supabase billing** ([docs/PHASE_F_SETUP.md](docs/PHASE_F_SETUP.md)) | `wavex_os` Postgres schema + Stripe products + `stripe-webhook` + `create-checkout-session` edge functions + `/pricing` route with inline Supabase magic-link sign-in. F.1 is end-to-end testable with a real Stripe test card. |
@@ -111,7 +111,7 @@ If you have [corepack](https://nodejs.org/api/corepack.html) enabled (`corepack 
 git clone https://github.com/aimerdoux/wavex-os.git
 cd wavex-os
 pnpm install
-pnpm -r --filter "./vendor/op-omega/*" build   # build the vendored op-omega packages
+pnpm -r --filter "./vendor/wavex-os/*" build   # build the vendored wavex-os packages
 pnpm dev
 ```
 
@@ -122,7 +122,7 @@ pnpm dev
 This boots two servers in parallel:
 
 - `http://localhost:5173` — onboarding wizard + Mission Control (Vite + React)
-- `http://localhost:3101` — `mock-core` (Fastify, hosts `/api/*` + op-omega routes)
+- `http://localhost:3101` — `mock-core` (Fastify, hosts `/api/*` + wavex-os routes)
 
 Open [http://localhost:5173](http://localhost:5173) and you'll land on Mission Control. Click **Start onboarding** to begin the wizard.
 
@@ -184,7 +184,7 @@ wavex-os/
 │   ├── auth-shim/                        # assertBoard / assertCompanyAccess gates
 │   ├── composio-shim/                    # listConnections + featured toolkits
 │   ├── inference-adapter/                # tier-router claudeBin (OAuth vs API key mode)
-│   ├── op-omega-server/                  # Fastify routes for vendored onboarding + activate + handoff
+│   ├── wavex-os-server/                  # Fastify routes for vendored onboarding + activate + handoff
 │   ├── onboarding-ui/                    # Vite + React wizard + Mission Control v2
 │   │   └── public/agent-templates/       # 165 role-specific skill packs (CEO, CoS, CMO, CRO, …)
 │   ├── mock-core/                        # In-memory stand-in for Paperclip; Fastify on :3101
@@ -192,12 +192,12 @@ wavex-os/
 │   ├── healing/                          # OAuth refresh + worker restart reference impl
 │   ├── observability/                    # bottlenecks, attribution, budget, mission-control
 │   └── onboarding-server-client/         # Typed stub for future hosted backend
-├── vendor/op-omega/                      # vendored op-omega @ d84983a1 (2026-05-03)
+├── vendor/wavex-os/                      # vendored wavex-os @ d84983a1 (2026-05-03)
 │   ├── plugin-sdk/                       # @paperclipai/plugin-sdk
 │   ├── shared/                           # @paperclipai/shared
-│   ├── tier-router/                      # @op-omega/plugin-tier-router
-│   ├── flywheel-kernel/                  # @op-omega/plugin-flywheel-kernel
-│   ├── onboarding/                       # @op-omega/plugin-onboarding (50 src files)
+│   ├── tier-router/                      # @wavex-os/plugin-tier-router
+│   ├── flywheel-kernel/                  # @wavex-os/plugin-flywheel-kernel
+│   ├── onboarding/                       # @wavex-os/plugin-onboarding (50 src files)
 │   └── VENDOR.md                         # source SHA + vendor exceptions + update procedure
 ├── scripts/
 │   ├── wrappers/
@@ -262,7 +262,7 @@ Three design principles:
 2. **Open-source first, paid optimizer second.** The full local product is MIT. Hosted optimizer is a tier on top.
 3. **Subtractive over additive.** Every phase has a single exit criterion. We cut features that don't pull their weight.
 
-Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). OAuth handoff details: [docs/CLAUDE_MAX_HANDOFF.md](docs/CLAUDE_MAX_HANDOFF.md). Paperclip integration: [packages/op-omega-server/src/bridge/paperclip-handoff.ts](packages/op-omega-server/src/bridge/paperclip-handoff.ts).
+Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). OAuth handoff details: [docs/CLAUDE_MAX_HANDOFF.md](docs/CLAUDE_MAX_HANDOFF.md). Paperclip integration: [packages/wavex-os-server/src/bridge/paperclip-handoff.ts](packages/wavex-os-server/src/bridge/paperclip-handoff.ts).
 
 ---
 
@@ -284,11 +284,11 @@ You can self-host the optimizer too — `docs/SELF_HOSTING.md` lands with Phase 
 WaveX OS stands on the shoulders of:
 
 - **[Paperclip](https://github.com/paperclipai/paperclip)** — the agent runtime engine, vendored via git subtree at `packages/core/`.
-- **[op-omega](https://github.com/dylanriedw10-oss/operatoromega)** — the full-fidelity onboarding pipeline, vendored at `vendor/op-omega/` (source SHA tracked in [VENDOR.md](vendor/op-omega/VENDOR.md)).
+- **[wavex-os](https://github.com/dylanriedw10-oss/operatoromega)** — the full-fidelity onboarding pipeline, vendored at `vendor/wavex-os/` (source SHA tracked in [VENDOR.md](vendor/wavex-os/VENDOR.md)).
 - **[agency-agents](https://github.com/msitarzewski/agency-agents)** by [@msitarzewski](https://github.com/msitarzewski) — 207 agent templates (MIT). 165 templates are vendored into `packages/onboarding-ui/public/agent-templates/` with per-file attribution.
 - **[Anthropic](https://anthropic.com)** — Claude Max powers the spawned agents.
 - **[reactflow](https://reactflow.dev)** — drives the onboarding swarm chart and the Mission Control fleet graph.
-- **[Fastify](https://fastify.dev)** — the mock-core + op-omega-server HTTP layer.
+- **[Fastify](https://fastify.dev)** — the mock-core + wavex-os-server HTTP layer.
 
 Full attribution: [CREDITS.md](CREDITS.md).
 

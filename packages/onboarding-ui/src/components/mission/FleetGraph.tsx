@@ -2,7 +2,7 @@
  *  the DB-backed /api/agents endpoint and hands it to the shared OrgGraph. */
 
 import { useEffect, useState } from "react";
-import { useCompany } from "../../op-omega/lib/CompanyContext";
+import { useCompany } from "../../wavex-os/lib/CompanyContext";
 import { OrgGraph, type OrgAgent } from "../OrgGraph";
 
 interface AgentRecord {

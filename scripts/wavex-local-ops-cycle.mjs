@@ -46,7 +46,7 @@ const IS_WIN = platform() === "win32";
 // "is the process alive" proxy.
 const PROCESS_PORTS = {
   mock_core: 3101,
-  op_omega_server: 3101, // mock-core hosts op-omega routes
+  wavex_os_server: 3101, // mock-core hosts wavex-os routes
   paperclip: 3100,
 };
 
@@ -54,7 +54,7 @@ const PROCESS_PORTS = {
 // flag requires_user_action since we can't auto-restart without a scheduler.
 const PROCESS_LAUNCHD_LABEL = {
   mock_core: "com.wavex-os.mock-core",
-  op_omega_server: "com.wavex-os.op-omega-server",
+  wavex_os_server: "com.wavex-os.wavex-os-server",
   paperclip: "com.wavex-os.paperclip",
 };
 
@@ -228,13 +228,13 @@ async function checkGit(repoRoot) {
   result.files_changed = files;
 
   const restartTriggers = [
-    "packages/op-omega-server/",
+    "packages/wavex-os-server/",
     "packages/mock-core/",
     "packages/inference-server/",
     "packages/paperclip-plugin-wavex/",
   ];
   const restartMap = {
-    "packages/op-omega-server/": "op_omega_server",
+    "packages/wavex-os-server/": "wavex_os_server",
     "packages/mock-core/": "mock_core",
     "packages/inference-server/": "inference_server",
     "packages/paperclip-plugin-wavex/": "paperclip",
@@ -296,7 +296,7 @@ async function checkProcesses(restartNeeded) {
   const result = {
     status: "ok",
     mock_core: "unknown",
-    op_omega_server: "unknown",
+    wavex_os_server: "unknown",
     paperclip: "unknown",
     restarted: [],
     detail: null,
@@ -546,7 +546,7 @@ async function main() {
     processes: {
       status: "ok",
       mock_core: "unknown",
-      op_omega_server: "unknown",
+      wavex_os_server: "unknown",
       paperclip: "unknown",
       restarted: [],
       detail: null,

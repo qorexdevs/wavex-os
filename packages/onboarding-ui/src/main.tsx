@@ -4,8 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MissionControl from "./pages/MissionControl";
 import Pricing from "./pages/Pricing";
-import { CompanyProvider } from "./op-omega/lib/CompanyContext";
-import { OnboardingShell } from "./op-omega/pages/OnboardingShell";
+import { CompanyProvider } from "./wavex-os/lib/CompanyContext";
+import { OnboardingShell } from "./wavex-os/pages/OnboardingShell";
 import { AvatarDashboard } from "./pages/AvatarDashboard";
 import { AvatarSettings } from "./pages/AvatarSettings";
 import "./styles.css";
@@ -22,7 +22,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Routes>
             <Route path="/" element={<MissionControl />} />
             {/* Legacy wizard route redirected to the chat-first flow.
-                 OmegaOnboarding component is retained as dead code for
+                 WavexOsOnboarding component is retained as dead code for
                  reference; not reachable through any UI link. */}
             <Route path="/onboarding" element={<Navigate to="/onboarding-chat" replace />} />
             <Route path="/onboarding-chat" element={<OnboardingShell />} />

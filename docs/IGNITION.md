@@ -1,18 +1,18 @@
 # Ignition phase — design
 
-The bridge between "agents exist as DB rows" (post-activate) and "agents are producing visible output". Activate is declarative — it writes 34+ rows to `agents`, mirrors them to Paperclip, and stops. The fleet then sits idle because `runtimeConfig.heartbeat.enabled = false` is hard-coded in the handoff (`packages/op-omega-server/src/bridge/paperclip-handoff.ts:219`) and the `workflow_manifest.on_fire` task list is never converted into actual Paperclip issues. Ignition closes that gap: it seeds first-tasks from the workflow manifest, creates a company-level Goal anchored to Pillar 1, runs a CEO + CoS kickoff cycle, and turns heartbeats on with a staggered cron offset.
+The bridge between "agents exist as DB rows" (post-activate) and "agents are producing visible output". Activate is declarative — it writes 34+ rows to `agents`, mirrors them to Paperclip, and stops. The fleet then sits idle because `runtimeConfig.heartbeat.enabled = false` is hard-coded in the handoff (`packages/wavex-os-server/src/bridge/paperclip-handoff.ts:219`) and the `workflow_manifest.on_fire` task list is never converted into actual Paperclip issues. Ignition closes that gap: it seeds first-tasks from the workflow manifest, creates a company-level Goal anchored to Pillar 1, runs a CEO + CoS kickoff cycle, and turns heartbeats on with a staggered cron offset.
 
 **Success criterion:** within 5 minutes of a successful activate, every L·IV agent has at least one assigned issue, the CEO has filed an initial directive, and the operator sees a Mission Control banner reading "Fleet ignited — N agents working, M workflows queued".
 
 ## Trigger surface
 
-Ignition runs in **op-omega-server**, in a new module `packages/op-omega-server/src/bridge/ignition.ts`, invoked at the **tail of the activate route** (`packages/op-omega-server/src/routes/activate.ts`) immediately after `handoffToPaperclip`. The activate route returns `{ ok, inserted, paperclipHandoff, ignition }` — Ignition's report becomes a peer to handoff's. This keeps a single HTTP transaction so the operator gets one signal. A separate `POST /api/instance/:companyId/ignite` endpoint provides a re-run path for partial failures and for instances where activate predates this feature. **No launchd job** for Ignition itself — Ignition only *schedules* downstream launchd/heartbeat work; it is not periodic.
+Ignition runs in **wavex-os-server**, in a new module `packages/wavex-os-server/src/bridge/ignition.ts`, invoked at the **tail of the activate route** (`packages/wavex-os-server/src/routes/activate.ts`) immediately after `handoffToPaperclip`. The activate route returns `{ ok, inserted, paperclipHandoff, ignition }` — Ignition's report becomes a peer to handoff's. This keeps a single HTTP transaction so the operator gets one signal. A separate `POST /api/instance/:companyId/ignite` endpoint provides a re-run path for partial failures and for instances where activate predates this feature. **No launchd job** for Ignition itself — Ignition only *schedules* downstream launchd/heartbeat work; it is not periodic.
 
 ## Steps
 
 Sequenced; each step is idempotent against a per-company `ignition-state.json` written next to `paperclip-handoff.json` in `~/.wavex-os/instances/default/companies/<id>/`.
 
-1. **Load workflow manifest.** Read `workflow_manifest.json` from the onboarding dir. Validate against `WorkflowManifest` (`vendor/op-omega/onboarding/src/schema/workflow-manifest.ts`). Index `agent_workflows[<slot>].on_fire[]` by slot. If missing, surface `ignition.errors[]` and abort with `ok: false` — Ignition refuses to invent work.
+1. **Load workflow manifest.** Read `workflow_manifest.json` from the onboarding dir. Validate against `WorkflowManifest` (`vendor/wavex-os/onboarding/src/schema/workflow-manifest.ts`). Index `agent_workflows[<slot>].on_fire[]` by slot. If missing, surface `ignition.errors[]` and abort with `ok: false` — Ignition refuses to invent work.
 
 2. **Create the Goal.** `GET /api/companies/:id/goals` on Paperclip. If empty, `POST /api/companies/:id/goals` with title from Pillar 1 (`pillar_1.org_name` + `pillar_1.ideal_customer_profile`), body composing `company_context`, `primary_friction_hypothesis`, `differentiator_hypothesis`, and the meta-KPI from `pillar_3.kpi_snapshot_initial`. Persist `goalId` into `ignition-state.json`. Idempotent: existing goals are reused.
 
@@ -54,7 +54,7 @@ The banner lives in `packages/onboarding-ui/src/pages/MissionControl.tsx`. It al
 
 ## Tests
 
-In `e2e/ignition.spec.ts` and `packages/op-omega-server/src/bridge/ignition.test.ts`:
+In `e2e/ignition.spec.ts` and `packages/wavex-os-server/src/bridge/ignition.test.ts`:
 
 1. **Happy path.** Finalize wizard → activate → assert `ignition.status === "ignited"`, every non-muted L·IV agent has ≥1 issue in Paperclip, exactly one Goal exists, MissionControl banner shows green within 30s of activate response.
 2. **Idempotent re-ignition.** Run ignite twice. Second run produces zero new issues, zero new goals, and returns `status: "already-ignited"`.
@@ -72,8 +72,8 @@ In `e2e/ignition.spec.ts` and `packages/op-omega-server/src/bridge/ignition.test
 
 ## Critical files
 
-- `packages/op-omega-server/src/routes/activate.ts` — tail-call insertion site for Ignition + response shape extension.
-- `packages/op-omega-server/src/bridge/paperclip-handoff.ts` — provides `slotToPaperclipId` mapping; also where `heartbeat.enabled=false` default is set (line 219) and must be reconciled.
-- `vendor/op-omega/onboarding/src/schema/workflow-manifest.ts` — schema for `agent_workflows.on_fire`.
-- `vendor/op-omega/onboarding/src/schema/pillar-responses.ts` — Pillar 1 fields composing the Goal body.
+- `packages/wavex-os-server/src/routes/activate.ts` — tail-call insertion site for Ignition + response shape extension.
+- `packages/wavex-os-server/src/bridge/paperclip-handoff.ts` — provides `slotToPaperclipId` mapping; also where `heartbeat.enabled=false` default is set (line 219) and must be reconciled.
+- `vendor/wavex-os/onboarding/src/schema/workflow-manifest.ts` — schema for `agent_workflows.on_fire`.
+- `vendor/wavex-os/onboarding/src/schema/pillar-responses.ts` — Pillar 1 fields composing the Goal body.
 - `packages/onboarding-ui/src/pages/MissionControl.tsx` — host for the ignition status banner.

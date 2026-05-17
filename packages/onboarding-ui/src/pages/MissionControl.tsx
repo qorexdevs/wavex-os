@@ -8,10 +8,10 @@ import { KpiBoard } from "../components/mission/KpiBoard";
 import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
 import { AllocationSlider } from "../components/AllocationSlider";
-import { useCompany } from "../op-omega/lib/CompanyContext";
+import { useCompany } from "../wavex-os/lib/CompanyContext";
 import { getSupabase } from "../lib/supabase";
-import { CoachmarkOverlay, type CoachmarkStep } from "../op-omega/components/Coachmark";
-import { useCoachmark } from "../op-omega/lib/coachmarks";
+import { CoachmarkOverlay, type CoachmarkStep } from "../wavex-os/components/Coachmark";
+import { useCoachmark } from "../wavex-os/lib/coachmarks";
 
 interface CompaniesPayload { ok: boolean; companies: Array<{ id: string; name: string }>; }
 

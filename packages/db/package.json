@@ -1,7 +1,7 @@
 {
   "name": "@wavex-os/db",
   "version": "0.1.0",
-  "description": "Database layer: Drizzle schema + PGlite (dev) / node-postgres (prod) driver factory + migrations. Backs op-omega onboarding tables and the observability/healing schema.",
+  "description": "Database layer: Drizzle schema + PGlite (dev) / node-postgres (prod) driver factory + migrations. Backs wavex-os onboarding tables and the observability/healing schema.",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

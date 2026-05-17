@@ -664,7 +664,7 @@ export function WaveXSettingsPage(_: PluginSettingsPageProps) {
     <div style={{ padding: 16, display: "grid", gap: 12 }}>
       <h2 style={{ margin: 0, color: WAVEX_COLOR }}>WaveX OS — preferences</h2>
       <p style={{ fontSize: 13, opacity: 0.7, margin: 0 }}>
-        This panel reads data from the wavex-os op-omega-server and (optionally) the
+        This panel reads data from the wavex-os wavex-os-server and (optionally) the
         configured Supabase project. All actions still happen via Paperclip's native
         issue + agent flows. To change endpoints, edit the plugin instance config in
         Paperclip's Admin Panel.

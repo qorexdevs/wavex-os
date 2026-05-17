@@ -11,7 +11,7 @@ Phase F architecture overview lives in [`docs/ARCHITECTURE.md`](./ARCHITECTURE.m
 - `create-checkout-session` Supabase edge function — issues Stripe Checkout URLs from the pricing page
 - `/pricing` route in `onboarding-ui` — 3 tier cards, Stripe Checkout integration
 - Local subscription state file at `~/.wavex-os/subscription.json`
-- Billing routes in `op-omega-server` (`/api/billing/subscription*`)
+- Billing routes in `wavex-os-server` (`/api/billing/subscription*`)
 
 F.1 does **NOT** ship: actual injection generation (F.5), the Liaison agent (F.4), or the slider (F.3). F.1 is the billing rails.
 

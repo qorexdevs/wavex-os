@@ -49,7 +49,7 @@ Hit `http://127.0.0.1:3100/api/system/health` (Paperclip's own probe). Also
 check, when reachable, the wavex local-ops endpoints:
 
 - `http://127.0.0.1:8765/health` — mock-core
-- `http://127.0.0.1:8766/health` — op-omega-server
+- `http://127.0.0.1:8766/health` — wavex-os-server
 - `http://127.0.0.1:8787/health` — inference-server
 
 For any service `DOWN` on the operator box, file a **SEV0** issue and

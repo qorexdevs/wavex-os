@@ -1,4 +1,4 @@
-/** Actor shape — mirrors op-omega's req.actor contract. wavex-os dev mode
+/** Actor shape — mirrors wavex-os's req.actor contract. wavex-os dev mode
  *  synthesizes a single-user board actor with source=local_implicit. */
 
 export type BoardActor = {

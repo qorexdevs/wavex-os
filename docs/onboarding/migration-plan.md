@@ -1,14 +1,14 @@
-# Op-Omega Onboarding Migration Plan — Full-Fidelity Integration into wavex-os
+# Wavex-Os Onboarding Migration Plan — Full-Fidelity Integration into wavex-os
 
-**Status:** planning · **Source of truth:** operator-omega `packages/plugins/onboarding/` + `server/src/{routes,services}/` + `ui/src/{pages,components,lib}/op-omega/onboarding/`
+**Status:** planning · **Source of truth:** operator-omega `packages/plugins/onboarding/` + `server/src/{routes,services}/` + `ui/src/{pages,components,lib}/wavex-os/onboarding/`
 
 ## Preamble — diagnosis
 
-Op-omega's onboarding implementation is **~23,000 LOC across 100+ files**, including production-validated server-side pipeline (12,100 LOC plugin + 2,414 LOC server routes/services), comprehensive UI (4,687 LOC components), and rigorous testing (~7,000 LOC differential-equation suite + harness). The local integration branch (`feat/op-omega-onboarding`) currently contains **3,240 LOC** of op-omega-shaped code — roughly 14% of the source-of-truth size.
+Wavex-os's onboarding implementation is **~23,000 LOC across 100+ files**, including production-validated server-side pipeline (12,100 LOC plugin + 2,414 LOC server routes/services), comprehensive UI (4,687 LOC components), and rigorous testing (~7,000 LOC differential-equation suite + harness). The local integration branch (`feat/wavex-os-onboarding`) currently contains **3,240 LOC** of wavex-os-shaped code — roughly 14% of the source-of-truth size.
 
 The previous attempts simplified along architectural axes that the user has now rejected:
 
-| Op-omega Feature | Source LOC | Local LOC | Status |
+| Wavex-os Feature | Source LOC | Local LOC | Status |
 |---|---|---|---|
 | Pillar 1 enrichment (10 inferred fields, T2 enrichment, Pillar1InferencePreview confirm/correct) | 369 + 150 | 116 (single component, 5 fields, no preview) | **Lost** |
 | Phase 2 Connector (decision-matrix + T2 refinement + Composio fold-in + bootstrap flow) | 1,014 LOC + 558 LOC UI | 87 + 45 LOC UI | **Lost** |
@@ -20,7 +20,7 @@ The previous attempts simplified along architectural axes that the user has now 
 | Credential Vault (Drizzle-backed audit log, multi-actor writers) | 353 LOC | 149 LOC filesystem-only | **Degraded** |
 | Composio integration (live connection state folding, bootstrap key flow, oauth handshake) | Full @composio/core integration | None | **Lost** |
 | Better-Auth gates (assertBoard, assertCompanyAccess) | Every route | None | **Lost** |
-| Tier-router (T2 multi-tier with rate-limit budgeting) | Full @op-omega/plugin-tier-router | Direct claude CLI | **Degraded** |
+| Tier-router (T2 multi-tier with rate-limit budgeting) | Full @wavex-os/plugin-tier-router | Direct claude CLI | **Degraded** |
 | Pillar transition T0 hints (inter-pillar option modifications) | 102 LOC | None | **Lost** |
 | KPI Verification (3-tier progressive disclosure) | 309 LOC | None | **Lost** |
 | Tuning Registry (50+ @tunable annotations + print-map + print-chart) | 612 LOC | None | **Lost** |
@@ -33,31 +33,31 @@ The previous attempts simplified along architectural axes that the user has now 
 
 ## PHASE 1 — System Understanding
 
-### 1.1 Op-Omega architecture (source of truth)
+### 1.1 Wavex-Os architecture (source of truth)
 
 **Layer 1 — Plugin (`packages/plugins/onboarding/`, ~12,100 LOC):**
 - DB-free pure pipeline: pillar handlers → phase generators → finalize → assembled `CompanyManifest`
 - Filesystem-only persistence: `~/.paperclip/instances/default/companies/{companyId}/onboarding/`
-- T2 inference via `@op-omega/plugin-tier-router`
-- KPI snapshots + Monte Carlo via `@op-omega/plugin-flywheel-kernel`
+- T2 inference via `@wavex-os/plugin-tier-router`
+- KPI snapshots + Monte Carlo via `@wavex-os/plugin-flywheel-kernel`
 - Plugin SDK: `@paperclipai/plugin-sdk`
 
 **Layer 2 — Server (`server/src/`, ~2,414 LOC):**
-- Express routes: `routes/op-omega-onboarding.ts` (1,188 LOC, 24 endpoints)
+- Express routes: `routes/wavex-os-onboarding.ts` (1,188 LOC, 24 endpoints)
 - Auth gate on every route: `assertBoard(req)` + `assertCompanyAccess(req, companyId)` via Better-Auth
 - Drizzle ORM tables: `companies`, `agents`, `credentials`, `credentialAuditLog`
 - Services: `credentialVault.ts` (353 LOC), `credentialConcierge.ts` (491 LOC), `credentialRegistry.ts` (382 LOC)
 - Composio integration: `lib/composio/client.ts`
 
 **Layer 3 — UI (`ui/src/`, ~5,385 LOC):**
-- Host: `pages/OmegaOnboarding.tsx` (655 LOC) — Phase state machine with 14 phase values, manifest cache, draft-inflight idempotency, dev-mode escape hatch
+- Host: `pages/WavexOsOnboarding.tsx` (655 LOC) — Phase state machine with 14 phase values, manifest cache, draft-inflight idempotency, dev-mode escape hatch
 - Components (25 files, 4,687 LOC): Pillar1-5, Pillar1InferencePreview, Phase2ConnectorStep (558 LOC), CredentialConciergeStep (577 LOC), SwarmOrgChart (509 LOC), KPIVerification (309 LOC), materialize-phase (308 LOC), halt-screen, etc.
-- API client: `lib/opOmegaOnboarding.ts` (428 LOC)
+- API client: `lib/wavexOsOnboarding.ts` (428 LOC)
 - Helpers: `lib/{onboarding-draft, onboarding-route, onboarding-launch, onboarding-goal}.ts` (270 LOC)
 
 **Hard dependencies:**
-- `@op-omega/plugin-tier-router` — T2 inference router (multi-tier, rate-limit budgeting)
-- `@op-omega/plugin-flywheel-kernel` — KPI snapshots, MC engine, bundle allocation
+- `@wavex-os/plugin-tier-router` — T2 inference router (multi-tier, rate-limit budgeting)
+- `@wavex-os/plugin-flywheel-kernel` — KPI snapshots, MC engine, bundle allocation
 - `@paperclipai/db` — Drizzle ORM tables (companies, agents, credentials, credentialAuditLog, ...)
 - `@paperclipai/plugin-sdk` — Plugin manifest + health
 - `better-auth` — OAuth flows, assertBoard, assertCompanyAccess
@@ -107,42 +107,42 @@ The previous attempts simplified along architectural axes that the user has now 
 
 ### 1.3 Local integration branch architecture (current state)
 
-**Layer 1 — `packages/op-omega-onboarding/` (2,177 LOC):**
+**Layer 1 — `packages/wavex-os-onboarding/` (2,177 LOC):**
 - Filesystem-backed (no Drizzle, no Postgres)
-- Pillar handlers (5, ~312 LOC vs op-omega's 906); deterministic-only for 3-5; Pillar 1 has Claude direct call (no T2 router)
-- Decision modules (`decision/`, 244 LOC vs op-omega's 1,014+1,043+792 = 2,849)
+- Pillar handlers (5, ~312 LOC vs wavex-os's 906); deterministic-only for 3-5; Pillar 1 has Claude direct call (no T2 router)
+- Decision modules (`decision/`, 244 LOC vs wavex-os's 1,014+1,043+792 = 2,849)
 - No flywheel-kernel (no Monte Carlo); no imprint review
-- Vault: filesystem-backed (149 LOC vs op-omega's 353); no concierge state machine; no registry
+- Vault: filesystem-backed (149 LOC vs wavex-os's 353); no concierge state machine; no registry
 - Inference: `inference/claude-cli.ts` (133 LOC) — direct `claude -p` spawn; no tier router
 
-**Layer 2 — `packages/onboarding-ui/src/op-omega/` (1,063 LOC):**
-- `OmegaOnboarding.tsx` (159 LOC vs op-omega 655) — host shell + Phase state combined; no manifest cache; no draft-inflight; no dev escape hatch
-- Pillar components (5, 499 LOC vs op-omega 855+150 InferencePreview+237 phase1-host)
-- Phase components (4, 219 LOC vs op-omega 558+509+128+308 = 1,503 just for these)
+**Layer 2 — `packages/onboarding-ui/src/wavex-os/` (1,063 LOC):**
+- `WavexOsOnboarding.tsx` (159 LOC vs wavex-os 655) — host shell + Phase state combined; no manifest cache; no draft-inflight; no dev escape hatch
+- Pillar components (5, 499 LOC vs wavex-os 855+150 InferencePreview+237 phase1-host)
+- Phase components (4, 219 LOC vs wavex-os 558+509+128+308 = 1,503 just for these)
 - No Pillar1InferencePreview, no Phase2ConnectorStep (just text rendering), no SwarmOrgChart, no CredentialConcierge UI, no KPIVerification 3-tier, no progressive materialize polling
 
 **Layer 3 — Mock-core integration:**
-- `mock-core/src/server.ts` registers `registerOpOmegaRoutes(app)` (the package's Fastify routes)
+- `mock-core/src/server.ts` registers `registerWavexOsRoutes(app)` (the package's Fastify routes)
 - Native runtime endpoints: /api/health, /api/agents, /api/spawn (mock), /api/instance/:companyId/{manifest,kpis,events}
 - No Postgres (filesystem only)
 
 **Test coverage:**
 - 9 vitest unit tests (projection + finalize integration)
 - 5 fixture companies in Playwright e2e
-- vs op-omega's 4-suite differential-equation framework + validation matrix + baseline capture (~7,000 LOC)
+- vs wavex-os's 4-suite differential-equation framework + validation matrix + baseline capture (~7,000 LOC)
 
 ### 1.4 Onboarding flow diagrams
 
-**Op-omega original (verbatim production flow):**
+**Wavex-os original (verbatim production flow):**
 
 ```
 Operator visits /omega-onboarding
-  ↓ GET /op-omega/onboarding/status (Better-Auth gated; reads pillar_responses.json)
+  ↓ GET /wavex-os/onboarding/status (Better-Auth gated; reads pillar_responses.json)
   → Routes UI to Phase based on next_pillar OR has_*_manifest
 
 PHASE 1: Pillars 1-5
   ↓ Each pillar:
-    1. Operator submits via POST /op-omega/onboarding/pillar/<N>
+    1. Operator submits via POST /wavex-os/onboarding/pillar/<N>
     2. (Pillar 1 only) tier-router T2 enrichment of org context (10 fields) — UI also shows Pillar1InferencePreview
     3. (Pillar 2) probeClaudeCode() + deriveInferenceBudgetProfile()
     4. (Pillars 3-5) deterministic + minor T2 hints
@@ -152,7 +152,7 @@ PHASE 1: Pillars 1-5
 
 PHASE 2: Connector Manifest
   ↓ Operator clicks "Generate Connector Manifest"
-    1. POST /op-omega/onboarding/generate/connector
+    1. POST /wavex-os/onboarding/generate/connector
     2. runDecisionMatrix(pillar_responses) — T0 baseline (16 connector IDs, P-1/P0/P1/P2 priorities)
     3. tier-router T2 refinement of rationales (skipInference flag bypasses)
     4. Fold liveConnections from Composio (status: configured/pending_credential/pending_decision)
@@ -160,7 +160,7 @@ PHASE 2: Connector Manifest
     6. Return manifest + source ("t2" or "fallback")
 
 PHASE 2B: Credential Concierge
-  ↓ POST /op-omega/onboarding/credential-concierge/init
+  ↓ POST /wavex-os/onboarding/credential-concierge/init
     1. credentialConcierge.deriveRequiredCredentials() reads connector_manifest
     2. Maps connectors → credential keys (composio bootstrap + direct: supabase×2, github×1, mixpanel×1, stripe deferred)
     3. CredentialOnboardingState persisted to credential-state.json
@@ -168,10 +168,10 @@ PHASE 2B: Credential Concierge
     - paste → vault.writeCredential(encrypted) + audit log + slot → "pasted"
     - validate → vault.readCredential() + credentialRegistry.runValidator() + updateValidationStatus → "valid"
     - skip → slot → "skipped"
-  ↓ POST /op-omega/onboarding/credential-concierge/finalize → canFinalize: true
+  ↓ POST /wavex-os/onboarding/credential-concierge/finalize → canFinalize: true
 
 PHASE 3: Swarm Manifest
-  ↓ POST /op-omega/onboarding/generate/swarm
+  ↓ POST /wavex-os/onboarding/generate/swarm
     1. Load pillar_responses + connector_manifest + credential vault state
     2. runSwarmDecisionMatrix(): start with BASE_ROSTER (5), evaluate 35+ activation_rules per agent against credential gates
     3. Agents with skipped/invalid credentials → parked + unpark_reason recorded (F4 invariant)
@@ -179,7 +179,7 @@ PHASE 3: Swarm Manifest
     5. writeArtifact() → swarm_manifest.yaml + .json
 
 PHASE 4: Workflow Manifest
-  ↓ POST /op-omega/onboarding/generate/workflow
+  ↓ POST /wavex-os/onboarding/generate/workflow
     1. Load pillar_responses + swarm_manifest
     2. runWorkflowDecisionMatrix(): templates per agent + stage → bundle allocation L0/L1
     3. Budget enforcement: sum(workflow tokens) vs claude_plan budget; HALT if over (bypassBudgetCheck flag overrides)
@@ -187,13 +187,13 @@ PHASE 4: Workflow Manifest
     5. writeArtifact() → workflow_manifest.yaml + .json
 
 PRE-FINALIZE: KPI Verification
-  ↓ POST /op-omega/onboarding/kpi/verify (KPIVerification.tsx, 3-tier progressive disclosure)
+  ↓ POST /wavex-os/onboarding/kpi/verify (KPIVerification.tsx, 3-tier progressive disclosure)
     1. Operator inputs/verifies: MRR, NRR, CAC, burn_multiple, etc.
     2. Validates ranges
     3. Merges into QA snapshot (NOT into pillar_responses.json)
 
 FINALIZE
-  ↓ POST /op-omega/onboarding/generate/finalize
+  ↓ POST /wavex-os/onboarding/generate/finalize
     1. invokeMonteCarlo(): flywheel-kernel runs 30 cycles × 30 runs (seed 42); returns MonteCarloWinner (strategy_id, sharpe, metrics, rationale) — DETERMINISTIC, no T2
     2. tier-router T2 imprint review (optional skip): summarizes operator playbook
     3. assembleCompanyManifest(): embeds all 4 manifests + MC winner + imprint + credential metadata
@@ -203,11 +203,11 @@ FINALIZE
     7. Update pillar_responses.completed_at = now
 
 MATERIALIZATION (Phase 5+, post-finalize)
-  ↓ POST /op-omega/onboarding/materialize
+  ↓ POST /wavex-os/onboarding/materialize
     1. Load company.manifest.json
     2. For each agent (status="active") in swarm_manifest: insert into agents table
     3. Return created agents
-  ↓ GET /op-omega/onboarding/status returns materialize state
+  ↓ GET /wavex-os/onboarding/status returns materialize state
 ```
 
 **Local branch flow (current, simplified):**
@@ -227,7 +227,7 @@ Same shape, but:
 
 ### 1.5 State lifecycle analysis
 
-**Op-omega persistence:**
+**Wavex-os persistence:**
 - `pillar_responses.json` — mutable draft, written under per-companyId mutex (atomic tmp+rename)
 - `{connector,swarm,workflow}_manifest.{json,yaml}` — written by phase generators
 - `company.manifest.{json,yaml}` — signed final
@@ -238,7 +238,7 @@ Same shape, but:
 - `agents` table — created at materialize
 
 **Local persistence:**
-- Same files as op-omega EXCEPT:
+- Same files as wavex-os EXCEPT:
 - No DB tables (everything filesystem)
 - No `credentials` Drizzle table — uses `vault/store.ts` + `vault/audit.ts` (filesystem)
 - No `agents` table — runtime reads `agents.json` directly
@@ -250,21 +250,21 @@ Same shape, but:
 | System | Shared/Isolated | Where |
 |---|---|---|
 | Filesystem `~/.wavex-os/instances/<companyId>/` | Shared between onboarding (writes) + runtime (reads) | All branches |
-| Postgres DB | Shared between op-omega services + minimal flywheel observability | Op-omega + minimal flywheel; **absent from local** |
+| Postgres DB | Shared between wavex-os services + minimal flywheel observability | Wavex-os + minimal flywheel; **absent from local** |
 | macOS keychain "Claude Code-credentials" | Shared between healing + spawn wrappers + Pillar 2 probe | All branches |
 | Launchd jobs | Isolated per-company (rendered from templates) | Minimal flywheel (templates exist, runtime registers) |
 | Mock-core in-memory state | Isolated (single process) | Local only |
-| Op-omega plugin SDK lifecycle | Op-omega only | Source of truth |
-| Composio API | Shared per-company (vault key isolation) | Op-omega only |
+| Wavex-os plugin SDK lifecycle | Wavex-os only | Source of truth |
+| Composio API | Shared per-company (vault key isolation) | Wavex-os only |
 
 ### 1.7 Critical dependencies map
 
 ```
-Op-omega onboarding pipeline
+Wavex-os onboarding pipeline
   ├── @paperclipai/db ────────────► Postgres (companies, agents, credentials, credentialAuditLog, ...)
   ├── @paperclipai/plugin-sdk ────► plugin manifest, health
-  ├── @op-omega/plugin-tier-router ► T2 router (multi-tier, rate-limit, prompt-version registry)
-  ├── @op-omega/plugin-flywheel-kernel
+  ├── @wavex-os/plugin-tier-router ► T2 router (multi-tier, rate-limit, prompt-version registry)
+  ├── @wavex-os/plugin-flywheel-kernel
   │     ├── KPI snapshot model
   │     ├── Monte Carlo engine
   │     └── Bundle allocation calculator
@@ -276,12 +276,12 @@ Op-omega onboarding pipeline
 UI:
   ├── @tanstack/react-query
   ├── react-router
-  └── op-omega API client (typed)
+  └── wavex-os API client (typed)
 ```
 
 ### 1.8 Feature parity matrix
 
-| # | Feature | Op-omega | Local | Notes |
+| # | Feature | Wavex-os | Local | Notes |
 |---|---|---|---|---|
 | 1 | URL/repo enrichment with T2 (10 fields) | ✓ | ✗ (5 fields, no T2 router) | Major UX regression |
 | 2 | Pillar1InferencePreview (confirm/correct) | ✓ | ✗ | UX gap |
@@ -356,11 +356,11 @@ UI:
 | Credential registry validators | **382** | Not exists |
 | Pillar transition T0 hints | **102** | Not exists |
 | Tuning registry + print utilities | **612** | Not exists |
-| Op-omega plugin manifest + SDK | **84** | Plugin lifecycle absent |
+| Wavex-os plugin manifest + SDK | **84** | Plugin lifecycle absent |
 | Pillar 1 deterministic-override + 10-field heuristics | 369 - 116 = **253** | Heuristics fall back to less data |
 | Pillar 4 derive_gtm_profile + heuristics | 56 - 29 = **27** | Simplified |
-| Pillar 5 board_endpoint_config full secrets handling | 31 - 49 = **-18** | Local has more (telegram only); op-omega has registry-driven |
-| Routes (24 endpoints in op-omega) | 1188 - 369 = **819** | Local has 19 endpoints; missing concierge endpoints + KPI verify endpoint richness + materialize state endpoint + claude-code-check + loop-status |
+| Pillar 5 board_endpoint_config full secrets handling | 31 - 49 = **-18** | Local has more (telegram only); wavex-os has registry-driven |
+| Routes (24 endpoints in wavex-os) | 1188 - 369 = **819** | Local has 19 endpoints; missing concierge endpoints + KPI verify endpoint richness + materialize state endpoint + claude-code-check + loop-status |
 
 **Total server-side absent: ~4,500 LOC of validated production behavior**
 
@@ -368,7 +368,7 @@ UI:
 
 | Component | Absent LOC | Impact |
 |---|---|---|
-| OmegaOnboarding host (manifest cache, draft-inflight, dev escape, status auto-route nuance) | 655 - 159 = **496** | UX state machine simpler |
+| WavexOsOnboarding host (manifest cache, draft-inflight, dev escape, status auto-route nuance) | 655 - 159 = **496** | UX state machine simpler |
 | Pillar1InferencePreview | **150** | No confirm/correct UX |
 | phase1-host orchestration | **237** | No halt routing, no enrichment preview |
 | Phase2ConnectorStep | 558 - 45 = **513** | No Composio flow, no per-card initiate |
@@ -401,18 +401,18 @@ Critical UX regressions caused by simplification:
 7. **No manifest cache** — operator clicking back regenerates expensive T2 outputs.
 8. **No draft-inflight idempotency** — operator who refreshes mid-Pillar-1 may get a duplicate company.
 9. **No Pillar 5 board_endpoint_config registry** — only Telegram is supported, with hardcoded vault keys; no Slack/SMS/email/Discord credential flows.
-10. **No transition hints** — operator sees the same Pillar 4 options regardless of Pillar 3 stage; loses op-omega's "if pre-product, sales_motion = none_yet first" specificity.
+10. **No transition hints** — operator sees the same Pillar 4 options regardless of Pillar 3 stage; loses wavex-os's "if pre-product, sales_motion = none_yet first" specificity.
 
 ### 2.3 Missing backend behavior
 
-1. **No T2 anywhere except Pillar 1 enrichment** — Phase 2/3/4 are deterministic-only; loses op-omega's "T0 baseline + T2 refinement with measurable improvement" pattern (Suite 4 of differential-equation suite proves T2 adds value).
+1. **No T2 anywhere except Pillar 1 enrichment** — Phase 2/3/4 are deterministic-only; loses wavex-os's "T0 baseline + T2 refinement with measurable improvement" pattern (Suite 4 of differential-equation suite proves T2 adds value).
 2. **No budget enforcement** — operator can configure a workflow that exceeds claude_plan budget without warning.
 3. **No Monte Carlo** — no strategy_id winner, no Sharpe metric, no rationale.
 4. **No imprint review** — no operator playbook summary.
 5. **No concierge state machine** — credentials are write-only with no validation tracking.
 6. **No credential registry** — no per-credential validators; pasting an invalid GitHub PAT writes it to vault unverified.
 7. **No agent activation gates** — agents that depend on missing credentials are not parked; manifest doesn't reflect runtime reality.
-8. **No materialize state** — `/op-omega/onboarding/status` doesn't track materialize progress.
+8. **No materialize state** — `/wavex-os/onboarding/status` doesn't track materialize progress.
 9. **No claude-code-check** — Pillar 2 simplified, no system probe.
 10. **No multi-tier inference selection** — every T2 call goes to the same model; no fallback to cheaper tier when budget tight.
 
@@ -421,8 +421,8 @@ Critical UX regressions caused by simplification:
 1. **No Pillar 1 enrichment validation** — `isEnrichmentMeaningful()` exists but only the F1 length+keyword check; missing semantic validation of the 10 enriched fields.
 2. **No schema versioning** — `COMPANY_MANIFEST_SCHEMA_VERSION = "1.0"` defined but no migration path for v2.
 3. **No QA snapshot for KPI verification** — KPI verify endpoint stamps `ai_estimated: false` but doesn't preserve a separate verified-by-operator audit.
-4. **No company rename detection** — op-omega's Pillar 1 detects stub-name patterns and renames the DB row; local doesn't (no DB).
-5. **No completed_at timestamp** — op-omega writes `pillar_responses.completed_at = now` after finalize; local doesn't track.
+4. **No company rename detection** — wavex-os's Pillar 1 detects stub-name patterns and renames the DB row; local doesn't (no DB).
+5. **No completed_at timestamp** — wavex-os writes `pillar_responses.completed_at = now` after finalize; local doesn't track.
 6. **No materialize state** — agent creation is fire-and-forget; no expected/actual count.
 
 ### 2.5 Infrastructure incompatibilities
@@ -434,7 +434,7 @@ Critical UX regressions caused by simplification:
 - `getBudgetStatus()` cannot run; no token-budget enforcement (this is also a healing-layer requirement)
 - launchd jobs that POST to `/api/maintenance/*` find no handlers (mock-core doesn't implement them)
 
-The minimal flywheel was **designed against Postgres**. Substituting the filesystem for the database is what op-omega's plugin does (the plugin is DB-free), but the SERVER LAYER above the plugin and the OBSERVABILITY LAYER alongside it both expect Postgres. The local branch breaks both.
+The minimal flywheel was **designed against Postgres**. Substituting the filesystem for the database is what wavex-os's plugin does (the plugin is DB-free), but the SERVER LAYER above the plugin and the OBSERVABILITY LAYER alongside it both expect Postgres. The local branch breaks both.
 
 **Other infrastructure gaps:**
 - No Better-Auth → no multi-user; local is single-user only
@@ -450,11 +450,11 @@ The minimal flywheel was **designed against Postgres**. Substituting the filesys
 
 1. **Filesystem race conditions** — local `vault/store.ts` writes encrypted blobs to filesystem with no transaction; concurrent writes under per-companyId mutex are safe, but cross-company writes could theoretically conflict on shared keys (low risk).
 2. **No audit log table** — credential reads are not logged; compliance/debugging blocker.
-3. **JSON-only manifests** — humans cannot review op-omega's signed manifests in YAML format (which is the canonical op-omega format for diff review).
+3. **JSON-only manifests** — humans cannot review wavex-os's signed manifests in YAML format (which is the canonical wavex-os format for diff review).
 4. **No tunable registry** — when a constant needs tuning (e.g., `phase3.skill_overlay_slice = 400`), there's no central registry; must grep.
-5. **No prompt version tracking** — when T2 prompts change, op-omega tracks via tunable registry; local has no T2 prompts to track but will need this when wired.
-6. **Type drift** — local schema files (`schema/manifests.ts`, etc.) duplicate op-omega types but are not generated from op-omega; they will drift unless explicitly synced.
-7. **Test coverage gap** — local has 9 unit + 5 e2e tests; op-omega has 17+ unit + differential-equation suite + validation matrix. Refactoring without these tests = blind regression.
+5. **No prompt version tracking** — when T2 prompts change, wavex-os tracks via tunable registry; local has no T2 prompts to track but will need this when wired.
+6. **Type drift** — local schema files (`schema/manifests.ts`, etc.) duplicate wavex-os types but are not generated from wavex-os; they will drift unless explicitly synced.
+7. **Test coverage gap** — local has 9 unit + 5 e2e tests; wavex-os has 17+ unit + differential-equation suite + validation matrix. Refactoring without these tests = blind regression.
 8. **No baseline capture** — no measurable regression detection on K1-K7 metrics.
 9. **No CI enforcement of frozen paths** — claim of frozen-path discipline relies on manual review.
 
@@ -466,10 +466,10 @@ The minimal flywheel was **designed against Postgres**. Substituting the filesys
 
 | Option | Description | Pros | Cons |
 |---|---|---|---|
-| **A. Wholesale port (vendored source)** | Copy op-omega's `packages/plugins/onboarding/`, `server/src/{routes,services}/`, and `ui/src/components/op-omega/onboarding/` files **byte-for-byte** into wavex-os. Provide adapter layer for what differs (DB connection, auth, plugin SDK). | Highest fidelity. Source code IS op-omega's. Updates can be pulled by re-vendoring. Tests come along verbatim. | Carries op-omega's full dependency surface; requires Postgres + Drizzle + Better-Auth + Composio SDK + tier-router + flywheel-kernel + plugin-sdk in wavex-os. |
-| **B. Subtree merge** | Add op-omega as a `git subtree` rooted at `vendor/op-omega/`; reference its files directly from wavex-os build configs. | Cleanest history; updates via `git subtree pull`. | Same dependency surface as A. Subtree complicates contributor workflow. |
-| **C. Incremental rewrite** | Continue from local branch state; add missing features one PR at a time. | Smaller PRs. | Drift risk; cannot validate against op-omega until late. **Explicitly rejected by user directive.** |
-| **D. Hybrid: vendored source + lazy-load shim** | Vendor op-omega files; for op-omega-specific deps (tier-router, flywheel-kernel), provide lazy-load shims that work in wavex but pass through to the vendored op-omega plugin when available. | Source preservation + degradation path. | More moving parts. |
+| **A. Wholesale port (vendored source)** | Copy wavex-os's `packages/plugins/onboarding/`, `server/src/{routes,services}/`, and `ui/src/components/wavex-os/onboarding/` files **byte-for-byte** into wavex-os. Provide adapter layer for what differs (DB connection, auth, plugin SDK). | Highest fidelity. Source code IS wavex-os's. Updates can be pulled by re-vendoring. Tests come along verbatim. | Carries wavex-os's full dependency surface; requires Postgres + Drizzle + Better-Auth + Composio SDK + tier-router + flywheel-kernel + plugin-sdk in wavex-os. |
+| **B. Subtree merge** | Add wavex-os as a `git subtree` rooted at `vendor/wavex-os/`; reference its files directly from wavex-os build configs. | Cleanest history; updates via `git subtree pull`. | Same dependency surface as A. Subtree complicates contributor workflow. |
+| **C. Incremental rewrite** | Continue from local branch state; add missing features one PR at a time. | Smaller PRs. | Drift risk; cannot validate against wavex-os until late. **Explicitly rejected by user directive.** |
+| **D. Hybrid: vendored source + lazy-load shim** | Vendor wavex-os files; for wavex-os-specific deps (tier-router, flywheel-kernel), provide lazy-load shims that work in wavex but pass through to the vendored wavex-os plugin when available. | Source preservation + degradation path. | More moving parts. |
 
 **Recommendation: Option A (Wholesale port).**
 
@@ -477,27 +477,27 @@ Rationale:
 - User directive: "Do NOT replace systems unless absolutely necessary." Postgres is not "absolutely necessary" to replace — minimal flywheel already requires it.
 - User directive: "Do NOT simplify the onboarding logic." Wholesale port is the only option that doesn't simplify.
 - User directive: "preservation of functionality is the top priority." Wholesale source preservation is the strongest preservation.
-- Vendoring op-omega's tier-router and flywheel-kernel as code (they are TypeScript packages) means we don't lose T2 multi-tier inference or Monte Carlo.
+- Vendoring wavex-os's tier-router and flywheel-kernel as code (they are TypeScript packages) means we don't lose T2 multi-tier inference or Monte Carlo.
 - Better-Auth can be configured for single-user dev and full multi-user in production; not a blocker.
-- Composio is genuinely optional (can be configured-but-disabled); op-omega's UI handles this case.
+- Composio is genuinely optional (can be configured-but-disabled); wavex-os's UI handles this case.
 
 ### 3.2 Why wholesale port over incremental
 
-Incremental rewrite (option C) was the previous strategy. It produced the local branch — a structural shadow. Each PR's "smaller scope" justified individual simplifications, and the cumulative effect is a system that does not match op-omega behavior. The user has explicitly rejected this pattern.
+Incremental rewrite (option C) was the previous strategy. It produced the local branch — a structural shadow. Each PR's "smaller scope" justified individual simplifications, and the cumulative effect is a system that does not match wavex-os behavior. The user has explicitly rejected this pattern.
 
-Wholesale port carries op-omega code intact. The risk profile is "infrastructure setup is hard once, then nothing drifts" rather than "every PR risks more drift."
+Wholesale port carries wavex-os code intact. The risk profile is "infrastructure setup is hard once, then nothing drifts" rather than "every PR risks more drift."
 
 ### 3.3 Order of operations
 
 ```
 STEP 0: Decision lock + rollback infrastructure
-        - Tag current local branch as feat/op-omega-onboarding-archive
-        - Create new branch feat/op-omega-fidelity from minimal-inception-self-healing
+        - Tag current local branch as feat/wavex-os-onboarding-archive
+        - Create new branch feat/wavex-os-fidelity from minimal-inception-self-healing
         - Ensure rollback path exists
 
 STEP 1: Database infrastructure
         - Postgres setup script (docker-compose or local pg_ctl)
-        - Drizzle migrations from op-omega's @paperclipai/db schema
+        - Drizzle migrations from wavex-os's @paperclipai/db schema
         - Required tables: companies, agents, credentials, credentialAuditLog,
           company_kpis, kpi_snapshots, cost_events, issues, heartbeat_runs,
           task_outcome_attributions, issue_comments
@@ -511,12 +511,12 @@ STEP 3: Auth shim
         - assertBoard() and assertCompanyAccess() return success in dev; gate properly in prod
 
 STEP 4: T2 / inference infrastructure
-        - Vendor @op-omega/plugin-tier-router as code (TypeScript)
+        - Vendor @wavex-os/plugin-tier-router as code (TypeScript)
         - Wire to Anthropic API via existing wavex keychain wrapper
         - Provide rate-limit-budget integration (or stub with warning)
 
 STEP 5: Flywheel kernel
-        - Vendor @op-omega/plugin-flywheel-kernel as code
+        - Vendor @wavex-os/plugin-flywheel-kernel as code
         - KPI snapshot model + Monte Carlo engine + bundle allocation calculator
         - Ensure deterministic seed behavior
 
@@ -525,32 +525,32 @@ STEP 6: Composio integration
         - Configure with CREDENTIAL_VAULT_MASTER_KEY-derived per-company keys (existing wavex-os crypto)
         - UI displays "Composio not configured" state gracefully
 
-STEP 7: Vendor op-omega plugin (packages/plugins/onboarding/)
-        - Copy all 100+ files byte-for-byte to wavex-os/packages/op-omega-plugin/
+STEP 7: Vendor wavex-os plugin (packages/plugins/onboarding/)
+        - Copy all 100+ files byte-for-byte to wavex-os/packages/wavex-os-plugin/
         - Adjust import paths only where the workspace name differs
         - Re-run vitest; all 17+ tests pass
 
-STEP 8: Vendor op-omega server routes + services
-        - Copy server/src/routes/op-omega-onboarding.ts (1,188 LOC) to packages/op-omega-server/src/routes/
-        - Copy services (credentialVault, credentialConcierge, credentialRegistry) to packages/op-omega-server/src/services/
+STEP 8: Vendor wavex-os server routes + services
+        - Copy server/src/routes/wavex-os-onboarding.ts (1,188 LOC) to packages/wavex-os-server/src/routes/
+        - Copy services (credentialVault, credentialConcierge, credentialRegistry) to packages/wavex-os-server/src/services/
         - Wire routes onto Fastify (mock-core) instead of Express; or adopt Express
 
-STEP 9: Vendor op-omega UI
-        - Copy ui/src/components/op-omega/onboarding/ + ui/src/pages/OmegaOnboarding.tsx to packages/onboarding-ui/src/op-omega/
-        - Copy ui/src/lib/{onboarding-draft, onboarding-route, onboarding-launch, onboarding-goal, opOmegaOnboarding}.ts
+STEP 9: Vendor wavex-os UI
+        - Copy ui/src/components/wavex-os/onboarding/ + ui/src/pages/WavexOsOnboarding.tsx to packages/onboarding-ui/src/wavex-os/
+        - Copy ui/src/lib/{onboarding-draft, onboarding-route, onboarding-launch, onboarding-goal, wavexOsOnboarding}.ts
         - Adjust imports
 
-STEP 10: Replace local op-omega-onboarding package
-        - Delete packages/op-omega-onboarding/ (the simplified port)
-        - All code now lives in packages/op-omega-plugin/ + packages/op-omega-server/
+STEP 10: Replace local wavex-os-onboarding package
+        - Delete packages/wavex-os-onboarding/ (the simplified port)
+        - All code now lives in packages/wavex-os-plugin/ + packages/wavex-os-server/
 
-STEP 11: Replace local UI op-omega/ subdirectory
-        - Delete packages/onboarding-ui/src/op-omega/ (the simplified port)
-        - All code now from vendored op-omega UI
+STEP 11: Replace local UI wavex-os/ subdirectory
+        - Delete packages/onboarding-ui/src/wavex-os/ (the simplified port)
+        - All code now from vendored wavex-os UI
 
-STEP 12: Wire dashboard to op-omega manifest output
-        - MissionControl, KpiBoard, FleetGraph read op-omega's company.manifest.{yaml,json}
-        - Dashboard adapts to op-omega shapes (camelCase for KPI registry, etc.)
+STEP 12: Wire dashboard to wavex-os manifest output
+        - MissionControl, KpiBoard, FleetGraph read wavex-os's company.manifest.{yaml,json}
+        - Dashboard adapts to wavex-os shapes (camelCase for KPI registry, etc.)
 
 STEP 13: Wire runtime layer
         - packages/observability/ now has DB; observability queries work
@@ -568,7 +568,7 @@ STEP 15: Tuning registry
 STEP 16: End-to-end smoke
         - Reset Postgres + filesystem
         - Run 5 fixture companies through full pipeline (Pillars 1-5 + Phases 2-4 + Concierge + Finalize + Materialize)
-        - Verify ALL files match op-omega output (canonical hash check)
+        - Verify ALL files match wavex-os output (canonical hash check)
         - Verify dashboard hydrates with full KPI/agent/manifest data
         - Verify launchd jobs fire and runtime self-heals
 
@@ -580,7 +580,7 @@ STEP 17: Decommission previous branch
 ### 3.4 Safe migration checkpoints
 
 After each step:
-- All 17+ op-omega vitest tests pass (when applicable)
+- All 17+ wavex-os vitest tests pass (when applicable)
 - `pnpm typecheck` clean
 - `pnpm dev` boots without errors
 - Manual smoke: navigate `/onboarding`, complete Pillars 1-5, confirm phases generate
@@ -594,7 +594,7 @@ After STEP 16:
 
 ### 3.5 Rollback strategy
 
-- `feat/op-omega-onboarding-archive` retained as last-known-good simplified state
+- `feat/wavex-os-onboarding-archive` retained as last-known-good simplified state
 - `feat/minimal-inception-self-healing` retained as integration target baseline
 - Each STEP creates a commit that's reversible via `git revert`
 - Postgres state is owned by this branch; can be reset via `dropdb wavex_dev && createdb wavex_dev && pnpm db:migrate`
@@ -603,12 +603,12 @@ After STEP 16:
 ### 3.6 Testing methodology
 
 **Per-step verification:**
-1. **Vendoring steps (STEPS 7, 8, 9):** after copy, run `pnpm typecheck` then `pnpm test --filter=op-omega-plugin`. Expected: all 17+ vitest tests green.
+1. **Vendoring steps (STEPS 7, 8, 9):** after copy, run `pnpm typecheck` then `pnpm test --filter=wavex-os-plugin`. Expected: all 17+ vitest tests green.
 2. **Infrastructure steps (STEPS 1-6):** smoke against schema with `pnpm db:migrate && pnpm db:status` returning all tables present.
 3. **Wiring steps (STEPS 10-15):** end-to-end manual walkthrough + Playwright e2e green.
 
 **Continuous verification:**
-- CI runs `pnpm typecheck`, vitest, Playwright e2e, and **op-omega differential-equation suite** on every commit
+- CI runs `pnpm typecheck`, vitest, Playwright e2e, and **wavex-os differential-equation suite** on every commit
 - Baseline capture on every commit; deviation > threshold fails CI
 - Manifest-shape validation against `examples/*.example.json` on every commit
 
@@ -628,7 +628,7 @@ After STEP 16:
 
 ### 3.7 State synchronization
 
-Op-omega writes pillar_responses.json, manifest YAML+JSON files, credential audit log. Wavex runtime reads these files. The wavex-projection layer (`src/projections/wavex-projection.ts`) is the only piece that **derives** wavex-shape files (agents.json, kpi-registry.json, wavex-os.config.json) FROM op-omega's outputs.
+Wavex-os writes pillar_responses.json, manifest YAML+JSON files, credential audit log. Wavex runtime reads these files. The wavex-projection layer (`src/projections/wavex-projection.ts`) is the only piece that **derives** wavex-shape files (agents.json, kpi-registry.json, wavex-os.config.json) FROM wavex-os's outputs.
 
 In the wholesale port, this projection is no longer needed because **agents are written directly to the `agents` Drizzle table** during materialize, and `kpi-registry.json` becomes a runtime artifact derived from `company_kpis` table. The dashboard reads from DB directly via observability queries.
 
@@ -639,17 +639,17 @@ In the wholesale port, this projection is no longer needed because **agents are 
 Before STEP 1:
 - Audit `feat/minimal-inception-self-healing` to confirm Postgres URL config is wired (DATABASE_URL env var)
 - Confirm `provision-chief-of-staff.sample.mjs` and `setup-hierarchy-and-kpis.sample.mjs` work against a fresh Postgres
-- Confirm launchd job templates correctly substitute `${API_BASE}` to point at op-omega server (not mock-core)
+- Confirm launchd job templates correctly substitute `${API_BASE}` to point at wavex-os server (not mock-core)
 
 ### 3.9 Components/services that should NOT be rewritten
 
 **Vendor verbatim, do not modify:**
 - `packages/plugins/onboarding/src/**` (12,100 LOC) — every line. No rewrites.
-- `server/src/routes/op-omega-onboarding.ts` (1,188 LOC) — every endpoint. Adapt only the framework binding (Express → Fastify if needed).
+- `server/src/routes/wavex-os-onboarding.ts` (1,188 LOC) — every endpoint. Adapt only the framework binding (Express → Fastify if needed).
 - `server/src/services/credentialVault.ts`, `credentialConcierge.ts`, `credentialRegistry.ts` (1,226 LOC) — verbatim.
-- `ui/src/pages/OmegaOnboarding.tsx` (655 LOC) — verbatim.
-- `ui/src/components/op-omega/onboarding/**` (4,687 LOC) — verbatim.
-- `ui/src/lib/{opOmegaOnboarding, onboarding-*}.ts` (700 LOC) — verbatim.
+- `ui/src/pages/WavexOsOnboarding.tsx` (655 LOC) — verbatim.
+- `ui/src/components/wavex-os/onboarding/**` (4,687 LOC) — verbatim.
+- `ui/src/lib/{wavexOsOnboarding, onboarding-*}.ts` (700 LOC) — verbatim.
 - All test files (~7,000 LOC) — verbatim.
 
 **Adapt at the boundary, do not modify internals:**
@@ -665,10 +665,10 @@ Before STEP 1:
 This phase requires execution decisions the user must make. Key decisions:
 
 1. **Postgres deployment:** docker-compose vs local install vs cloud DB?
-2. **op-omega vendoring:** git subtree vs vendored copy vs npm publish?
+2. **wavex-os vendoring:** git subtree vs vendored copy vs npm publish?
 3. **Better-Auth single-user dev mode:** stub or real config?
 4. **Composio:** full integration or initial soft-disable?
-5. **Branching:** keep `feat/op-omega-onboarding-archive` and create `feat/op-omega-fidelity` parallel?
+5. **Branching:** keep `feat/wavex-os-onboarding-archive` and create `feat/wavex-os-fidelity` parallel?
 
 Pending those decisions, the implementation skeleton:
 
@@ -677,11 +677,11 @@ Pending those decisions, the implementation skeleton:
 **Files added:**
 - `infra/postgres/docker-compose.yml` — local Postgres for dev
 - `packages/db/drizzle.config.ts` — schema location pointer
-- `packages/db/src/schema/{companies,agents,credentials,kpi,cost,issues,heartbeat,attribution,comments}.ts` — port from op-omega's @paperclipai/db
+- `packages/db/src/schema/{companies,agents,credentials,kpi,cost,issues,heartbeat,attribution,comments}.ts` — port from wavex-os's @paperclipai/db
 - `packages/db/migrations/0000_initial.sql` — Drizzle migration
 - Root `package.json` scripts: `db:up`, `db:migrate`, `db:reset`
 
-**Risk:** medium. Schema mismatches between op-omega and minimal flywheel observability might require reconciliation.
+**Risk:** medium. Schema mismatches between wavex-os and minimal flywheel observability might require reconciliation.
 
 **Verification:**
 ```bash
@@ -694,9 +694,9 @@ psql wavex_dev -c '\dt' # all tables present
 
 **Files added:**
 - `packages/plugin-sdk-shim/src/index.ts` — Plugin interface, PluginManifest type, health() lifecycle hook
-- Or alternatively: vendor `@paperclipai/plugin-sdk` from op-omega tree
+- Or alternatively: vendor `@paperclipai/plugin-sdk` from wavex-os tree
 
-**Verification:** op-omega's `manifest.ts` and `worker.ts` import the shim and typecheck.
+**Verification:** wavex-os's `manifest.ts` and `worker.ts` import the shim and typecheck.
 
 ### STEP 3 — Auth shim (1-2 days)
 
@@ -704,24 +704,24 @@ psql wavex_dev -c '\dt' # all tables present
 - `packages/auth-shim/src/{index,assertBoard,assertCompanyAccess}.ts` — function interfaces matching better-auth's API
 - Dev mode (env `WAVEX_AUTH_MODE=dev`): bypass; production wires real better-auth
 
-**Verification:** smoke test `/op-omega/onboarding/status` works in dev mode without auth header.
+**Verification:** smoke test `/wavex-os/onboarding/status` works in dev mode without auth header.
 
 ### STEP 4 — Tier router infrastructure (2-3 days)
 
 **Files added:**
-- `packages/tier-router/src/**` — vendored from `@op-omega/plugin-tier-router`
+- `packages/tier-router/src/**` — vendored from `@wavex-os/plugin-tier-router`
 - `packages/tier-router/src/route.ts` — `route(TierRoutingRequest): Promise<TierRoutingResponse>`
-- Wire to existing `packages/op-omega-onboarding/src/inference/claude-cli.ts` style spawn (replaces the simpler version)
+- Wire to existing `packages/wavex-os-onboarding/src/inference/claude-cli.ts` style spawn (replaces the simpler version)
 
 **Risk:** high. Tier router has prompt-version registry, rate-limit integration, and budget-aware tier selection. Behavioral test required.
 
 ### STEP 5 — Flywheel kernel (2-3 days)
 
 **Files added:**
-- `packages/flywheel-kernel/src/**` — vendored from `@op-omega/plugin-flywheel-kernel`
+- `packages/flywheel-kernel/src/**` — vendored from `@wavex-os/plugin-flywheel-kernel`
 - KPI snapshot model + Monte Carlo simulator + bundle allocation calculator
 
-**Verification:** `pnpm test --filter=flywheel-kernel` (port the relevant op-omega tests).
+**Verification:** `pnpm test --filter=flywheel-kernel` (port the relevant wavex-os tests).
 
 ### STEP 6 — Composio integration (1-2 days)
 
@@ -729,11 +729,11 @@ psql wavex_dev -c '\dt' # all tables present
 - `packages/composio-shim/src/index.ts` — wrapper around `@composio/core` with per-company key lookup via vault
 - Optional gate: `WAVEX_COMPOSIO_DISABLED=1` returns no-op stubs
 
-### STEP 7 — Vendor op-omega plugin (1 day vendoring + 1-2 days adjusting imports)
+### STEP 7 — Vendor wavex-os plugin (1 day vendoring + 1-2 days adjusting imports)
 
 **Files added (verbatim from operator-omega):**
 ```
-packages/op-omega-plugin/
+packages/wavex-os-plugin/
 ├── package.json (workspace deps: @wavex/plugin-sdk-shim, @wavex/tier-router, @wavex/flywheel-kernel)
 ├── tsconfig.json
 ├── vitest.config.ts
@@ -810,17 +810,17 @@ packages/op-omega-plugin/
             └── generate-report.ts
 ```
 
-**Verification:** `pnpm test --filter=op-omega-plugin` runs all 17+ tests. All pass.
+**Verification:** `pnpm test --filter=wavex-os-plugin` runs all 17+ tests. All pass.
 
-### STEP 8 — Vendor op-omega server (1 day vendoring + 2-3 days framework adapt)
+### STEP 8 — Vendor wavex-os server (1 day vendoring + 2-3 days framework adapt)
 
 **Files added (verbatim):**
 ```
-packages/op-omega-server/
-├── package.json (deps: drizzle-orm, fastify or express, @wavex/auth-shim, @op-omega/plugin)
+packages/wavex-os-server/
+├── package.json (deps: drizzle-orm, fastify or express, @wavex/auth-shim, @wavex-os/plugin)
 └── src/
     ├── routes/
-    │   └── op-omega-onboarding.ts (1,188 LOC, 24 endpoints)
+    │   └── wavex-os-onboarding.ts (1,188 LOC, 24 endpoints)
     └── services/
         ├── credentialVault.ts (353 LOC)
         ├── credentialConcierge.ts (491 LOC)
@@ -828,19 +828,19 @@ packages/op-omega-server/
         └── (any other /services that the routes import)
 ```
 
-**Adapt:** if op-omega uses Express and we need Fastify, add a thin Fastify-handler wrapper or convert routes (Fastify supports Express middleware via `@fastify/express`).
+**Adapt:** if wavex-os uses Express and we need Fastify, add a thin Fastify-handler wrapper or convert routes (Fastify supports Express middleware via `@fastify/express`).
 
 **Verification:** every endpoint returns expected shape against the differential-equation suite.
 
-### STEP 9 — Vendor op-omega UI (1-2 days)
+### STEP 9 — Vendor wavex-os UI (1-2 days)
 
 **Files added (verbatim):**
 ```
 packages/onboarding-ui/src/
 ├── pages/
-│   └── OmegaOnboarding.tsx (655 LOC)
+│   └── WavexOsOnboarding.tsx (655 LOC)
 ├── components/
-│   └── op-omega/
+│   └── wavex-os/
 │       └── onboarding/
 │           ├── pillar-{1..5}.tsx
 │           ├── Pillar1InferencePreview.tsx
@@ -866,37 +866,37 @@ packages/onboarding-ui/src/
 │           ├── primitives.tsx
 │           └── ExpandedTextInput.tsx
 └── lib/
-    ├── opOmegaOnboarding.ts (428 LOC, API client)
+    ├── wavexOsOnboarding.ts (428 LOC, API client)
     ├── onboarding-draft.ts
     ├── onboarding-route.ts
     ├── onboarding-launch.ts
     └── onboarding-goal.ts
 ```
 
-**Adapt:** any Tailwind/CSS variable mismatches between op-omega's ui/ and wavex's onboarding-ui/. CSS variables harmonized in a single pass.
+**Adapt:** any Tailwind/CSS variable mismatches between wavex-os's ui/ and wavex's onboarding-ui/. CSS variables harmonized in a single pass.
 
-### STEP 10-11 — Replace local op-omega code (1 day)
+### STEP 10-11 — Replace local wavex-os code (1 day)
 
 ```bash
-# Delete local op-omega code (the simplified port)
-rm -rf packages/op-omega-onboarding/
-rm -rf packages/onboarding-ui/src/op-omega/  # the local subdirectory
-# (the vendored op-omega code now occupies packages/op-omega-{plugin,server}/ + packages/onboarding-ui/src/{pages,components/op-omega,lib}/)
+# Delete local wavex-os code (the simplified port)
+rm -rf packages/wavex-os-onboarding/
+rm -rf packages/onboarding-ui/src/wavex-os/  # the local subdirectory
+# (the vendored wavex-os code now occupies packages/wavex-os-{plugin,server}/ + packages/onboarding-ui/src/{pages,components/wavex-os,lib}/)
 
 # Update mock-core to register vendored routes
-sed -i '' 's|@op-omega/onboarding|@op-omega/server|g' packages/mock-core/src/server.ts
+sed -i '' 's|@wavex-os/onboarding|@wavex-os/server|g' packages/mock-core/src/server.ts
 
-# Wire UI to use vendored OmegaOnboarding
-# packages/onboarding-ui/src/main.tsx already routes /onboarding → OmegaOnboarding;
+# Wire UI to use vendored WavexOsOnboarding
+# packages/onboarding-ui/src/main.tsx already routes /onboarding → WavexOsOnboarding;
 # import path adjustment only
 ```
 
 **Verification:** typecheck + dev server boots.
 
-### STEP 12 — Wire dashboard to op-omega manifests (1-2 days)
+### STEP 12 — Wire dashboard to wavex-os manifests (1-2 days)
 
 **Files modified:**
-- `packages/onboarding-ui/src/pages/MissionControl.tsx` — `useCompany()` reads URL param, queries `/api/instance/:companyId/manifest` returns op-omega's company.manifest.json
+- `packages/onboarding-ui/src/pages/MissionControl.tsx` — `useCompany()` reads URL param, queries `/api/instance/:companyId/manifest` returns wavex-os's company.manifest.json
 - `packages/onboarding-ui/src/components/mission/KpiBoard.tsx` — reads from observability's `getMissionControl()` query (post-DB)
 - `packages/onboarding-ui/src/components/mission/FleetGraph.tsx` — reads from observability's `defaultFleetStatsFn()` (post-DB)
 
@@ -907,7 +907,7 @@ sed -i '' 's|@op-omega/onboarding|@op-omega/server|g' packages/mock-core/src/ser
 **Files modified:**
 - `packages/observability/` — already DB-backed; just needs DB connection wired (env DATABASE_URL)
 - `packages/healing/` — wires to actual API endpoints (not mock-core stubs)
-- `scripts/render-launchd-templates.mjs` — reads wavex-os.config.json that op-omega's finalize wrote (or generates from DB)
+- `scripts/render-launchd-templates.mjs` — reads wavex-os.config.json that wavex-os's finalize wrote (or generates from DB)
 - `scripts/provision-chief-of-staff.sample.mjs` — uses real DB connection
 
 **Verification:**
@@ -918,7 +918,7 @@ sed -i '' 's|@op-omega/onboarding|@op-omega/server|g' packages/mock-core/src/ser
 ### STEP 14 — Differential equation suite + validation matrix (1 day)
 
 Already vendored in STEP 7. Just wire CI:
-- `package.json` test script: `pnpm test --filter=op-omega-plugin --reporter=verbose`
+- `package.json` test script: `pnpm test --filter=wavex-os-plugin --reporter=verbose`
 - CI workflow: run on every commit; fail on regression in K1-K7 baseline metrics
 
 ### STEP 15 — Tuning registry (½ day)
@@ -941,10 +941,10 @@ Already vendored in STEP 7. Document tunables:
 
 ### STEP 17 — Decommission previous branch (½ day)
 
-- Tag current state: `git tag op-omega-fidelity-v1`
+- Tag current state: `git tag wavex-os-fidelity-v1`
 - Update `CLAUDE.md` with new repo map
-- Archive `feat/op-omega-onboarding` branch metadata
-- Set `feat/op-omega-fidelity` as main integration branch
+- Archive `feat/wavex-os-onboarding` branch metadata
+- Set `feat/wavex-os-fidelity` as main integration branch
 
 **Total estimated effort:** 25–35 working days = **5–7 weeks** for one focused engineer.
 
@@ -955,12 +955,12 @@ Already vendored in STEP 7. Document tunables:
 ### 5.1 Validation framework
 
 **Behavioral parity:**
-- Per-fixture (5 companies): run pipeline in op-omega original → save artifacts to `tests/baseline/<fixture>/`
+- Per-fixture (5 companies): run pipeline in wavex-os original → save artifacts to `tests/baseline/<fixture>/`
 - Run same pipeline in wavex-os fidelity branch → save artifacts to `tests/actual/<fixture>/`
 - Diff with `compute-manifest-diff.ts`: every artifact must match (modulo timestamps + UUIDs)
 - ANY structural drift = test failure
 
-**Edge case coverage (from op-omega tests):**
+**Edge case coverage (from wavex-os tests):**
 - Pillar 1 with no manual_context AND no T2 result (forced fallback)
 - Pillar 1 with stub-name pattern triggering company rename
 - Pillar 2 with each claude_plan value
@@ -998,7 +998,7 @@ Already vendored in STEP 7. Document tunables:
 **Pre-commit hooks:**
 - `pnpm typecheck` on staged files
 - `pnpm lint` (when added)
-- `pnpm test --filter=op-omega-plugin --no-coverage` for changed-file impact tests
+- `pnpm test --filter=wavex-os-plugin --no-coverage` for changed-file impact tests
 
 **CI gates:**
 - All vitest tests pass
@@ -1035,22 +1035,22 @@ Already vendored in STEP 7. Document tunables:
 
 The migration is complete when:
 
-1. **All 17+ op-omega vitest tests green** in wavex-os repo
+1. **All 17+ wavex-os vitest tests green** in wavex-os repo
 2. **Differential-equation suite passes** in CI
-3. **Validation matrix runner produces matching reports** to op-omega original (within tolerance)
+3. **Validation matrix runner produces matching reports** to wavex-os original (within tolerance)
 4. **Baseline capture K1-K7** within recorded baseline ±5%
 5. **All 5 fixture companies materialize successfully** end-to-end
 6. **Dashboard hydrates correctly** for each fixture
 7. **launchd jobs fire and self-heal** under simulated failure
 8. **`grep -r "wavex-os onboarding"` finds zero results** in source files
-9. **Behavioral parity** with op-omega original confirmed for every test fixture
-10. **No degraded UX** — every step from op-omega exists in wavex-os fidelity branch
+9. **Behavioral parity** with wavex-os original confirmed for every test fixture
+10. **No degraded UX** — every step from wavex-os exists in wavex-os fidelity branch
 
 ---
 
 ## Committed decisions (2026-05-07)
 
-The seven open questions are resolved as follows. Each pick maximizes op-omega
+The seven open questions are resolved as follows. Each pick maximizes wavex-os
 fidelity AND keeps local development friction-free using the operator's Claude
 Max OAuth keychain as the inference source.
 
@@ -1071,17 +1071,17 @@ identically against both.
 
 ### 2. Vendoring — git subtree from operator-omega
 
-**Choice:** `git subtree add --prefix=vendor/op-omega/ ../operator-omega main --squash`.
+**Choice:** `git subtree add --prefix=vendor/wavex-os/ ../operator-omega main --squash`.
 
-**Why:** Subtree puts op-omega's plugin + server + UI bytes into wavex-os's
+**Why:** Subtree puts wavex-os's plugin + server + UI bytes into wavex-os's
 own git history. No submodule setup for downstream consumers; no npm publish
-contract to maintain. Future op-omega upstream improvements pull cleanly via
-`git subtree pull --prefix=vendor/op-omega/ ../operator-omega main --squash`.
+contract to maintain. Future wavex-os upstream improvements pull cleanly via
+`git subtree pull --prefix=vendor/wavex-os/ ../operator-omega main --squash`.
 Both repos already exist locally.
 
-**Implementation:** All adapter code lives in `packages/op-omega-plugin/`,
-`packages/op-omega-server/`, and `packages/onboarding-ui/src/op-omega/`,
-which import from `vendor/op-omega/` rather than the npm registry.
+**Implementation:** All adapter code lives in `packages/wavex-os-plugin/`,
+`packages/wavex-os-server/`, and `packages/onboarding-ui/src/wavex-os/`,
+which import from `vendor/wavex-os/` rather than the npm registry.
 
 ### 3. Auth — `WAVEX_AUTH_MODE` env flag
 
@@ -1090,14 +1090,14 @@ when `NODE_ENV=development`) returns a synthetic single-user board context
 from `assertBoard()` and `assertCompanyAccess()`. `WAVEX_AUTH_MODE=production`
 requires real Better-Auth setup with OAuth provider config.
 
-**Why:** Op-omega already uses this idiom (`?dev=1` escape hatches in
-`OmegaOnboarding.tsx`). Localhost has zero auth friction; prod gets full
+**Why:** Wavex-os already uses this idiom (`?dev=1` escape hatches in
+`WavexOsOnboarding.tsx`). Localhost has zero auth friction; prod gets full
 multi-user gating with no code-path divergence — only the gate function
 differs.
 
 **Implementation:** `packages/auth-shim/src/index.ts` exports `assertBoard`
 and `assertCompanyAccess` that branch on `WAVEX_AUTH_MODE`. Vendored
-op-omega code imports from this shim, not from `better-auth` directly.
+wavex-os code imports from this shim, not from `better-auth` directly.
 
 ### 4. Composio — optional via `WAVEX_COMPOSIO_DISABLED`
 
@@ -1114,14 +1114,14 @@ sign-up just to test the wizard is wrong. Production sets `COMPOSIO_API_KEY`
 and the UI surfaces full OAuth flows.
 
 **Implementation:** `packages/composio-shim/src/index.ts` exports the
-`@composio/core` surface op-omega imports. When disabled, all methods return
+`@composio/core` surface wavex-os imports. When disabled, all methods return
 empty results and emit a `composio.disabled` event. When enabled, calls pass
 through to `@composio/core`.
 
 ### 5. Branching — archive + fresh branch (✓ executed STEP 0)
 
-**Choice:** Tag `op-omega-onboarding-archive` preserves the simplified-port
-work. New `feat/op-omega-fidelity` forks from
+**Choice:** Tag `wavex-os-onboarding-archive` preserves the simplified-port
+work. New `feat/wavex-os-fidelity` forks from
 `feat/minimal-inception-self-healing` (the inception branch with healing +
 observability + launchd templates already in place).
 
@@ -1134,8 +1134,8 @@ simplifications.
 
 ### 6. Inference — `WAVEX_INFERENCE_MODE` flag in tier-router shim
 
-**Choice:** Vendor `@op-omega/plugin-tier-router` source. Adapt only the
-boundary inference call inside `packages/op-omega-plugin/src/inference/`.
+**Choice:** Vendor `@wavex-os/plugin-tier-router` source. Adapt only the
+boundary inference call inside `packages/wavex-os-plugin/src/inference/`.
 
 - **Dev (`WAVEX_INFERENCE_MODE=oauth`, default for `pnpm dev`):** spawn
   `claude -p <prompt> --model <model>` with `ANTHROPIC_API_KEY` cleared, so
@@ -1148,11 +1148,11 @@ boundary inference call inside `packages/op-omega-plugin/src/inference/`.
 **Why:** Operator explicitly required "continued development using my
 inference." This routes every T2 call (Pillar 1 enrichment, Phase 2/3/4
 refinement, Imprint Review) against the local Claude Max subscription
-during dev. The `route()` signature stays identical — vendored op-omega
+during dev. The `route()` signature stays identical — vendored wavex-os
 code doesn't change; only the boundary inference call swaps.
 
-**Implementation:** `packages/op-omega-plugin/src/inference/router.ts`
-exports `callTier()` matching op-omega's signature. Internally branches on
+**Implementation:** `packages/wavex-os-plugin/src/inference/router.ts`
+exports `callTier()` matching wavex-os's signature. Internally branches on
 `WAVEX_INFERENCE_MODE`. Wraps `scripts/wrappers/claude-anthropic-direct.sh`
 in dev mode (already exists, frozen).
 
@@ -1163,7 +1163,7 @@ in dev mode (already exists, frozen).
 | Milestone | Weeks | Outcome |
 |---|---|---|
 | **M1: Infrastructure** | 1-2 | PGlite + Drizzle migrations + plugin SDK shim + auth shim + tier-router vendored + flywheel-kernel vendored + Composio shim. System boots, no onboarding yet. Dev workflow validated. |
-| **M2: Vendor + wire** | 3-4 | Op-omega plugin + server + UI vendored verbatim. All 17+ vitest tests green. End-to-end pipeline runs for 1 fixture company. Dashboard hydrates from Postgres. |
+| **M2: Vendor + wire** | 3-4 | Wavex-os plugin + server + UI vendored verbatim. All 17+ vitest tests green. End-to-end pipeline runs for 1 fixture company. Dashboard hydrates from Postgres. |
 | **M3: Runtime + observability** | 5-6 | Healing layer self-heals against real DB. Observability queries return real KPI/cost/heartbeat data. launchd jobs fire and post to live endpoints. 5 fixture companies materialize cleanly. |
 | **M4: Test framework + decommission** | 7 | Differential-equation suite passes in CI. Tuning registry documented. Baseline capture green. Old branch decommissioned. Production-ready. |
 

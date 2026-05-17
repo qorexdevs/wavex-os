@@ -1,4 +1,4 @@
-/** Composio surface types matching the LiveConnectorRow shape that op-omega's
+/** Composio surface types matching the LiveConnectorRow shape that wavex-os's
  *  Phase 2 generator consumes. When wavex-os is wired to a real Composio
  *  account, these come from @composio/core; otherwise they're empty arrays. */
 

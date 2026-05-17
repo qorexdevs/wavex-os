@@ -28,8 +28,8 @@ What's left: real Pool A wiring (G.3.b), Liaison agent (F.4), Pool C generation 
 ```bash
 cd ~/wavex-os
 pnpm install
-pnpm -r --filter "./vendor/op-omega/*" build
-pnpm --filter @wavex-os/op-omega-server typecheck
+pnpm -r --filter "./vendor/wavex-os/*" build
+pnpm --filter @wavex-os/wavex-os-server typecheck
 pnpm --filter @wavex-os/onboarding-ui build
 pnpm --filter @wavex-os/inference-server typecheck
 ```

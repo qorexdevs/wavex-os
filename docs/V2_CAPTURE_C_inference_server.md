@@ -127,7 +127,7 @@ This is the call.
 **Graceful degradation:**
 
 **Pool A unreachable during onboarding:**
-- Wizard detects 503/timeout on /v1/onboarding/t2 → degrades to **deterministic T1 fallback** (rule-based decision matrix already implemented in `vendor/op-omega/onboarding`). Customer completes onboarding with a 70%-quality manifest instead of 95%. Wizard surfaces a non-blocking toast: "AI enrichment unavailable — using deterministic mode. Re-run from Mission Control later to improve."
+- Wizard detects 503/timeout on /v1/onboarding/t2 → degrades to **deterministic T1 fallback** (rule-based decision matrix already implemented in `vendor/wavex-os/onboarding`). Customer completes onboarding with a 70%-quality manifest instead of 95%. Wizard surfaces a non-blocking toast: "AI enrichment unavailable — using deterministic mode. Re-run from Mission Control later to improve."
 - Onboarding NEVER hard-blocks on Pool A. This is non-negotiable.
 
 **Pool C unreachable for paying subscribers:**

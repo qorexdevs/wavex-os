@@ -7,7 +7,7 @@ const ORIGINAL_ENV = { ...process.env };
 beforeEach(() => {
   delete process.env.WAVEX_INFERENCE_MODE;
   delete process.env.NODE_ENV;
-  delete process.env.OP_OMEGA_CLAUDE_BIN;
+  delete process.env.WAVEX_OS_CLAUDE_BIN;
 });
 
 afterEach(() => {
@@ -46,28 +46,28 @@ describe("getClaudeBin", () => {
     expect(existsSync(bin)).toBe(true);
   });
 
-  it("apikey mode returns 'claude' or OP_OMEGA_CLAUDE_BIN override", () => {
+  it("apikey mode returns 'claude' or WAVEX_OS_CLAUDE_BIN override", () => {
     process.env.WAVEX_INFERENCE_MODE = "apikey";
     expect(getClaudeBin()).toBe("claude");
-    process.env.OP_OMEGA_CLAUDE_BIN = "/usr/local/bin/claude-canary";
+    process.env.WAVEX_OS_CLAUDE_BIN = "/usr/local/bin/claude-canary";
     expect(getClaudeBin()).toBe("/usr/local/bin/claude-canary");
   });
 });
 
 describe("applyInferenceEnv", () => {
-  it("mutates OP_OMEGA_CLAUDE_BIN to the resolved bin", () => {
+  it("mutates WAVEX_OS_CLAUDE_BIN to the resolved bin", () => {
     process.env.WAVEX_INFERENCE_MODE = "oauth";
-    delete process.env.OP_OMEGA_CLAUDE_BIN;
+    delete process.env.WAVEX_OS_CLAUDE_BIN;
     applyInferenceEnv();
-    expect(process.env.OP_OMEGA_CLAUDE_BIN).toMatch(/wavex-claude-spawn\.sh$/);
+    expect(process.env.WAVEX_OS_CLAUDE_BIN).toMatch(/wavex-claude-spawn\.sh$/);
   });
 
   it("idempotent (calling twice yields same value)", () => {
     process.env.WAVEX_INFERENCE_MODE = "apikey";
     applyInferenceEnv();
-    const first = process.env.OP_OMEGA_CLAUDE_BIN;
+    const first = process.env.WAVEX_OS_CLAUDE_BIN;
     applyInferenceEnv();
-    expect(process.env.OP_OMEGA_CLAUDE_BIN).toBe(first);
+    expect(process.env.WAVEX_OS_CLAUDE_BIN).toBe(first);
   });
 });
 

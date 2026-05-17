@@ -149,11 +149,11 @@ app.addHook("onRequest", async (req, reply) => {
   }
 });
 
-// Wire op-omega onboarding routes (vendored plugin via @wavex-os/op-omega-server).
+// Wire wavex-os onboarding routes (vendored plugin via @wavex-os/wavex-os-server).
 // Importing dynamically would defer the plugin SDK build dependency; using
 // top-level await keeps the side-effect ordering deterministic at startup.
-const { registerOpOmegaRoutes } = await import("@wavex-os/op-omega-server");
-registerOpOmegaRoutes(app);
+const { registerWavexOsRoutes } = await import("@wavex-os/wavex-os-server");
+registerWavexOsRoutes(app);
 
 // --- routes ---------------------------------------------------------------
 

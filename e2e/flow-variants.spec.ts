@@ -19,19 +19,19 @@ async function seedFinalized(api: APIRequestContext, companyId: string): Promise
     const resp = await api.post(path, { data: body });
     if (!resp.ok()) throw new Error(`POST ${path} failed: ${resp.status()} ${await resp.text()}`);
   }
-  await post("/op-omega/onboarding/pillar/1", {
+  await post("/wavex-os/onboarding/pillar/1", {
     companyId, org_name: companyId,
     raw_input: "no product yet",
     manual_context: "Test fixture company seeded for Playwright end-to-end coverage of the activate + dashboard flow.",
   });
-  await post("/op-omega/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
-  await post("/op-omega/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
-  await post("/op-omega/onboarding/pillar/4", { companyId, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
-  await post("/op-omega/onboarding/pillar/5", { companyId, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
-  await post("/op-omega/onboarding/connector-manifest", { companyId, skipInference: true });
-  await post("/op-omega/onboarding/swarm-manifest", { companyId, skipInference: true });
-  await post("/op-omega/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true });
-  await post("/op-omega/onboarding/finalize", {
+  await post("/wavex-os/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
+  await post("/wavex-os/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
+  await post("/wavex-os/onboarding/pillar/4", { companyId, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
+  await post("/wavex-os/onboarding/pillar/5", { companyId, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
+  await post("/wavex-os/onboarding/connector-manifest", { companyId, skipInference: true });
+  await post("/wavex-os/onboarding/swarm-manifest", { companyId, skipInference: true });
+  await post("/wavex-os/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true });
+  await post("/wavex-os/onboarding/finalize", {
     companyId, orgId: companyId, skipInference: true,
     mc: { horizon_cycles: 5, n_runs: 5, seed: 42 },
   });
@@ -43,13 +43,13 @@ async function seedPartial(api: APIRequestContext, companyId: string): Promise<v
     const resp = await api.post(path, { data: body });
     if (!resp.ok()) throw new Error(`POST ${path} failed: ${resp.status()} ${await resp.text()}`);
   }
-  await post("/op-omega/onboarding/pillar/1", {
+  await post("/wavex-os/onboarding/pillar/1", {
     companyId, org_name: companyId,
     raw_input: "no product yet",
     manual_context: "Partial fixture seeded for resume + reset Playwright tests; mid-market SaaS shape.",
   });
-  await post("/op-omega/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
-  await post("/op-omega/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
+  await post("/wavex-os/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
+  await post("/wavex-os/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
 }
 
 async function startNewCompanyFromWelcome(page: Page, name: string): Promise<void> {

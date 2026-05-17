@@ -104,7 +104,7 @@ packages/onboarding-ui/public/agent-templates/ceo/SKILL.md                      
 packages/onboarding-ui/public/agent-templates/chief-of-staff/SKILL.md               (UPDATE — §B hourly, critical 2h, anti-bottleneck)
 packages/standard-skills/SKILL_RECOVERY_DOOM_LOOP_GUARD.md                          (NEW — G1)
 packages/standard-skills/SKILL_KPI_SYNTHETIC_FILTER.md                              (NEW — G2)
-packages/op-omega-server/src/routes/wakeup.ts                                       (UPDATE — G3 batch-flood limit)
+packages/wavex-os-server/src/routes/wakeup.ts                                       (UPDATE — G3 batch-flood limit)
 ```
 
 Total: 6 new files, 4 updates. ~3h of careful editing.

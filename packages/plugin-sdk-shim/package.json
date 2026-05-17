@@ -1,7 +1,7 @@
 {
   "name": "@wavex-os/plugin-sdk-shim",
   "version": "0.1.0",
-  "description": "Re-exports @paperclipai/plugin-sdk surface that op-omega imports. Adapter packages import from here so future SDK swaps land in one place.",
+  "description": "Re-exports @paperclipai/plugin-sdk surface that wavex-os imports. Adapter packages import from here so future SDK swaps land in one place.",
   "private": true,
   "type": "module",
   "exports": {

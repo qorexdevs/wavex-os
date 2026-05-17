@@ -88,7 +88,7 @@ If all four pass, the request is served. No additional fingerprinting needed bec
 For Pool A, we want stronger evidence than "the IP looks human" that this is a real wavex-os install. Use the ed25519 keypair the wizard already generates for signing the company manifest:
 
 ```ts
-// In packages/onboarding-ui/src/op-omega/lib/install-identity.ts (NEW)
+// In packages/onboarding-ui/src/wavex-os/lib/install-identity.ts (NEW)
 export function ensureInstallIdentity(): {
   install_id: string;
   pubkey_b64: string;
@@ -118,8 +118,8 @@ This is **belt + suspenders.** A typical attacker has to: (a) get past Turnstile
 
 | Component | Where | Status |
 |---|---|---|
-| Install ed25519 keypair + `install.json` | `packages/onboarding-ui/src/op-omega/lib/install-identity.ts` | Spec'd; needs implementing |
-| Per-call signature | Wizard's T2 call wrapper at `vendor/op-omega/onboarding/src/*/enrichment.ts` | Lift current http POST → wrap with sign step |
+| Install ed25519 keypair + `install.json` | `packages/onboarding-ui/src/wavex-os/lib/install-identity.ts` | Spec'd; needs implementing |
+| Per-call signature | Wizard's T2 call wrapper at `vendor/wavex-os/onboarding/src/*/enrichment.ts` | Lift current http POST → wrap with sign step |
 | Mac mini `manifest_hash` whitelist | `packages/inference-server/src/routes/onboarding.ts` step 5 | One env var `WAVEX_ACCEPTED_MANIFEST_HASHES`, comma-separated |
 | Mac mini install-signature verify | `packages/inference-server/src/routes/onboarding.ts` step 9.5 | New function `verifyInstallSignature(token, signature, install_pubkey)` |
 | Release-build manifest hasher | `scripts/release/compute-manifest-hash.mjs` | One-shot script; output goes in release notes |

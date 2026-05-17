@@ -1,4 +1,4 @@
-/** Auth gate functions matching op-omega's authz contract. In dev mode, the
+/** Auth gate functions matching wavex-os's authz contract. In dev mode, the
  *  request's actor is auto-populated with a synthetic local-implicit board
  *  before any assertion runs, so all gates pass for the local operator. In
  *  production mode, the actor must already be populated by the auth

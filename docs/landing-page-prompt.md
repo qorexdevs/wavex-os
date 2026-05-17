@@ -30,7 +30,7 @@ Render as an animated typewriter terminal that runs in ~6 seconds:
 ```
 $ git clone https://github.com/aimerdoux/wavex-os.git
 $ cd wavex-os && pnpm install
-$ pnpm -r --filter "./vendor/op-omega/*" build
+$ pnpm -r --filter "./vendor/wavex-os/*" build
 $ pnpm dev
 ▶ vite ready on http://localhost:5173
 ▶ mock-core ready on http://localhost:3101
@@ -65,11 +65,11 @@ Below the carousel, italic muted line: "Every screenshot above is real — captu
 A 3×2 grid of feature cards. Each card: short title, 1-sentence body, a small mono-font detail line. Use these exact cards:
 
 - **Minimal inception kernel** — Two-agent topology (CEO + Chief of Staff) that exhibits coherent self-direction with one actor and one observer. `docs/MINIMAL_INCEPTION.md`
-- **5-pillar onboarding wizard** — Full op-omega-vendored pipeline (~12K LOC plugin, 5K LOC UI). T2 inference + decision matrix + Monte Carlo. `vendor/op-omega/`
+- **5-pillar onboarding wizard** — Full wavex-os-vendored pipeline (~12K LOC plugin, 5K LOC UI). T2 inference + decision matrix + Monte Carlo. `vendor/wavex-os/`
 - **165 vetted agent templates** — Matrix-driven per-slot selection by stage × GTM motion. C-Suite bodies are production-derived. `packages/onboarding-ui/public/agent-templates/`
 - **Four-layer self-healing** — OAuth refresh with concurrency lock, worker restart on SIGTERM grace, 401 self-heal + Sonnet fallback per spawn. `packages/healing/`
 - **Fleet observability** — Bottleneck scoring, outcome attribution, token-budget throttle, mission-control aggregator. 96% burn drop in production. `packages/observability/`
-- **Paperclip handoff bridge** — After local activate, mirror your C-Suite into a running Paperclip instance with real heartbeats. Env-gated, idempotent. `packages/op-omega-server/src/bridge/paperclip-handoff.ts`
+- **Paperclip handoff bridge** — After local activate, mirror your C-Suite into a running Paperclip instance with real heartbeats. Env-gated, idempotent. `packages/wavex-os-server/src/bridge/paperclip-handoff.ts`
 
 ### 5. Architecture (ASCII diagram, monospace, accent-bordered code block)
 
@@ -131,7 +131,7 @@ Below the table: "Code is free under MIT — fork it. Subscriptions only add hos
 
 ### 8. Credits (compact, single paragraph)
 
-> Stands on Paperclip (vendored as the agent runtime engine), op-omega (vendored as the full-fidelity onboarding pipeline), agency-agents by @msitarzewski (MIT, 165 templates vendored), Anthropic (Claude Max powers spawned agents), reactflow (org graph + Mission Control), Fastify (mock-core HTTP server). Full attribution: `CREDITS.md` on the repo.
+> Stands on Paperclip (vendored as the agent runtime engine), wavex-os (vendored as the full-fidelity onboarding pipeline), agency-agents by @msitarzewski (MIT, 165 templates vendored), Anthropic (Claude Max powers spawned agents), reactflow (org graph + Mission Control), Fastify (mock-core HTTP server). Full attribution: `CREDITS.md` on the repo.
 
 ### 9. Footer
 
