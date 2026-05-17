@@ -12,14 +12,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userApi, smokeTestApi, type SmokeTestPhase } from "../lib/api";
 import { Step2PlatformCard, type PlatformTarget } from "./Step2PlatformCard";
-import { Step2PlatformCard, type PlatformTarget } from "./Step2PlatformCard";
+import { GitHubRepoStep } from "./GitHubRepoStep";
 
 const TOTAL_STEPS = 3;
 
 const STEPS = [
   {
-    title: "Welcome to WaveX OS",
-    body: "Your AI-powered company operating system. Let's get you set up in a few quick steps.",
+    title: "Connect your repo",
+    body: "",
   },
   {
     title: "Connect your workspace",
@@ -86,10 +86,12 @@ function fireWizardEvent(userId: string, payload: Record<string, unknown>): void
 function Step3({
   userId,
   companyId,
+  platformTarget,
   onComplete,
 }: {
   userId: string;
   companyId?: string;
+  platformTarget: PlatformTarget;
   onComplete: () => void;
 }) {
   const [state, setState] = useState<Step3State>({ kind: "idle" });
@@ -186,7 +188,11 @@ function Step3({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: "var(--text-dim)" }}>Test target</span>
-            <span style={{ fontWeight: 500 }}>Chat smoke — end-to-end connectivity</span>
+            <span style={{ fontWeight: 500 }}>
+              {platformTarget.platform && platformTarget.identifier
+                ? `${platformTarget.platform === "ios" ? "iOS" : "Android"} — ${platformTarget.identifier}`
+                : "Chat smoke — end-to-end connectivity"}
+            </span>
           </div>
         </div>
 
@@ -320,6 +326,7 @@ export function OnboardingWizard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [platformTarget, setPlatformTarget] = useState<PlatformTarget>(loadPlatformTarget);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
 
   useEffect(() => {
     userApi.me()
@@ -327,6 +334,7 @@ export function OnboardingWizard() {
         if (res.user.isNewUser) {
           setUserId(res.user.id);
           setStep(Math.min(Math.max(res.user.wizardStep ?? 1, 1), TOTAL_STEPS));
+          setSelectedRepo(res.user.wizardRepo ?? null);
           setVisible(true);
         }
       })
@@ -351,6 +359,14 @@ export function OnboardingWizard() {
     }
   }, [userId]);
 
+  const handleRepoSelected = useCallback(async (repo: string) => {
+    setSelectedRepo(repo || null);
+    if (userId && repo) {
+      try { await userApi.setWizardRepo(userId, repo); } catch { /* best-effort */ }
+    }
+  }, [userId]);
+
+  const step1Valid = Boolean(selectedRepo);
   const step2Valid =
     platformTarget.platform !== null && platformTarget.identifier.trim().length > 0;
 
@@ -428,6 +444,7 @@ export function OnboardingWizard() {
           <Step3
             userId={userId}
             companyId={companyId}
+            platformTarget={platformTarget}
             onComplete={handleComplete}
           />
         )
@@ -450,16 +467,24 @@ export function OnboardingWizard() {
           </div>
         </div>
       ) : (
-        /* Step 1: static orientation */
-        <div style={{ maxWidth: 480, width: "100%", padding: "2rem", textAlign: "center" }}>
-          <h1 style={{ fontSize: 28, marginBottom: "1rem", letterSpacing: "-0.02em" }}>
+        /* Step 1: GitHub OAuth + repo selector */
+        <div style={{ maxWidth: 500, width: "100%", padding: "2rem" }}>
+          <h1 style={{ fontSize: 26, marginBottom: "1.5rem", letterSpacing: "-0.02em", textAlign: "center" }}>
             {current.title}
           </h1>
-          <p style={{ color: "var(--text-dim)", fontSize: 16, lineHeight: 1.6, marginBottom: "2.5rem" }}>
-            {current.body}
-          </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            <button onClick={handleNext} disabled={saving}>
+          {userId && (
+            <GitHubRepoStep
+              userId={userId}
+              initialRepo={selectedRepo}
+              onRepoSelected={(repo) => { void handleRepoSelected(repo); }}
+            />
+          )}
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: "1.75rem" }}>
+            <button
+              onClick={() => void handleNext()}
+              disabled={saving || !step1Valid}
+              style={{ opacity: saving || !step1Valid ? 0.5 : 1, cursor: saving || !step1Valid ? "not-allowed" : "pointer" }}
+            >
               {saving ? "Saving…" : "Next →"}
             </button>
           </div>

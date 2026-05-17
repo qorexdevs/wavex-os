@@ -1041,7 +1041,17 @@ export interface UserRecord {
   email: string | null;
   isNewUser: boolean;
   wizardStep: number;
+  wizardRepo: string | null;
   wizardCompletedAt: string | null;
+}
+
+export interface GitHubRepo {
+  id: string;
+  full_name: string;
+  description: string | null;
+  private: boolean;
+  updated_at: string;
+  html_url: string;
 }
 
 export const userApi = {
@@ -1050,6 +1060,14 @@ export const userApi = {
   setWizardStep: (id: string, step: number) =>
     call<{ ok: true; user: UserRecord }>("PATCH", `/api/users/${id}/wizard-step`, { step }),
 
+  setWizardRepo: (id: string, repo: string) =>
+    call<{ ok: true; user: UserRecord }>("PATCH", `/api/users/${id}/wizard-repo`, { repo }),
+
   completeWizard: (id: string) =>
     call<{ ok: true; user: UserRecord }>("PATCH", `/api/users/${id}/complete-wizard`, {}),
+
+  getGitHubRepos: (page = 1, perPage = 30) =>
+    call<{ repos: GitHubRepo[]; total: number | null; page: number; per_page: number; mock: boolean }>(
+      "GET", `/api/github/repos?page=${page}&per_page=${perPage}`,
+    ),
 };
