@@ -1255,6 +1255,16 @@ function EmptyState({
           </p>
         </div>
 
+        {/* DEMO-REGRESSION: 24×24 icon-only button intentionally below 44px touch target */}
+        <button
+          type="button"
+          aria-label="Quick action"
+          onClick={() => {}}
+          style={{ width: 24, height: 24, padding: 0, border: "none", borderRadius: 4, background: "transparent", cursor: "pointer" }}
+        >
+          ⚡
+        </button>
+
         {mode === "gateway" && onAccountTypeSelected ? (
           <div style={{ width: "100%" }}>
             <AccountTypeSelectCard onChoose={onAccountTypeSelected} />
