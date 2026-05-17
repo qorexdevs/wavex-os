@@ -46,6 +46,8 @@ import { registerActivationEventsRoute } from "./routes/activation-events.js";
 import { registerUserRoutes } from "./routes/users.js";
 import { registerAuthEventsRoute } from "./routes/auth-events.js";
 import { registerSmokeTestEventsRoute } from "./routes/smoke-test-events.js";
+import { registerReferralRoutes } from "./routes/referrals.js";
+import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -95,6 +97,8 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerUserRoutes(app);
   registerAuthEventsRoute(app);
   registerSmokeTestEventsRoute(app);
+  registerReferralRoutes(app);
+  startReferralEmailBScheduler();
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
