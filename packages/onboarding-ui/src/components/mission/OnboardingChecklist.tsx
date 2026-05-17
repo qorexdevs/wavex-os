@@ -9,9 +9,10 @@
  *  upsell alert. The fired flag is kept in a ref so it survives re-renders
  *  without bouncing on the server (idempotent from the UI side). */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "../../wavex-os/lib/CompanyContext";
+import { getSupabase } from "../../lib/supabase";
 
 interface ChecklistPayload {
   ok: boolean;
@@ -89,9 +90,32 @@ function Step({ label, done }: { label: string; done: boolean }) {
   );
 }
 
+const FIRST_TEST_STORAGE_KEY = "wavex:first_test_fired";
+
+function fireFirstTestResult(userId: string): void {
+  fetch("/api/wizard-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      eventType: "first_test_result",
+      status: "pass",
+      ts: new Date().toISOString(),
+    }),
+  }).catch(() => {});
+}
+
 export function OnboardingChecklist() {
   const { companyId } = useCompany();
   const activationFiredRef = useRef(false);
+  const firstTestFiredRef = useRef(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getSupabase()?.auth.getSession().then(({ data }) => {
+      if (data.session?.user.id) setUserId(data.session.user.id);
+    }).catch(() => {});
+  }, []);
 
   const checklistQ = useQuery<ChecklistPayload>({
     enabled: !!companyId,
@@ -124,6 +148,15 @@ export function OnboardingChecklist() {
     activationFiredRef.current = true;
     void emitActivationComplete(companyId, companyName, data.steps.app_count);
   }, [data?.all_complete, companyId, companyName, data?.steps.app_count]);
+
+  // Fire first_test_result once per user when smoke_test_passed flips true.
+  useEffect(() => {
+    if (!data?.steps.smoke_test_passed || !userId || firstTestFiredRef.current) return;
+    if (localStorage.getItem(FIRST_TEST_STORAGE_KEY)) return;
+    firstTestFiredRef.current = true;
+    localStorage.setItem(FIRST_TEST_STORAGE_KEY, "1");
+    fireFirstTestResult(userId);
+  }, [data?.steps.smoke_test_passed, userId]);
 
   if (!companyId) return null;
 

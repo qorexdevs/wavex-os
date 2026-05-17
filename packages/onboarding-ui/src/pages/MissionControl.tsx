@@ -9,6 +9,7 @@ import { FleetGraph } from "../components/mission/FleetGraph";
 import { PrivacyPanel } from "../components/PrivacyPanel";
 import { AllocationSlider } from "../components/AllocationSlider";
 import { OnboardingChecklist } from "../components/mission/OnboardingChecklist";
+import { WizardMetricsPanel } from "../components/mission/WizardMetricsPanel";
 import { useCompany } from "../wavex-os/lib/CompanyContext";
 import { getSupabase } from "../lib/supabase";
 import { CoachmarkOverlay, type CoachmarkStep } from "../wavex-os/components/Coachmark";
@@ -164,6 +165,8 @@ export default function MissionControl() {
             <div data-tour="mc-kpis" style={{ marginBottom: "2.5rem" }}>
               <KpiBoard />
             </div>
+
+            <WizardMetricsPanel />
 
             <div data-tour="mc-fleet" style={{ marginBottom: "2.5rem" }}>
               <FleetGraph />

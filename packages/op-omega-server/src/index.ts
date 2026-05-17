@@ -13,6 +13,7 @@ import { registerPartnerEventsRoutes } from "./routes/partner-events.js";
 import { registerSmokeTestEventsRoute } from "./routes/smoke-test-events.js";
 import { registerUpsellSignalsRoutes } from "./routes/upsell-signals.js";
 import { registerUserRoutes } from "./routes/users.js";
+import { registerWizardEventsRoute } from "./routes/wizard-events.js";
 
 export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerActivationEventsRoute(app);
@@ -22,4 +23,5 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   registerSmokeTestEventsRoute(app);
   registerUpsellSignalsRoutes(app);
   registerUserRoutes(app);
+  registerWizardEventsRoute(app);
 }

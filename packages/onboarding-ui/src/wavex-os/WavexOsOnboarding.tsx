@@ -2,11 +2,12 @@
  *  subroutes) — the Phase state machine drives subview switches. Hydrates
  *  from /wavex-os/onboarding/status on mount. */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { wavexOsOnboardingApi, ApiError } from "./lib/api";
 import { useCompany } from "./lib/CompanyContext";
+import { getSupabase } from "../lib/supabase";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ConfirmResetModal } from "./components/ConfirmResetModal";
 import { TokenCounter } from "./components/TokenCounter";
@@ -24,6 +25,14 @@ import { Phase3Swarm } from "./phases/Phase3Swarm";
 import { Phase4Workflows } from "./phases/Phase4Workflows";
 import { Materialize } from "./phases/Materialize";
 import { Pricing } from "./pricing/Pricing";
+
+function fireWizardEvent(userId: string, payload: Record<string, unknown>): void {
+  fetch("/api/wizard-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, ...payload, ts: new Date().toISOString() }),
+  }).catch(() => {});
+}
 
 /** Map paperclip API URL → UI URL (dev convention: 3100 → 5174).
  *  Mirrors the helper inside Materialize.tsx; duplicated here so the
@@ -80,6 +89,43 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
   // If phase came from URL, treat it as authoritative — don't auto-route over it.
   const [autoRouted, setAutoRouted] = useState(initialPhase !== "pillar-1");
 
+  // Supabase userId for wizard telemetry — resolved once on mount, best-effort.
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    getSupabase()?.auth.getSession().then(({ data }) => {
+      if (data.session?.user.id) setUserId(data.session.user.id);
+    }).catch(() => {});
+  }, []);
+
+  // Track whether wizard_complete has been fired to guard abandon logic.
+  const completedRef = useRef(false);
+  // Track current phase in a ref for the unmount cleanup.
+  const phaseRef = useRef<Phase>(phase);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  // wizard_start on mount (fire-and-forget, once per mount).
+  useEffect(() => {
+    if (!userId) return;
+    fireWizardEvent(userId, { eventType: "wizard_start" });
+    completedRef.current = false;
+    return () => {
+      // wizard_abandon on unmount if wizard_complete was never fired.
+      if (!completedRef.current) {
+        const STEP_MAP: Partial<Record<Phase, number>> = {
+          "pillar-1": 0, "pillar-2": 0, "pillar-3": 0, "pillar-4": 0, "pillar-5": 0,
+          "phase-2-connectors": 1, "credential-concierge": 1,
+          "phase-3-swarm": 2, "phase-4-workflows": 2,
+          "materialize": 3, "pricing": 3,
+        };
+        fireWizardEvent(userId, {
+          eventType: "wizard_abandon",
+          lastStep: STEP_MAP[phaseRef.current] ?? 0,
+        });
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   // Mirror phase to URL so refresh/back/forward preserve position. Skip when
   // already in sync to avoid redundant history entries.
   useEffect(() => {
@@ -103,6 +149,15 @@ function CompanyWizard({ companyId, qc }: { companyId: string; qc: ReturnType<ty
     setPhase(next);
     setAutoRouted(true); // operator click counts as having decided phase
     qc.invalidateQueries({ queryKey: ["status", companyId] });
+    if (userId) {
+      if (next === "phase-2-connectors") fireWizardEvent(userId, { eventType: "wizard_step_complete", step: 1 });
+      if (next === "phase-3-swarm")       fireWizardEvent(userId, { eventType: "wizard_step_complete", step: 2 });
+      if (next === "materialize") {
+        fireWizardEvent(userId, { eventType: "wizard_step_complete", step: 3 });
+        fireWizardEvent(userId, { eventType: "wizard_complete" });
+        completedRef.current = true;
+      }
+    }
   };
 
   // Header's onJump bypasses advance() (no qc invalidation needed for a jump).
