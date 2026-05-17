@@ -36,8 +36,8 @@ import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { homedir, platform } from "node:os";
-import { spawn, spawnSync, execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const STATE_DIR = path.join(homedir(), ".wavex-os");
@@ -68,8 +68,12 @@ function printInfo(msg) {
 }
 
 function spawnAsync(cmd, args, opts = {}) {
+  // On Windows, claude.cmd / pnpm.cmd / npm.cmd etc. need shell:true so
+  // cmd.exe can resolve the wrapper. Use shell:true by default on win32;
+  // callers can opt out via opts.shell = false.
+  const useShell = opts.shell ?? IS_WIN;
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { ...opts, shell: IS_WIN && !opts.shell === false });
+    const child = spawn(cmd, args, { ...opts, shell: useShell });
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (d) => { stdout += d.toString(); });
@@ -80,6 +84,35 @@ function spawnAsync(cmd, args, opts = {}) {
 }
 
 // ── stages ─────────────────────────────────────────────────────────
+
+async function stagePreflight() {
+  // Verify the bare minimum is on PATH before we burn time on a half-
+  // working bootstrap. Each tool is checked with --version (universal).
+  const tools = [
+    { name: "node", cmd: IS_WIN ? "node.exe" : "node", min: 18 },
+    { name: "pnpm", cmd: IS_WIN ? "pnpm.cmd" : "pnpm", min: 8 },
+    { name: "git", cmd: IS_WIN ? "git.exe" : "git", min: null },
+  ];
+  const missing = [];
+  for (const t of tools) {
+    const r = await spawnAsync(t.cmd, ["--version"], {});
+    if (r.code !== 0) {
+      missing.push(t.name);
+      continue;
+    }
+    if (t.min !== null) {
+      const match = r.stdout.match(/(\d+)\.(\d+)/);
+      if (match && Number(match[1]) < t.min) {
+        printStage("preflight", "warn", `${t.name} v${match[0]} is older than v${t.min}`);
+      }
+    }
+  }
+  if (missing.length > 0) {
+    printStage("preflight", "fail", `missing: ${missing.join(", ")}`);
+    throw new Error(`Install ${missing.join(", ")} first.`);
+  }
+  printStage("preflight", "ok", "node + pnpm + git on PATH");
+}
 
 async function stagePullLatest() {
   // Check we're in a git repo first
@@ -121,7 +154,8 @@ async function stageInstallDeps() {
 }
 
 async function stageEnsureClaudeCli() {
-  const r = await spawnAsync(IS_WIN ? "claude.cmd" : "claude", ["--version"], {});
+  const claudeCmd = IS_WIN ? "claude.cmd" : "claude";
+  const r = await spawnAsync(claudeCmd, ["--version"], {});
   if (r.code === 0) {
     printStage("Claude Code CLI", "ok", r.stdout.trim().slice(0, 40));
     return;
@@ -129,11 +163,37 @@ async function stageEnsureClaudeCli() {
   // Install globally. On Windows this may show EPERM warnings during
   // cleanup but still succeeds — npm reports "changed N packages".
   printInfo("  installing @anthropic-ai/claude-code globally…");
-  const inst = await spawnAsync(IS_WIN ? "npm.cmd" : "npm", ["install", "-g", "@anthropic-ai/claude-code"], {});
-  if (inst.code === 0 || inst.stdout.includes("changed")) {
-    printStage("Claude Code CLI", "ok", "installed");
+  const npmCmd = IS_WIN ? "npm.cmd" : "npm";
+  const inst = await spawnAsync(npmCmd, ["install", "-g", "@anthropic-ai/claude-code"], {});
+  const installed = inst.code === 0 || inst.stdout.includes("changed") || inst.stdout.includes("added");
+  if (!installed) {
+    printStage("Claude Code CLI", "fail", `npm exit ${inst.code}: ${(inst.stderr || inst.stdout).slice(0, 80)}`);
+    throw new Error("Could not install @anthropic-ai/claude-code. Run `npm install -g @anthropic-ai/claude-code` manually then re-run.");
+  }
+
+  // Refresh PATH so claude.cmd (just-installed) is visible to subsequent
+  // spawn calls in this same process. Windows updates the registry on
+  // npm install -g but the current process inherits the OLD PATH. We
+  // ask npm where it puts globals and prepend that to process.env.PATH.
+  const prefix = await spawnAsync(npmCmd, ["config", "get", "prefix"], {});
+  if (prefix.code === 0 && prefix.stdout.trim()) {
+    const binDir = IS_WIN ? prefix.stdout.trim() : path.join(prefix.stdout.trim(), "bin");
+    const sep = IS_WIN ? ";" : ":";
+    if (!process.env.PATH?.includes(binDir)) {
+      process.env.PATH = `${binDir}${sep}${process.env.PATH ?? ""}`;
+    }
+  }
+
+  // Re-verify after PATH refresh.
+  const verify = await spawnAsync(claudeCmd, ["--version"], {});
+  if (verify.code === 0) {
+    printStage("Claude Code CLI", "ok", `installed (${verify.stdout.trim().slice(0, 40)})`);
   } else {
-    printStage("Claude Code CLI", "warn", "install failed; rerun manually");
+    // Installed but the current shell can't see it yet — common on
+    // Windows. Tell the customer what to do.
+    printStage("Claude Code CLI", "warn", "installed but not on PATH in this shell");
+    printInfo("  open a new terminal and re-run `pnpm wavex:start` to pick up claude on PATH");
+    throw new Error("Claude CLI is installed but not yet visible in this shell. Open a new terminal and re-run.");
   }
 }
 
@@ -145,8 +205,12 @@ async function stageEnsureDevicePairing() {
     // Try to introspect via the cloud-client. If the bundle is unreadable
     // or refresh fails, prompt for a re-pair.
     try {
+      // pathToFileURL is required on Windows — Node refuses raw
+      // absolute paths for ESM dynamic import on win32.
       const cc = await import(
-        path.join(REPO_ROOT, "packages", "cloud-client", "dist", "token-store.js"),
+        pathToFileURL(
+          path.join(REPO_ROOT, "packages", "cloud-client", "dist", "token-store.js"),
+        ).href,
       );
       const got = await cc.introspectBundle();
       if (got.ok && got.bundle) {
@@ -193,42 +257,48 @@ async function stageEnsureDevicePairing() {
 }
 
 async function stageClaudeAuth() {
-  // Bring Your Own Claude: the customer authenticates against their OWN
-  // Anthropic account. We don't proxy or subsidize their inference. This
-  // closes the prompt-injection / inference-reuse vector that streaming
-  // our Claude Max would have opened.
+  // BYOC (Bring Your Own Claude): customer authenticates against their
+  // OWN Anthropic account. We never proxy or subsidize their inference.
   //
-  // Three paths:
-  //   (a) Already authenticated → just verify and move on.
-  //   (b) ANTHROPIC_API_KEY env is set → claude uses that, no login needed.
-  //   (c) Not authenticated → run `claude auth login` interactively
-  //       (browser pop-up) and re-verify.
+  // Three paths, checked in order:
+  //   (a) ANTHROPIC_API_KEY env is set → claude uses that, no login needed.
+  //   (b) `claude auth status` reports loggedIn === true → already done.
+  //   (c) Otherwise → run `claude auth login` interactively (browser
+  //       pop-up) and re-verify.
   if (process.env.ANTHROPIC_API_KEY) {
     printStage("Claude auth", "ok", "ANTHROPIC_API_KEY in env");
     return;
   }
 
   const statusCmd = IS_WIN ? "claude.cmd" : "claude";
+
+  // `claude auth status` outputs JSON: { loggedIn, authMethod,
+  //   apiProvider, email, orgId, orgName, subscriptionType }.
+  // Parse it; fall back to substring match if the format ever changes.
   const status = await spawnAsync(statusCmd, ["auth", "status"], {});
-  const out = (status.stdout + status.stderr).toLowerCase();
-  // `claude auth status` prints something like "logged in as foo@bar.com"
-  // or "not logged in" / "no auth credentials found". Be forgiving about
-  // exact wording — the CLI's output isn't a stable contract.
-  const looksAuthed =
-    status.code === 0 &&
-    (out.includes("logged in") || out.includes("authenticated") || out.includes("active"));
-  if (looksAuthed) {
-    // Capture the email/login indicator from the status output (first
-    // line, truncated) so the customer can see *which* account is wired.
-    const firstLine = (status.stdout.trim().split("\n")[0] ?? "").slice(0, 60);
-    printStage("Claude auth", "ok", firstLine || "logged in");
+  const parsedStatus = (() => {
+    try {
+      return JSON.parse(status.stdout);
+    } catch {
+      return null;
+    }
+  })();
+  const loggedIn =
+    parsedStatus?.loggedIn === true ||
+    (status.code === 0 && /\b(logged in|authenticated)\b/i.test(status.stdout));
+  if (loggedIn) {
+    const summary = parsedStatus
+      ? `${parsedStatus.email ?? "unknown"} (${parsedStatus.subscriptionType ?? parsedStatus.authMethod ?? "?"})`
+      : status.stdout.trim().split("\n")[0]?.slice(0, 60) ?? "logged in";
+    printStage("Claude auth", "ok", summary);
     return;
   }
 
-  // Interactive login. Inherit stdio so the customer can see the
-  // browser URL + paste the OAuth code back. `claude auth login` blocks
-  // until the user completes or cancels.
+  // Not authenticated. Spawn interactively — inherit stdio so the
+  // customer sees the browser URL + can paste the auth code back.
   printInfo("  signing this machine into Claude (a browser window will open)…");
+  printInfo("  This authenticates against YOUR Anthropic account — every wizard");
+  printInfo("  call bills against your Claude subscription, not WaveX OS.");
   const r = await new Promise((resolve) => {
     const child = spawn(statusCmd, ["auth", "login"], {
       stdio: "inherit",
@@ -244,10 +314,15 @@ async function stageClaudeAuth() {
         "or set ANTHROPIC_API_KEY in your environment.",
     );
   }
-  // Re-verify.
+
+  // Re-verify with the same JSON parser.
   const after = await spawnAsync(statusCmd, ["auth", "status"], {});
-  const firstLine = (after.stdout.trim().split("\n")[0] ?? "").slice(0, 60);
-  printStage("Claude auth", "ok", firstLine || "logged in");
+  const parsedAfter = (() => { try { return JSON.parse(after.stdout); } catch { return null; } })();
+  if (parsedAfter?.loggedIn === true) {
+    printStage("Claude auth", "ok", `${parsedAfter.email ?? "logged in"} (${parsedAfter.subscriptionType ?? "?"})`);
+  } else {
+    printStage("Claude auth", "warn", "login completed but status doesn't confirm");
+  }
 }
 
 async function stageDeregisterProxy() {
@@ -373,6 +448,15 @@ async function main() {
   printInfo(`bootstrap on ${platform()} — repo at ${REPO_ROOT}`);
 
   try {
+    await stagePreflight();
+  } catch (err) {
+    printInfo("");
+    printInfo(`Bootstrap stopped: ${err.message ?? err}`);
+    printInfo("Install the missing tools and re-run `pnpm wavex:start`.");
+    process.exit(1);
+  }
+
+  try {
     await stagePullLatest();
   } catch (err) {
     printStage("pulling latest", "warn", err.message ?? String(err));
@@ -383,7 +467,11 @@ async function main() {
   try {
     await stageEnsureClaudeCli();
   } catch (err) {
-    printStage("Claude Code CLI", "warn", err.message ?? String(err));
+    printStage("Claude Code CLI", "fail", err.message ?? String(err));
+    printInfo("");
+    printInfo("Bootstrap stopped: Claude Code CLI is required for the wizard's inference.");
+    printInfo("If the install succeeded but the shell can't see `claude` yet, open a new terminal and re-run.");
+    process.exit(1);
   }
 
   try {

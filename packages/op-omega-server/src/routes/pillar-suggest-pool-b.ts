@@ -30,18 +30,33 @@ import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim
 
 const IS_WIN = platform() === "win32";
 const CLAUDE_TIMEOUT_MS = 30_000;
-const CLAUDE_MAX_BUDGET_USD = 0.05; // hard cap per call
 
 function runClaude(prompt: string): Promise<{ ok: true; content: string } | { ok: false; error: string; detail?: string }> {
   return new Promise((resolve) => {
     const claudeBin = IS_WIN ? "claude.cmd" : "claude";
+    // Flags chosen for the wizard's "one-shot suggestion" use case:
+    //   -p <prompt>             non-interactive, prompt-only mode
+    //   --output-format text    return the assistant text directly
+    //                           (avoids streaming-JSON envelope)
+    //   --disallowedTools "*"   suppress ALL tool use — the suggestion
+    //                           prompt is self-contained, no file/bash
+    //                           access needed. Bounds the customer's
+    //                           inference cost + sidesteps the
+    //                           CLAUDE.md-injection risk for this path.
+    //   --exclude-dynamic-system-prompt-sections
+    //                           don't leak cwd/git/env into the system
+    //                           prompt (we don't want claude's response
+    //                           to be influenced by the customer's repo
+    //                           state)
+    // Skipped: --max-budget-usd (OAuth/subscription users have no
+    // per-call charge to budget; flag only meaningful for API-key users).
     const child = spawn(
       claudeBin,
       [
         "-p", prompt,
-        "--max-budget-usd", String(CLAUDE_MAX_BUDGET_USD),
         "--output-format", "text",
-        "--dangerously-skip-permissions",
+        "--disallowedTools", "*",
+        "--exclude-dynamic-system-prompt-sections",
       ],
       { shell: IS_WIN },
     );
@@ -62,9 +77,9 @@ function runClaude(prompt: string): Promise<{ ok: true; content: string } | { ok
       if (code === 0) {
         resolve({ ok: true, content: stdout.trim() });
       } else {
-        // Common non-zero exits: auth missing (run `claude auth login`),
-        // budget exceeded, model unavailable. We surface stderr so the
-        // UI can fall back to Pool A.
+        // Common non-zero exits: claude not installed, auth missing
+        // (run `claude auth login`), rate limit, model unavailable.
+        // We surface stderr so the UI can fall back to Pool A.
         resolve({
           ok: false,
           error: code === null ? "claude_killed" : "claude_nonzero_exit",
