@@ -39,7 +39,8 @@
     "wavex:login": "node packages/cloud-client/bin/wavex-os.mjs login",
     "wavex:os": "node packages/cloud-client/bin/wavex-os.mjs",
     "wavex:link": "cd packages/cloud-client && pnpm link --global && echo 'wavex-os linked globally — run: wavex-os login'",
-    "wavex:cloud-client:smoke": "node_modules/.pnpm/node_modules/.bin/tsx packages/cloud-client/scripts/smoke-offline.mjs"
+    "wavex:cloud-client:smoke": "node_modules/.pnpm/node_modules/.bin/tsx packages/cloud-client/scripts/smoke-offline.mjs",
+    "wavex:start": "node scripts/wavex-bootstrap.mjs"
   },
   "packageManager": "pnpm@9.15.9",
   "devDependencies": {
