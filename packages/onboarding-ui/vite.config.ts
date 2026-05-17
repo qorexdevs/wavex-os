@@ -13,6 +13,8 @@ export default defineConfig({
     // Bind explicitly to 127.0.0.1 (IPv4) — macOS Vite defaults to IPv6-only,
     // which can prevent localhost connections from tooling that prefers IPv4.
     host: "127.0.0.1",
+    // Allow any Host header so cloudflared / ngrok tunnels pass through.
+    allowedHosts: true,
     open: false, // installer opens the browser; vite shouldn't double-open
     proxy: {
       // Anchored to `/api/paperclip/<subpath>` — requires the trailing
