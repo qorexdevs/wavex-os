@@ -28,7 +28,8 @@ const WHO_FOR = [
   "Companies shipping ≥1 app update per week",
 ];
 
-const CALENDAR_HREF = "#";
+// Board to swap this with the real Cal.com/Calendly URL when set up
+const CALENDAR_HREF = "https://cal.com/wavex/design-partner";
 
 export default function DesignPartners(): JSX.Element {
   // Preserve UTM params on all CTA clicks
