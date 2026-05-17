@@ -34,15 +34,20 @@ interface Props {
   onComplete: () => void;
 }
 
+// Timings spread across the actual T2 window (avg 85s, p90 ~110s) so the
+// checklist stays honest rather than showing "done" at 13s while the API
+// call continues for another 70+ seconds.
 const ENRICHMENT_PHASES: Array<{ delayMs: number; label: string }> = [
-  { delayMs: 0, label: "Connecting to your site…" },
-  { delayMs: 2000, label: "Reading content…" },
-  { delayMs: 5000, label: "Inferring industry & business model…" },
-  { delayMs: 9000, label: "Sketching your customer profile…" },
-  { delayMs: 13000, label: "Almost done — finalizing inferences…" },
+  { delayMs: 0,      label: "Connecting to your site…" },
+  { delayMs: 15_000, label: "Reading content…" },
+  { delayMs: 35_000, label: "Inferring industry & business model…" },
+  { delayMs: 60_000, label: "Sketching your customer profile…" },
+  { delayMs: 80_000, label: "Almost done — finalizing inferences…" },
 ];
 
-const PILLAR1_TIMEOUT_MS = 30_000;
+// T2 enrichment averages 85s with p90 around 110s — give it 2 minutes before
+// surfacing a timeout error.
+const PILLAR1_TIMEOUT_MS = 120_000;
 
 const INDUSTRY_OPTIONS = [
   "dev_tools", "dev_infrastructure", "fintech", "fintech_retail", "healthtech",
@@ -327,7 +332,7 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
         {submitting && (
           <div style={{ padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, marginTop: "0.75rem" }}>
             <div style={{ fontSize: 13, fontWeight: 500, marginBottom: "0.5rem" }}>
-              Analyzing your app — this usually takes 60–90 seconds
+              Analysing your company — this usually takes 60–90 seconds. Hold tight!
             </div>
             <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", marginBottom: "0.5rem" }}>
               <div style={{
