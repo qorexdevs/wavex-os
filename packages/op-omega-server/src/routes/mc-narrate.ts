@@ -66,32 +66,52 @@ function gateBoard(req: FastifyRequest, reply: FastifyReply): boolean {
 }
 
 interface McStrategyResult {
-  strategy: string;
+  // The vendored simulator writes `strategy_id`, not `strategy`.
+  strategy_id?: string;
+  strategy?: string;
   sharpe: number;
   mean_mrr_growth: number;
-  p5_mrr_growth?: number;
-  p95_mrr_growth?: number;
-  bundle: Record<string, number>;
+  mean_activation_growth?: number;
+  mean_burn_multiple?: number;
+  p_ruin?: number;
+  p_auto_catalytic?: number;
 }
 
 interface McReport {
   generated_at?: string;
   mode?: string;
-  results: McStrategyResult[];
-  winner?: { strategy: string; reason?: string };
+  // Vendored simulator writes `strategies`, not `results`. Accept either
+  // for forward-compat.
+  strategies?: McStrategyResult[];
+  results?: McStrategyResult[];
+  horizon_cycles?: number;
+  n_runs_per_strategy?: number;
+  seed?: number;
 }
 
 function buildNarrationPrompt(opts: {
   pillarCtx: string;
   mcReport: McReport;
 }): string {
-  const top3 = (opts.mcReport.results ?? []).slice(0, 3);
+  const rows = (opts.mcReport.strategies ?? opts.mcReport.results ?? []);
+  // Sort by Sharpe (primary) then mean_activation_growth (secondary fallback
+  // — pre_scale mode often has Sharpe=0 across the board, which is itself
+  // diagnostic). Take top 3 for the prompt.
+  const sorted = [...rows].sort((a, b) => {
+    if (b.sharpe !== a.sharpe) return b.sharpe - a.sharpe;
+    return (b.mean_activation_growth ?? 0) - (a.mean_activation_growth ?? 0);
+  });
+  const top3 = sorted.slice(0, 3);
+
   const lines = top3.map((r, i) => {
-    const range =
-      typeof r.p5_mrr_growth === "number" && typeof r.p95_mrr_growth === "number"
-        ? ` (range ${r.p5_mrr_growth.toFixed(1)}% to ${r.p95_mrr_growth.toFixed(1)}%)`
+    const name = r.strategy_id ?? r.strategy ?? "(unnamed)";
+    const sharpe = r.sharpe.toFixed(2);
+    const mrr = `${r.mean_mrr_growth.toFixed(1)}%`;
+    const act =
+      typeof r.mean_activation_growth === "number"
+        ? ` · activation +${(r.mean_activation_growth * 100).toFixed(1)}%`
         : "";
-    return `  ${i + 1}. ${r.strategy} — Sharpe ${r.sharpe.toFixed(2)}, mean MRR growth ${r.mean_mrr_growth.toFixed(1)}%${range}`;
+    return `  ${i + 1}. ${name} — Sharpe ${sharpe}, mean MRR growth ${mrr}${act}`;
   });
 
   return `You are reading the output of a 5-strategy Monte Carlo simulation that just ran for a new company in our agent-fleet platform. The numerical projections are deterministic; your job is to add the strategic reasoning that explains them to the founder.
@@ -114,16 +134,22 @@ Total length: 150-250 words. No preamble. No "Here's my analysis:". Start direct
 }
 
 function fallbackNarration(report: McReport): string {
-  const winner = report.results[0];
+  const rows = report.strategies ?? report.results ?? [];
+  const sorted = [...rows].sort((a, b) => {
+    if (b.sharpe !== a.sharpe) return b.sharpe - a.sharpe;
+    return (b.mean_activation_growth ?? 0) - (a.mean_activation_growth ?? 0);
+  });
+  const winner = sorted[0];
   if (!winner) {
     return "The simulation didn't produce a ranked strategy yet — try re-running finalize, or check that pillars 1-5 are complete.";
   }
-  const second = report.results[1];
-  const lift = second ? winner.sharpe - second.sharpe : 0;
+  const second = sorted[1];
+  const name = winner.strategy_id ?? winner.strategy ?? "(unnamed)";
+  const secondName = second?.strategy_id ?? second?.strategy ?? "—";
   return [
-    `The simulator ranked "${winner.strategy}" highest, with a Sharpe of ${winner.sharpe.toFixed(2)} versus the second-place strategy's ${second?.sharpe.toFixed(2) ?? "—"} (a ${lift.toFixed(2)}-point lift). Mean projected MRR growth on this strategy: ${winner.mean_mrr_growth.toFixed(1)}%.`,
-    `The sim's biggest assumption is that your current stage holds steady through the projection horizon. If your motion or stage shifts materially in the next 30 days (a pricing change, a churn event, a new channel taking off), rerun the simulation — the winning strategy may move.`,
-    `Translate the winning bundle into a single bet for this week: pick the largest weighting in the winning bundle and double down on that capability area. The supporting bundle weights tell you which capabilities NOT to spread thin into right now.`,
+    `The simulator ranked "${name}" highest. In pre-scale mode the Sharpe ratios all collapse to zero (MRR hasn't started compounding yet), so the ranking is driven by mean activation growth: this strategy projects an activation lift of ${((winner.mean_activation_growth ?? 0) * 100).toFixed(1)}%. The runner-up was "${secondName}".`,
+    `The sim's biggest assumption is that your current stage holds steady through the 30-cycle horizon. In pre-scale, the dominant lever is activation, not MRR — so if your activation experiments stall or your first design partner closes faster than expected, rerun the simulation. The mode itself may shift to "growth" and the winning strategy with it.`,
+    `Translate the winning bundle into one move for this week: pick the largest capability weighting in the winning bundle and double down on it. If RETENTION_FIRST won, spend the week on the most-leaky activation step. If ACQUISITION_HEAVY won, ship one new top-of-funnel test. Either way, ignore the bundles you didn't pick — focused beats balanced at this stage.`,
   ].join("\n\n");
 }
 
@@ -224,10 +250,11 @@ export function registerMcNarrateRoute(app: FastifyInstance): void {
         });
       }
 
-      if (!report.results || report.results.length === 0) {
+      const strategiesArr = report.strategies ?? report.results;
+      if (!strategiesArr || strategiesArr.length === 0) {
         return reply.status(409).send({
           ok: false,
-          error: "MC report has no results — re-run finalize",
+          error: "MC report has no strategies — re-run finalize",
         });
       }
 
