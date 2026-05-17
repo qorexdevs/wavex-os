@@ -4,20 +4,29 @@
  *
  *   cd ~/wavex-os && pnpm wavex:start
  *
- * …and this script brings the whole runtime online: pull latest, install
- * deps, ensure Claude Code is on PATH, pair the device if needed, start
- * the claude-code-proxy in background, register the local-ops daemon as
- * a system service, run one cycle to get baseline state, and exit. From
- * there the daemon takes over — including spawning Claude Code via the
- * doctor when anything looks broken.
+ * …and this script brings the whole runtime online:
+ *   1. Pull latest + install deps
+ *   2. Ensure Claude Code CLI is on PATH (npm i -g if missing)
+ *   3. Pair the WaveX OS device (Stripe / subscription / manifest channel)
+ *   4. Authenticate to the customer's OWN Anthropic account (BYOC) so
+ *      every wizard inference call bills against their Claude
+ *      subscription — not ours. Closes the prompt-injection /
+ *      inference-reuse window that the (now-deprecated) claude-code-proxy
+ *      created.
+ *   5. Deregister the legacy claude-code-proxy if a prior install
+ *      registered it as a system service.
+ *   6. Register the local-ops daemon as a system service (5-min cycle).
+ *   7. Run one cycle to write baseline state + invoke the doctor if
+ *      anything looks broken. From there the daemon takes over —
+ *      including spawning the customer's local Claude Code via the
+ *      doctor when state degrades.
  *
  * Idempotent. Safe to re-run. Each stage is independent — a failure in
  * one doesn't abort the rest. Final summary tells the customer what's
  * green and what needs attention.
  *
  * Cross-platform: macOS (launchd), Windows (Scheduled Task), Linux
- * (systemd-user). Falls back to spawn-detached if service registration
- * fails.
+ * (systemd-user).
  *
  * Logs go to stdout (the customer's terminal). Don't write secrets;
  * don't clean any state files (operator policy: logs are training data).
@@ -29,14 +38,10 @@ import path from "node:path";
 import { homedir, platform } from "node:os";
 import { spawn, spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import net from "node:net";
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const STATE_DIR = path.join(homedir(), ".wavex-os");
 const DEVICE_TOKEN_FILE = path.join(STATE_DIR, "device-token.json");
-const PROXY_PORT = Number(process.env.WAVEX_PROXY_PORT ?? 11434);
-const PROXY_BIN = path.join(REPO_ROOT, "packages", "claude-code-proxy", "bin", "wavex-os-proxy.mjs");
 const DAEMON_SCRIPT = path.join(REPO_ROOT, "scripts", "wavex-local-ops-cycle.mjs");
 const IS_WIN = platform() === "win32";
 const IS_MAC = platform() === "darwin";
@@ -71,19 +76,6 @@ function spawnAsync(cmd, args, opts = {}) {
     child.stderr?.on("data", (d) => { stderr += d.toString(); });
     child.on("error", (err) => resolve({ code: -1, stdout, stderr: String(err) }));
     child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
-  });
-}
-
-function portOpen(port, host = "127.0.0.1", timeoutMs = 500) {
-  return new Promise((resolve) => {
-    const sock = new net.Socket();
-    let done = false;
-    const finish = (ok) => { if (done) return; done = true; sock.destroy(); resolve(ok); };
-    sock.setTimeout(timeoutMs);
-    sock.once("connect", () => finish(true));
-    sock.once("timeout", () => finish(false));
-    sock.once("error", () => finish(false));
-    sock.connect(port, host);
   });
 }
 
@@ -200,142 +192,93 @@ async function stageEnsureDevicePairing() {
   }
 }
 
-async function stageStartProxy() {
-  // Already running? Skip.
-  if (await portOpen(PROXY_PORT)) {
-    printStage("proxy", "ok", `already running on :${PROXY_PORT}`);
+async function stageClaudeAuth() {
+  // Bring Your Own Claude: the customer authenticates against their OWN
+  // Anthropic account. We don't proxy or subsidize their inference. This
+  // closes the prompt-injection / inference-reuse vector that streaming
+  // our Claude Max would have opened.
+  //
+  // Three paths:
+  //   (a) Already authenticated → just verify and move on.
+  //   (b) ANTHROPIC_API_KEY env is set → claude uses that, no login needed.
+  //   (c) Not authenticated → run `claude auth login` interactively
+  //       (browser pop-up) and re-verify.
+  if (process.env.ANTHROPIC_API_KEY) {
+    printStage("Claude auth", "ok", "ANTHROPIC_API_KEY in env");
     return;
   }
 
-  // Try platform-specific service registration first; fall back to
-  // spawn-detached if that's not available or fails.
-  let registered = false;
-  if (IS_MAC) {
-    registered = await registerProxyLaunchd();
-  } else if (IS_WIN) {
-    registered = await registerProxyScheduledTask();
-  } else if (IS_LINUX) {
-    registered = await registerProxySystemd();
+  const statusCmd = IS_WIN ? "claude.cmd" : "claude";
+  const status = await spawnAsync(statusCmd, ["auth", "status"], {});
+  const out = (status.stdout + status.stderr).toLowerCase();
+  // `claude auth status` prints something like "logged in as foo@bar.com"
+  // or "not logged in" / "no auth credentials found". Be forgiving about
+  // exact wording — the CLI's output isn't a stable contract.
+  const looksAuthed =
+    status.code === 0 &&
+    (out.includes("logged in") || out.includes("authenticated") || out.includes("active"));
+  if (looksAuthed) {
+    // Capture the email/login indicator from the status output (first
+    // line, truncated) so the customer can see *which* account is wired.
+    const firstLine = (status.stdout.trim().split("\n")[0] ?? "").slice(0, 60);
+    printStage("Claude auth", "ok", firstLine || "logged in");
+    return;
   }
 
-  if (!registered) {
-    // Fall back to a detached child process. Survives this terminal
-    // session but won't restart on reboot — customer would need to
-    // re-run `pnpm wavex:start` after each reboot.
-    const child = spawn(process.execPath, [PROXY_BIN], {
-      detached: true,
-      stdio: "ignore",
-      cwd: REPO_ROOT,
+  // Interactive login. Inherit stdio so the customer can see the
+  // browser URL + paste the OAuth code back. `claude auth login` blocks
+  // until the user completes or cancels.
+  printInfo("  signing this machine into Claude (a browser window will open)…");
+  const r = await new Promise((resolve) => {
+    const child = spawn(statusCmd, ["auth", "login"], {
+      stdio: "inherit",
+      shell: IS_WIN,
     });
-    child.unref();
-    printInfo(`  proxy started detached (pid ${child.pid}; survives this shell, not reboots)`);
+    child.on("close", (code) => resolve(code ?? -1));
+    child.on("error", () => resolve(-1));
+  });
+  if (r !== 0) {
+    printStage("Claude auth", "fail", `claude auth login exited ${r}`);
+    throw new Error(
+      "Claude authentication failed. Re-run `pnpm wavex:start` after running `claude auth login` manually, " +
+        "or set ANTHROPIC_API_KEY in your environment.",
+    );
   }
+  // Re-verify.
+  const after = await spawnAsync(statusCmd, ["auth", "status"], {});
+  const firstLine = (after.stdout.trim().split("\n")[0] ?? "").slice(0, 60);
+  printStage("Claude auth", "ok", firstLine || "logged in");
+}
 
-  // Wait up to 8 s for the proxy to be ready.
-  const deadline = Date.now() + 8000;
-  while (Date.now() < deadline) {
-    if (await portOpen(PROXY_PORT)) {
-      printStage("proxy", "ok", `:${PROXY_PORT} ${registered ? "(as service)" : "(detached)"}`);
-      return;
+async function stageDeregisterProxy() {
+  // BYOC pivot: the claude-code-proxy is deprecated. Earlier installs of
+  // this bootstrap (commit be435a89) registered it as a system service.
+  // Tear those down so customers don't keep a stale process running.
+  // Idempotent — silently no-ops if nothing was registered.
+  let deregistered = false;
+  if (IS_MAC) {
+    const plist = path.join(homedir(), "Library", "LaunchAgents", "com.wavex-os.claude-code-proxy.plist");
+    if (existsSync(plist)) {
+      await spawnAsync("launchctl", ["unload", plist]);
+      await fs.unlink(plist).catch(() => {});
+      deregistered = true;
     }
-    await new Promise((r) => setTimeout(r, 250));
+  } else if (IS_WIN) {
+    const r = await spawnAsync("schtasks", ["/Delete", "/TN", "WaveX-OS Claude Code Proxy", "/F"]);
+    if (r.code === 0) deregistered = true;
+  } else if (IS_LINUX) {
+    const unit = "wavex-os-claude-code-proxy.service";
+    const unitPath = path.join(homedir(), ".config", "systemd", "user", unit);
+    if (existsSync(unitPath)) {
+      await spawnAsync("systemctl", ["--user", "stop", unit]);
+      await spawnAsync("systemctl", ["--user", "disable", unit]);
+      await fs.unlink(unitPath).catch(() => {});
+      await spawnAsync("systemctl", ["--user", "daemon-reload"]);
+      deregistered = true;
+    }
   }
-  printStage("proxy", "warn", "didn't come up within 8s — check ~/.wavex-os/state/wavex-os-proxy.log");
-}
-
-async function registerProxyLaunchd() {
-  const label = "com.wavex-os.claude-code-proxy";
-  const plistPath = path.join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
-  const stateDir = path.join(STATE_DIR, "state");
-  await fs.mkdir(stateDir, { recursive: true });
-
-  const nodeBin = process.execPath;
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>${label}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${nodeBin}</string>
-    <string>${PROXY_BIN}</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>WAVEX_PROXY_PORT</key><string>${PROXY_PORT}</string>
-    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
-  </dict>
-  <key>WorkingDirectory</key><string>${REPO_ROOT}</string>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${stateDir}/claude-code-proxy.log</string>
-  <key>StandardErrorPath</key><string>${stateDir}/claude-code-proxy.log</string>
-</dict>
-</plist>
-`;
-  try {
-    await fs.mkdir(path.dirname(plistPath), { recursive: true });
-    await fs.writeFile(plistPath, plist, "utf8");
-    // unload-then-load for idempotency.
-    await spawnAsync("launchctl", ["unload", plistPath]);
-    const load = await spawnAsync("launchctl", ["load", "-w", plistPath]);
-    return load.code === 0;
-  } catch {
-    return false;
-  }
-}
-
-async function registerProxyScheduledTask() {
-  const taskName = "WaveX-OS Claude Code Proxy";
-  // Use the PowerShell APIs — much cleaner than schtasks XML.
-  const ps1 = `
-$ErrorActionPreference = "Stop"
-schtasks /Delete /TN "${taskName}" /F 2>$null | Out-Null
-$node = (Get-Command node).Source
-$action = New-ScheduledTaskAction -Execute $node -Argument "\`"${PROXY_BIN.replace(/\\/g, "\\\\")}\`""
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 365)
-$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
-Register-ScheduledTask -TaskName "${taskName}" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description "WaveX OS local proxy for Claude Code inference." | Out-Null
-schtasks /Run /TN "${taskName}" | Out-Null
-`;
-  try {
-    const r = await spawnAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps1]);
-    return r.code === 0;
-  } catch {
-    return false;
-  }
-}
-
-async function registerProxySystemd() {
-  const unitName = "wavex-os-claude-code-proxy.service";
-  const unitDir = path.join(homedir(), ".config", "systemd", "user");
-  await fs.mkdir(unitDir, { recursive: true });
-  const unit = `[Unit]
-Description=WaveX OS Claude Code Proxy
-After=network-online.target
-
-[Service]
-Type=simple
-ExecStart=${process.execPath} ${PROXY_BIN}
-WorkingDirectory=${REPO_ROOT}
-Restart=always
-RestartSec=5
-Environment=WAVEX_PROXY_PORT=${PROXY_PORT}
-StandardOutput=append:${STATE_DIR}/state/claude-code-proxy.log
-StandardError=append:${STATE_DIR}/state/claude-code-proxy.log
-
-[Install]
-WantedBy=default.target
-`;
-  try {
-    await fs.writeFile(path.join(unitDir, unitName), unit, "utf8");
-    await spawnAsync("systemctl", ["--user", "daemon-reload"]);
-    await spawnAsync("systemctl", ["--user", "enable", unitName]);
-    const r = await spawnAsync("systemctl", ["--user", "start", unitName]);
-    return r.code === 0;
-  } catch {
-    return false;
+  if (deregistered) {
+    printStage("legacy proxy", "ok", "removed (deprecated in BYOC mode)");
   }
 }
 
@@ -454,9 +397,20 @@ async function main() {
   }
 
   try {
-    await stageStartProxy();
+    await stageClaudeAuth();
   } catch (err) {
-    printStage("proxy", "warn", err.message ?? String(err));
+    printStage("Claude auth", "fail", err.message ?? String(err));
+    printInfo("");
+    printInfo("Bootstrap stopped: Claude authentication is required to continue.");
+    printInfo("The wizard's inference runs on YOUR Claude subscription (BYOC model).");
+    printInfo("Re-run `pnpm wavex:start` after `claude auth login` succeeds, or set ANTHROPIC_API_KEY.");
+    process.exit(1);
+  }
+
+  try {
+    await stageDeregisterProxy();
+  } catch (err) {
+    printStage("legacy proxy", "warn", err.message ?? String(err));
   }
 
   try {
@@ -473,7 +427,7 @@ async function main() {
 
   process.stdout.write("\n");
   printInfo(`Ready. ${SYM.arrow} http://localhost:5173/onboarding (run \`pnpm dev\` to start the wizard)`);
-  printInfo(`State + logs: ~/.wavex-os/`);
+  printInfo(`Wizard inference runs on your local Claude (BYOC). State + logs at ~/.wavex-os/`);
   printInfo("");
 }
 

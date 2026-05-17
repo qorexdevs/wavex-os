@@ -1,5 +1,11 @@
 # @wavex-os/claude-code-proxy
 
+> **⚠️ DEPRECATED (2026-05-17).** Streaming the operator's Claude Max to customer machines via this proxy opened a wide prompt-injection / inference-reuse window — any prompt a customer fed into Claude Code would have run on the operator's subscription. WaveX OS pivoted to **BYOC (Bring Your Own Claude)**: customers authenticate against their own Anthropic account via `claude auth login` during bootstrap, and the wizard / doctor spawn the customer's local `claude` CLI. Their inference, their billing.
+>
+> This package is kept in the tree (not deleted) in case a future variant is worth revisiting under a tighter trust model. `pnpm wavex:start` no longer installs or registers the proxy — and actively deregisters any service installed by the old (be435a89-era) bootstrap.
+
+---
+
 Local Anthropic-compatible HTTP proxy. Point Claude Code at it and every `/v1/messages` call rides Supabase Realtime to the operator's Mac, which holds the Claude Max OAuth token. The customer's machine pays $0 in Anthropic API fees and never needs its own API key.
 
 ## Architecture

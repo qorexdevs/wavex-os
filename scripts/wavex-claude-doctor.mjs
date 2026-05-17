@@ -3,10 +3,14 @@
  * WaveX Claude Doctor — the "magical autonomous self-fix" entrypoint.
  *
  * Reads the local-ops state file, decides if anything Claude Code can
- * meaningfully fix is broken, makes sure the claude-code-proxy is up
- * (since we route inference through it), and then spawns Claude Code
- * with a diagnostic prompt that names the broken state + tells it what
- * files/commands it can read/run.
+ * meaningfully fix is broken, and spawns the customer's local Claude
+ * Code with a diagnostic prompt that names the broken state + tells it
+ * what files/commands it can read/run.
+ *
+ * BYOC: every inference call bills against the CUSTOMER's Claude
+ * subscription, not the operator's. The customer authenticated during
+ * bootstrap (`claude auth login`) so claude reads their OAuth/API key
+ * naturally from ~/.claude. We don't override ANTHROPIC_BASE_URL.
  *
  * Claude Code has full tool access on the customer's machine (file_read,
  * bash, etc.) — it figures out the fix interactively. We just plant the
@@ -29,8 +33,6 @@
  * Environment:
  *   WAVEX_CLAUDE_BIN        path to the claude CLI; default just `claude`
  *                           (must be on PATH)
- *   WAVEX_PROXY_URL         where to point ANTHROPIC_BASE_URL; default
- *                           http://127.0.0.1:11434
  *   WAVEX_CLAUDE_DOCTOR_DISABLED=1   skip entirely (kill switch)
  *   WAVEX_CLAUDE_DOCTOR_TIMEOUT_MS   max claude runtime; default 5 min
  *   WAVEX_CLAUDE_DOCTOR_FORCE=1      skip the lockfile + cooldown check
@@ -40,7 +42,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { homedir, platform } from "node:os";
 import { spawn } from "node:child_process";
-import net from "node:net";
 
 const STATE_DIR = path.join(homedir(), ".wavex-os");
 const STATE_FILE = path.join(STATE_DIR, "local-ops-state.json");
@@ -48,11 +49,6 @@ const LOCK_FILE = path.join(STATE_DIR, ".claude-doctor.lock");
 const LOG_FILE = path.join(STATE_DIR, "state", "claude-doctor.log");
 const COOLDOWN_FILE = path.join(STATE_DIR, "claude-doctor-last.json");
 const COOLDOWN_SEC = 15 * 60; // don't re-invoke more than once per 15 min
-const PROXY_URL = process.env.WAVEX_PROXY_URL ?? "http://127.0.0.1:11434";
-const PROXY_PORT = (() => {
-  try { return Number(new URL(PROXY_URL).port || "11434"); }
-  catch { return 11434; }
-})();
 const CLAUDE_BIN = process.env.WAVEX_CLAUDE_BIN ?? "claude";
 const TIMEOUT_MS = Number(process.env.WAVEX_CLAUDE_DOCTOR_TIMEOUT_MS ?? 5 * 60_000);
 const IS_WIN = platform() === "win32";
@@ -85,19 +81,6 @@ function spawnCaptureWithLog(cmd, args, opts = {}) {
         timed_out: signal === "SIGTERM" || signal === "SIGKILL",
       });
     });
-  });
-}
-
-function portOpen(port, host = "127.0.0.1", timeoutMs = 500) {
-  return new Promise((resolve) => {
-    const sock = new net.Socket();
-    let done = false;
-    const finish = (ok) => { if (done) return; done = true; sock.destroy(); resolve(ok); };
-    sock.setTimeout(timeoutMs);
-    sock.once("connect", () => finish(true));
-    sock.once("timeout", () => finish(false));
-    sock.once("error", () => finish(false));
-    sock.connect(port, host);
   });
 }
 
@@ -283,37 +266,21 @@ async function main() {
   await appendLog(`invoke begin: reasons=${decision.why}`);
 
   try {
-    // Ensure the proxy is up — Claude Code needs ANTHROPIC_BASE_URL.
-    const proxyAlive = await portOpen(PROXY_PORT);
-    if (!proxyAlive) {
-      await appendLog(`proxy is down on port ${PROXY_PORT}; doctor cannot run`);
-      await writeDoctorState(state, {
-        started_at: startedAt,
-        finished_at: nowSec(),
-        exit_code: -1,
-        reasons: decision.why,
-        outcome: "proxy_down",
-        summary: `claude-code-proxy not responding on ${PROXY_URL} — Claude Code can't reach inference. Start the proxy first.`,
-      });
-      return;
-    }
-
     const prompt = buildPrompt(state, decision.why);
 
-    // Spawn Claude Code with the proxy as its API base. Use -p for
-    // non-interactive mode + --dangerously-skip-permissions because we
-    // trust this prompt and the daemon needs claude to run unattended.
-    // The customer's local FS access is bounded by the prompt's "what
-    // you must NOT do" rules.
-    const env = {
-      ...process.env,
-      ANTHROPIC_BASE_URL: PROXY_URL,
-      ANTHROPIC_API_KEY: "wavex-os-proxy-stub-key", // claude needs this set
-    };
+    // BYOC: spawn Claude Code with the customer's own OAuth (no
+    // ANTHROPIC_BASE_URL override — claude reads ~/.claude credentials
+    // or ANTHROPIC_API_KEY). The doctor doesn't subsidize their
+    // inference — every fix runs on their Claude subscription. They
+    // explicitly opted in via `claude auth login` during bootstrap.
+    //
+    // --dangerously-skip-permissions: doctor runs unattended, customer
+    // can't approve tool use. Prompt's "what you must NOT do" rules
+    // bound behavior.
     const result = await spawnCaptureWithLog(
       CLAUDE_BIN,
       ["-p", prompt, "--dangerously-skip-permissions"],
-      { env },
+      { env: process.env },
     );
 
     const finishedAt = nowSec();

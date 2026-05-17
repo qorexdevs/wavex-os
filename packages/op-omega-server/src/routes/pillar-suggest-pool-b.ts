@@ -1,26 +1,79 @@
 /** POST /op-omega/onboarding/pillar/:n/suggest-pool-b
  *
- *  Pool B variant of pillar-suggest. Instead of going through tier-router
- *  (which calls the operator's local OAuth via the Pool A hub), this route
- *  routes through @wavex-os/cloud-client.cloudInference() — the Supabase
- *  Realtime path that bills against the operator's Claude Max under the
- *  CUSTOMER's subscription.
+ *  BYOC (Bring Your Own Claude) variant of pillar-suggest. Spawns the
+ *  customer's locally-installed `claude` CLI with our context-aware
+ *  prompt — every inference bills against THEIR Claude subscription,
+ *  not the operator's.
  *
- *  This is the first real-consumer wiring of the Pool B path. The browser
- *  picks this endpoint when device-token.json is present + unexpired
- *  (validated by GET /api/inference-status). Otherwise it stays on the
- *  existing Pool A endpoint.
+ *  Why this stopped routing to the operator's Mac Mini (the old
+ *  Supabase-Realtime Pool B path): streaming our Claude Max to the
+ *  customer's machine via the claude-code-proxy created a wide-open
+ *  prompt-injection / inference-reuse window — any prompt the customer
+ *  fed into Claude Code would have run on our subscription. The BYOC
+ *  pivot closes that. The route name + URL stay the same for
+ *  compatibility with the onboarding-ui client; only the implementation
+ *  changed.
  *
- *  IMPORTANT: This builds the SAME context-aware prompt as the Pool A
- *  route in pillars.ts. If you change the Pool A prompt/field-spec, mirror
- *  the change here — they share semantics but ship through different
- *  inference paths (local tier-router vs Supabase Realtime). */
+ *  Prompt template is still ours (see buildPrompt below + the Pool A
+ *  mirror in pillars.ts). If the template changes, mirror both.
+ *
+ *  Fallback: if `claude` isn't on PATH or auth fails, this returns 502
+ *  and the UI falls back to the Pool A endpoint (which uses
+ *  tier-router → operator's hub). */
 
 import { z } from "zod";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { cloudInference } from "@wavex-os/cloud-client";
+import { spawn } from "node:child_process";
+import { platform } from "node:os";
 import { loadPillarResponses } from "@op-omega/plugin-onboarding";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
+
+const IS_WIN = platform() === "win32";
+const CLAUDE_TIMEOUT_MS = 30_000;
+const CLAUDE_MAX_BUDGET_USD = 0.05; // hard cap per call
+
+function runClaude(prompt: string): Promise<{ ok: true; content: string } | { ok: false; error: string; detail?: string }> {
+  return new Promise((resolve) => {
+    const claudeBin = IS_WIN ? "claude.cmd" : "claude";
+    const child = spawn(
+      claudeBin,
+      [
+        "-p", prompt,
+        "--max-budget-usd", String(CLAUDE_MAX_BUDGET_USD),
+        "--output-format", "text",
+        "--dangerously-skip-permissions",
+      ],
+      { shell: IS_WIN },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString(); });
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    const timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } catch { /* ignore */ }
+      setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ignore */ } }, 2_000);
+    }, CLAUDE_TIMEOUT_MS);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: "claude_spawn_failed", detail: String(err) });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve({ ok: true, content: stdout.trim() });
+      } else {
+        // Common non-zero exits: auth missing (run `claude auth login`),
+        // budget exceeded, model unavailable. We surface stderr so the
+        // UI can fall back to Pool A.
+        resolve({
+          ok: false,
+          error: code === null ? "claude_killed" : "claude_nonzero_exit",
+          detail: stderr.slice(0, 400) || stdout.slice(0, 400),
+        });
+      }
+    });
+  });
+}
 
 const bodySchema = z.object({ companyId: z.string().min(1) });
 
@@ -125,41 +178,33 @@ export function registerPillarSuggestPoolBRoute(app: FastifyInstance): void {
 
       const prompt = buildPrompt(n, responses);
 
-      try {
-        const r = await cloudInference({
-          prompt,
-          max_output_tokens: 220,
-          purpose: `onboarding.pillar-${n}-suggest`,
-        });
-        if (!r.ok) {
-          return reply.status(502).send({
-            ok: false,
-            error: r.error,
-            message: r.message,
-            mode: "pool_b" as const,
-          });
-        }
-        interface SuggestEnvelope { recommended: Record<string, unknown>; reasoning?: string }
-        let parsedOut: SuggestEnvelope | null = null;
-        try {
-          const cleaned = r.content.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
-          parsedOut = JSON.parse(cleaned) as SuggestEnvelope;
-        } catch { /* fall through */ }
-        return {
-          ok: true,
-          pillar: n,
-          recommended: parsedOut?.recommended ?? {},
-          reasoning: parsedOut?.reasoning ?? null,
-          raw: parsedOut ? undefined : r.content.slice(0, 400),
-          mode: "pool_b" as const,
-        };
-      } catch (e) {
+      const r = await runClaude(prompt);
+      if (!r.ok) {
+        // 502 lets the UI fall back to the Pool A endpoint
+        // (tier-router → operator's hub). Common case: customer hasn't
+        // run `claude auth login` yet, or budget cap was hit.
         return reply.status(502).send({
           ok: false,
-          error: e instanceof Error ? e.message : String(e),
+          error: r.error,
+          message: r.detail,
           mode: "pool_b" as const,
         });
       }
+
+      interface SuggestEnvelope { recommended: Record<string, unknown>; reasoning?: string }
+      let parsedOut: SuggestEnvelope | null = null;
+      try {
+        const cleaned = r.content.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
+        parsedOut = JSON.parse(cleaned) as SuggestEnvelope;
+      } catch { /* fall through */ }
+      return {
+        ok: true,
+        pillar: n,
+        recommended: parsedOut?.recommended ?? {},
+        reasoning: parsedOut?.reasoning ?? null,
+        raw: parsedOut ? undefined : r.content.slice(0, 400),
+        mode: "pool_b" as const,
+      };
     },
   );
 }

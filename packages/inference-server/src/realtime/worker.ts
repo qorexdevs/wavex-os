@@ -50,6 +50,15 @@ const BROADCAST_EVENT = "wavex-inference";
 // Anthropic-Messages-API variant — used by the customer-side proxy that
 // fronts Claude Code. Same auth + ledger contract as BROADCAST_EVENT, but
 // the payload is the FULL Messages API shape (messages[], tools, system).
+//
+// DEPRECATED (2026-05-17): This handler was the Mac half of the
+// claude-code-proxy round-trip. WaveX OS pivoted to BYOC (Bring Your
+// Own Claude) for customer-side inference — the customer's local claude
+// CLI handles wizard suggestions + doctor fixes using their OWN Anthropic
+// account. The handler stays subscribed (no functional change) in case
+// the proxy comes back under a tighter trust model, but no current
+// customer install publishes to these channels. See
+// packages/claude-code-proxy/README.md for the deprecation rationale.
 const ANTHROPIC_REQUEST_TOPIC_PREFIX = "wavex-anthropic-messages-request:";
 const ANTHROPIC_RESPONSE_TOPIC_PREFIX = "wavex-anthropic-messages-response:";
 const ANTHROPIC_BROADCAST_EVENT = "anthropic-messages";
