@@ -127,10 +127,49 @@ function inputLooksLikeUrl(text: string): boolean {
  *  operator for more detail before submitting (better UX than a 400). */
 const MANUAL_CONTEXT_MIN_CHARS = 40;
 
+// ── Chat session localStorage persistence ────────────────────────────────────
+// Keyed by companyId so different companies don't clobber each other.
+// Version prefix lets us silently discard stale serialization formats.
+const CHAT_STORAGE_KEY = (id: string) => `wavex-os-chat-v1:${id}`;
+
+function loadChatSession(companyId: string): Pick<import("../state/onboarding-reducer").OnboardingState, "thread" | "phase" | "draft"> | null {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY(companyId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.thread)) return null;
+    // Drop in-flight thinking bubbles — they had no response attached.
+    const thread = parsed.thread.filter((m: import("../state/onboarding-reducer").ChatMessage) => m.slot?.kind !== "thinking");
+    return { thread, phase: parsed.phase ?? initialState.phase, draft: parsed.draft ?? {} };
+  } catch { return null; }
+}
+
+function saveChatSession(companyId: string, state: import("../state/onboarding-reducer").OnboardingState): void {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY(companyId), JSON.stringify({
+      thread: state.thread.filter((m) => m.slot?.kind !== "thinking"),
+      phase: state.phase,
+      draft: state.draft,
+    }));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function clearChatSession(companyId: string): void {
+  try { localStorage.removeItem(CHAT_STORAGE_KEY(companyId)); } catch { /* ignore */ }
+}
+
 export function OnboardingShell() {
   const { companyId, setCompanyId } = useCompany();
   const qc = useQueryClient();
-  const [state, dispatch] = useReducer(reducer, initialState);
+  // Lazy initializer: if ?companyId= is in the URL on first load, restore the
+  // persisted chat session from localStorage so a page refresh doesn't wipe
+  // the conversation. When localStorage has data, thread.length > 0 prevents
+  // the server-resume breadcrumb path from running (see seededRef effect).
+  const [state, dispatch] = useReducer(reducer, initialState, (s) => {
+    const storedId = new URLSearchParams(window.location.search).get("companyId");
+    if (!storedId) return s;
+    return { ...s, ...(loadChatSession(storedId) ?? {}) };
+  });
   const t0 = isT0FastMode();
 
   // ── First mount: resume path ────────────────────────────────────────────
@@ -271,6 +310,21 @@ export function OnboardingShell() {
       }
     })();
   }, [companyId, state.thread.length]);
+
+  // Persist chat state to localStorage whenever it changes (company sessions only).
+  useEffect(() => {
+    if (!companyId || state.thread.length === 0) return;
+    saveChatSession(companyId, state);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, state.thread, state.phase, state.draft]);
+
+  // Clear the persisted session on successful wizard completion or avatar finalization.
+  useEffect(() => {
+    if (!companyId) return;
+    if (state.phase.kind === "handed_off" || state.phase.kind === "avatar_done") {
+      clearChatSession(companyId);
+    }
+  }, [companyId, state.phase.kind]);
 
   const showEmptyState =
     state.thread.length === 0
