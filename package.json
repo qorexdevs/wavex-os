@@ -2,7 +2,7 @@
   "name": "wavex-os",
   "version": "0.1.0",
   "description": "Open-source operating system for running an AI agent company. Clone, run, configure your fleet in 45 minutes.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "engines": {
