@@ -76,110 +76,94 @@ function runClaudeForPillar1Enrichment(prompt: string): Promise<Record<string, u
   });
 }
 
-/** Build the enrichment prompt. We pass the raw input + manual_context
- *  + the heuristic-derived starting point so claude can either confirm
- *  or correct the regex-output. */
-function buildPillar1EnrichmentPrompt(opts: {
+// WAVAAAA-153: Consolidated Pillar 1 BYOC extraction — 1 call instead of 2.
+//
+// Prior design (2-step): vendor handlePillar1 ran regex heuristics for the
+// manual_context path, then a second BYOC call "refined" those heuristics.
+// The heuristic step invented values (ideal_customer_profile: "enterprise ops
+// teams") that the refinement step often failed to correct. Two T2 calls,
+// fabricated intermediates, and $0.70/run.
+//
+// New design: a single BYOC call extracts ALL fields directly from the
+// founder's text with no heuristic starting point. Used as the fallback when
+// the combined tier-router path (WAVAAAA-152) is unavailable (offline, Pool A
+// shim broken, etc.).
+function buildConsolidatedPillar1Prompt(opts: {
   orgName: string;
   rawInput: string;
-  manualContext: string | undefined;
-  heuristicGuess: {
-    industry_hint?: string;
-    business_model_hint?: string;
-    ideal_customer_profile?: string;
-    competitive_position?: string;
-    primary_acquisition_channel?: string;
-    product_maturity_signal?: string;
-    has_product?: boolean;
-    differentiator_hypothesis?: string;
-    primary_friction_hypothesis?: string;
-  };
+  manualContext: string;
 }): string {
-  const heuristic = JSON.stringify(opts.heuristicGuess, null, 2);
-  const ctx = opts.manualContext ?? "";
-  return `You are refining a customer's Pillar 1 onboarding capture. We already ran a regex-based heuristic to extract structured signals from the founder's free-text. Your job is to CORRECT and TIGHTEN the heuristic output using the actual context — the heuristic often invents plausible-sounding fields (e.g. "ideal_customer_profile: enterprise ops teams") that don't match the founder's actual description.
+  return `You are a startup intelligence assistant. A founder described their company below. Extract ALL structured signals from what they actually said — do not invent anything not present in the text.
 
 ORG NAME: ${opts.orgName}
 
-RAW INPUT FROM FOUNDER:
+RAW INPUT:
 ${opts.rawInput}
 
-FOUNDER'S DETAILED CONTEXT:
-${ctx}
+FOUNDER'S DESCRIPTION:
+${opts.manualContext}
 
-HEURISTIC OUTPUT (refine this):
-${heuristic}
-
-Return ONLY a single-line JSON object with the following keys, each derived from the founder's ACTUAL words (not invented):
+Return ONLY a single JSON object (no prose, no backticks, no code fences):
 {
-  "industry_hint": "<short tag, lowercase_snake_case>",
-  "business_model_hint": "<short tag, lowercase_snake_case>",
-  "ideal_customer_profile": "<one short phrase describing who specifically uses this>",
-  "competitive_position": "<emerging | challenger | leader>",
-  "primary_acquisition_channel": "<lowercase_snake_case>",
-  "product_maturity_signal": "<pre_alpha | alpha | beta | ga>",
-  "has_product": <boolean>,
-  "differentiator_hypothesis": "<one sentence, founder-authored phrasing if possible>",
-  "primary_friction_hypothesis": "<one sentence naming the most plausible go-to-market friction>"
+  "company_context": "<150-300 word prose summary of what they do, who they serve, and how they make money — drawn only from what the founder said>",
+  "industry_hint": "<one of: dev_tools|b2b_saas|consumer_mobile|consumer_ai|consumer_hardware|dtc_ecommerce|fintech|fintech_retail|healthtech|edtech|legal_tech|marketplace|agency_services|services_to_saas|dev_infrastructure|enterprise_saas|b2c|unknown>",
+  "business_model_hint": "<one of: subscription|usage_based|one_time|marketplace|open_core|unknown>",
+  "ideal_customer_profile": "<≤60 chars — who specifically uses this, in the founder's own words>",
+  "revenue_model": "<≤40 chars — how money is made>",
+  "competitive_position": "<one of: emerging|challenger|leader|category_leader|vertical_specialist|niche|unvalidated>",
+  "primary_acquisition_channel": "<one of: content_seo|outbound_sales|referral|paid_ads|partnerships|waitlist|community_led|creator_led|unspecified>",
+  "product_maturity_signal": "<one of: pre_mvp|mvp|ga|mature|legacy>",
+  "tone_signal": "<one of: technical|friendly|authoritative|playful|enterprise>",
+  "primary_friction_hypothesis": "<≤200 chars — where this company's customers likely hit friction>",
+  "differentiator_hypothesis": "<≤200 chars — what makes them distinct, in the founder's own framing>",
+  "has_product": <true or false>
 }
 
 Hard rules:
-- If the founder's context names a specific ICP (e.g. "mobile-app teams"), use that — never substitute generic categories like "enterprise ops teams".
-- If they say "pre-revenue" or "no paying customers yet", set competitive_position to "emerging".
-- If they describe a working product, has_product = true.
-- For differentiator_hypothesis, paraphrase the founder's own framing — don't invent benefits they didn't claim.
-- Do not output prose. JSON only. No backticks.`;
+- Use ONLY what the founder said. If they name a specific ICP (e.g. "mobile-app QA teams") use that verbatim — never substitute "enterprise ops teams" or similar generic categories.
+- If a field genuinely cannot be determined, use "unknown" for enum fields, "unspecified" for open strings, true for has_product.
+- If they say "pre-revenue" or "no paying customers", set competitive_position to "emerging" and has_product to false.
+- For differentiator_hypothesis, paraphrase the founder's framing — do not invent benefits they didn't claim.`;
 }
 
-async function maybeEnrichPillar1WithBYOC(
-  body: { org_name: string; raw_input: string; manual_context?: string },
-  heuristicResult: Awaited<ReturnType<typeof handlePillar1>>,
-): Promise<typeof heuristicResult | null> {
-  // Only fire when the vendored handler took the manual_capture path.
-  const result = heuristicResult as unknown as Record<string, unknown>;
-  if (result.enrichment_status !== "manual_capture") return null;
-  // Need enough context to do better than regex.
-  if (!body.manual_context || body.manual_context.length < 40) return null;
-
-  const prompt = buildPillar1EnrichmentPrompt({
-    orgName: body.org_name,
-    rawInput: body.raw_input,
-    manualContext: body.manual_context,
-    heuristicGuess: {
-      industry_hint: result.industry_hint as string | undefined,
-      business_model_hint: result.business_model_hint as string | undefined,
-      ideal_customer_profile: result.ideal_customer_profile as string | undefined,
-      competitive_position: result.competitive_position as string | undefined,
-      primary_acquisition_channel: result.primary_acquisition_channel as string | undefined,
-      product_maturity_signal: result.product_maturity_signal as string | undefined,
-      has_product: result.has_product as boolean | undefined,
-      differentiator_hypothesis: result.differentiator_hypothesis as string | undefined,
-      primary_friction_hypothesis: result.primary_friction_hypothesis as string | undefined,
-    },
-  });
-
+/** Single consolidated BYOC extraction for the manual_context fallback path.
+ *  Replaces the 2-step (vendor heuristics → BYOC refinement) with one call.
+ *  Returns null if claude is unavailable or times out; caller falls back to
+ *  vendor heuristics in that case. */
+async function consolidatedPillar1Enrich(opts: {
+  orgName: string;
+  rawInput: string;
+  manualContext: string;
+}): Promise<Pillar1Response | null> {
+  const prompt = buildConsolidatedPillar1Prompt(opts);
   const refined = await runClaudeForPillar1Enrichment(prompt);
   if (!refined) return null;
 
-  // Merge the refined fields over the heuristic. Only overwrite keys
-  // claude provided AND that look well-formed. Stamp `enrichment_status`
-  // and `enriched_via` so the audit trail shows the BYOC pass ran.
-  const merged = {
-    ...result,
-    industry_hint: typeof refined.industry_hint === "string" ? refined.industry_hint : result.industry_hint,
-    business_model_hint: typeof refined.business_model_hint === "string" ? refined.business_model_hint : result.business_model_hint,
-    ideal_customer_profile: typeof refined.ideal_customer_profile === "string" ? refined.ideal_customer_profile : result.ideal_customer_profile,
-    competitive_position: typeof refined.competitive_position === "string" ? refined.competitive_position : result.competitive_position,
-    primary_acquisition_channel: typeof refined.primary_acquisition_channel === "string" ? refined.primary_acquisition_channel : result.primary_acquisition_channel,
-    product_maturity_signal: typeof refined.product_maturity_signal === "string" ? refined.product_maturity_signal : result.product_maturity_signal,
-    has_product: typeof refined.has_product === "boolean" ? refined.has_product : result.has_product,
-    differentiator_hypothesis: typeof refined.differentiator_hypothesis === "string" ? refined.differentiator_hypothesis : result.differentiator_hypothesis,
-    primary_friction_hypothesis: typeof refined.primary_friction_hypothesis === "string" ? refined.primary_friction_hypothesis : result.primary_friction_hypothesis,
-    enrichment_status: "byoc_refined",
-    enriched_via: "claude_oauth" as const,
+  const s = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  const sliced = (v: unknown, max: number): string | undefined =>
+    typeof v === "string" ? v.slice(0, max) : undefined;
+
+  return {
+    org_name: opts.orgName,
+    company_context: sliced(refined.company_context, 1200) ?? opts.manualContext.slice(0, 1200),
+    enrichment_status: "manual_capture",
+    has_product: typeof refined.has_product === "boolean" ? refined.has_product : true,
+    industry_hint: s(refined.industry_hint) ?? "unknown",
+    business_model_hint: s(refined.business_model_hint) ?? "subscription",
+    ideal_customer_profile: s(refined.ideal_customer_profile),
+    revenue_model: s(refined.revenue_model),
+    competitive_position: s(refined.competitive_position),
+    primary_acquisition_channel: s(refined.primary_acquisition_channel),
+    product_maturity_signal: s(refined.product_maturity_signal) as
+      Pillar1Response["product_maturity_signal"],
+    tone_signal: s(refined.tone_signal) as Pillar1Response["tone_signal"],
+    primary_friction_hypothesis: sliced(refined.primary_friction_hypothesis, 200),
+    differentiator_hypothesis: sliced(refined.differentiator_hypothesis, 200),
+    raw_input: opts.rawInput,
     enriched_at: new Date().toISOString(),
-  };
-  return merged as unknown as typeof heuristicResult;
+    enriched_via: "claude_oauth" as const,
+  } as Pillar1Response;
 }
 
 // ── Combined Pillar 1 enrichment (WAVAAAA-157) ─────────────────────────────
@@ -264,7 +248,8 @@ Return ONLY this JSON object — no prose, no markdown fences:
   "product_maturity_signal": "pre_mvp|mvp|ga|mature|legacy",
   "tone_signal": "technical|friendly|authoritative|playful|enterprise",
   "primary_friction_hypothesis": "≤200 chars",
-  "differentiator_hypothesis": "≤200 chars"
+  "differentiator_hypothesis": "≤200 chars",
+  "has_product": true
 }`;
 }
 
@@ -304,7 +289,7 @@ async function runCombinedPillar1Enrichment(opts: {
     org_name: opts.orgName,
     company_context: p.company_context.slice(0, 3000),
     enrichment_status: "enriched",
-    has_product: true,
+    has_product: typeof p.has_product === "boolean" ? p.has_product : true,
     industry_hint: typeof p.industry_hint === "string" ? p.industry_hint : "unknown",
     business_model_hint: typeof p.business_model_hint === "string" ? p.business_model_hint : "subscription",
     ideal_customer_profile: typeof p.ideal_customer_profile === "string" ? p.ideal_customer_profile : null,
@@ -478,15 +463,29 @@ export function registerPillarRoutes(app: FastifyInstance): void {
           deterministicOverride: combined,
         });
       } else {
-        // Fallback: vendored deep-dive T2 + BYOC refinement (original path).
-        const vendored = await handlePillar1({
+        // Fallback: combined tier-router unavailable. For manual_context, use a
+        // single consolidated BYOC call (WAVAAAA-153) instead of the prior
+        // 2-step heuristic + refinement. For URL inputs, fall through to the
+        // vendored deep-dive T2.
+        if (body.manual_context && body.manual_context.trim().length >= 40) {
+          const byoc = await consolidatedPillar1Enrich({
+            orgName: body.org_name,
+            rawInput: body.raw_input,
+            manualContext: body.manual_context,
+          }).catch(() => null);
+          if (byoc) {
+            await updatePillar(body.companyId, "pillar_1", byoc);
+            return { ok: true, response: byoc };
+          }
+          // BYOC also unavailable: fall through to vendor heuristics below.
+        }
+        // URL path or double-fallback: vendored deep-dive T2 (no BYOC refinement).
+        final = await handlePillar1({
           org_name: body.org_name,
           raw_input: body.raw_input,
           companyId: body.companyId,
           manual_context: body.manual_context,
         });
-        const enriched = await maybeEnrichPillar1WithBYOC(body, vendored).catch(() => null);
-        final = (enriched ?? vendored) as Pillar1Response;
       }
 
       await updatePillar(body.companyId, "pillar_1", final);
