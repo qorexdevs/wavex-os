@@ -3,18 +3,53 @@
  *  Runs hourly. Finds users who:
  *    - dismissed the referral modal ≥24h ago
  *    - have never received Email B
- *  Sends Email B (provider call stubbed — blocked on WAVAAAA-105 for template
- *  copy), then marks referral_email_b_sent_at to prevent re-sends.
+ *  Renders Email B template (copy from WAVAAAA-105), sends via Resend API,
+ *  then marks referral_email_b_sent_at to prevent re-sends.
  *
- *  The `sendReferralEmailB` stub logs but does NOT mark the row as sent,
- *  so all eligible users will be retried each hour until the real provider
- *  call is wired. Replace the stub body once WAVAAAA-105 is merged. */
+ *  Required env vars:
+ *    WAVEX_EMAIL_API_KEY   — Resend API key (re:...) — if absent, logs only
+ *    WAVEX_EMAIL_FROM      — sender address, e.g. "Tony Apple QA <noreply@tonyappleqa.com>"
+ *    WAVEX_APP_URL         — base URL for referral links, e.g. "https://app.tonyappleqa.com" */
 
-import { and, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, isNotNull, isNull, lt } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { getDb, runMigrations, users } from "@wavex-os/db";
 
-// ─── email stub ────────────────────────────────────────────────────────────
+// ─── template (Email B copy from WAVAAAA-105) ──────────────────────────────
+
+const PRODUCT_NAME = "Tony Apple QA";
+
+const EMAIL_B_SUBJECT = `Your ${PRODUCT_NAME} referral link is still waiting`;
+
+function emailBTextBody(referralLink: string): string {
+  return `Hi,
+
+You closed the referral panel earlier — no worries. Your personal link is still here whenever you're ready:
+
+  ${referralLink}
+
+Each person who signs up through your link strengthens your team's presence on ${PRODUCT_NAME}. Takes 10 seconds to share.
+
+— The ${PRODUCT_NAME} team
+
+---
+You're receiving this because you're a ${PRODUCT_NAME} user.
+Manage your notification preferences in your account settings.`;
+}
+
+function emailBHtmlBody(referralLink: string): string {
+  return `<p>Hi,</p>
+<p>You closed the referral panel earlier — no worries. Your personal link is still here whenever you're ready:</p>
+<p style="text-align:center;margin:24px 0">
+  <a href="${referralLink}" style="background:#000;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Share my link</a>
+</p>
+<p>Each person who signs up through your link strengthens your team's presence on ${PRODUCT_NAME}. Takes 10 seconds to share.</p>
+<p>— The ${PRODUCT_NAME} team</p>
+<hr>
+<p style="font-size:12px;color:#666">You're receiving this because you're a ${PRODUCT_NAME} user. Manage your notification preferences in your account settings.</p>`;
+}
+
+// ─── Resend email provider ─────────────────────────────────────────────────
 
 interface EligibleUser {
   id: string;
@@ -22,18 +57,50 @@ interface EligibleUser {
   referralCode: string | null;
 }
 
-/**
- * Sends Email B to a single user.
- * BLOCKED on WAVAAAA-105 — replace this stub once the template copy and
- * provider integration land.
- */
 async function sendReferralEmailB(user: EligibleUser): Promise<{ sent: boolean }> {
-  // TODO(WAVAAAA-105): wire transactional email provider with Email B template
-  console.warn(
-    `[referral-email-b] stub — would send Email B to user=${user.id} email=${user.email ?? "(unknown)"}; ` +
-    `blocked on WAVAAAA-105 for template copy`
-  );
-  return { sent: false };
+  const apiKey = process.env.WAVEX_EMAIL_API_KEY;
+  const fromAddress = process.env.WAVEX_EMAIL_FROM ?? `${PRODUCT_NAME} <noreply@tonyappleqa.com>`;
+  const appUrl = (process.env.WAVEX_APP_URL ?? "https://app.tonyappleqa.com").replace(/\/$/, "");
+
+  if (!user.email) {
+    console.warn(`[referral-email-b] skipping user=${user.id}: no email on record`);
+    return { sent: false };
+  }
+
+  const referralLink = user.referralCode
+    ? `${appUrl}/signup?ref=${encodeURIComponent(user.referralCode)}`
+    : appUrl;
+
+  if (!apiKey) {
+    console.warn(
+      `[referral-email-b] WAVEX_EMAIL_API_KEY not set — would send Email B to ${user.email}; skipping`
+    );
+    return { sent: false };
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromAddress,
+      to: [user.email],
+      subject: EMAIL_B_SUBJECT,
+      text: emailBTextBody(referralLink),
+      html: emailBHtmlBody(referralLink),
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error(`[referral-email-b] Resend error for user=${user.id}: ${res.status} ${detail}`);
+    return { sent: false };
+  }
+
+  console.log(`[referral-email-b] sent Email B to user=${user.id} (${user.email})`);
+  return { sent: true };
 }
 
 // ─── migrations guard ──────────────────────────────────────────────────────
