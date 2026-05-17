@@ -8,6 +8,10 @@
  *           Persists the current wizard step (1–3) so the wizard resumes at
  *           the correct step after a page refresh.
  *           Returns 200 { ok: true, user } on success.
+ *    PATCH /api/users/:id/wizard-repo
+ *           Persists the GitHub repo selected in wizard step 1.
+ *           Body: { repo: string } (e.g. "owner/repo-name")
+ *           Returns 200 { ok: true, user } on success.
  *    PATCH /api/users/:id/complete-wizard
  *           Sets is_new_user = false and records wizard_completed_at.
  *           Returns 200 { ok: true, user } on success. */
@@ -88,6 +92,43 @@ export function registerUserRoutes(app: FastifyInstance): void {
       .onConflictDoUpdate({
         target: users.id,
         set: { wizardStep: step, updatedAt: now },
+      })
+      .returning();
+
+    return { ok: true, user: updated };
+  });
+
+  /** PATCH /api/users/:id/wizard-repo
+   *  Saves the GitHub repo the user selected in wizard step 1. */
+  app.patch("/api/users/:id/wizard-repo", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+
+    const { id: targetId } = req.params as { id: string };
+    const actor = ar.actor!;
+    const callerId = actor.type === "board" ? actor.userId : actor.agentId;
+    const isAdmin = actor.type === "board" && (actor.source === "local_implicit" || actor.isInstanceAdmin);
+    if (!isAdmin && callerId !== targetId) {
+      return reply.status(403).send({ error: "Cannot update wizard repo for another user" });
+    }
+
+    const { repo } = req.body as { repo: string };
+    if (typeof repo !== "string" || !repo.includes("/")) {
+      return reply.status(400).send({ error: "repo must be in owner/name format" });
+    }
+
+    await ensureMigrations();
+    const db = await getDb();
+    const now = new Date();
+    const [updated] = await db
+      .insert(users)
+      .values({ id: targetId, wizardRepo: repo, updatedAt: now })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: { wizardRepo: repo, updatedAt: now },
       })
       .returning();
 

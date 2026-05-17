@@ -6,6 +6,7 @@ export const users = pgTable("users", {
   isNewUser: boolean("is_new_user").notNull().default(true),
   wizardStep: integer("wizard_step").notNull().default(1),
   wizardCompletedAt: timestamp("wizard_completed_at", { withTimezone: true }),
+  wizardRepo: text("wizard_repo"),
   // Referral v1 — set by POST /api/referrals/generate-code
   referralCode: text("referral_code"),
   // Referral v1 — set by POST /api/referrals/dismiss (T+0)
