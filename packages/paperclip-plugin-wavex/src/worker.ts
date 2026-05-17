@@ -378,6 +378,53 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // connectors-marketplace — proxies the wavex-os op-omega-server's
+    //   /api/connectors/marketplace endpoint. Returns the FEATURED_TOOLKITS
+    //   catalog merged with the customer's live connector state for the
+    //   most-recently-active company on this install.
+    // -------------------------------------------------------------------
+    ctx.data.register("connectors-marketplace", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        const r = await ctx.http.fetch(`${base}/api/connectors/marketplace?companyId=auto`);
+        if (!r.ok) {
+          return {
+            connectors: [],
+            source: "wavex-api-error",
+            status: r.status,
+            company_id: null,
+          };
+        }
+        const body = (await r.json()) as {
+          ok: boolean;
+          company_id: string | null;
+          connectors: Array<{
+            slug: string;
+            display_name: string;
+            category: string;
+            path: string;
+            status: string;
+            oauth_initiate_url?: string;
+            docs_url?: string;
+          }>;
+        };
+        return {
+          connectors: body.connectors,
+          source: "wavex-api",
+          company_id: body.company_id,
+        };
+      } catch (err) {
+        return {
+          connectors: [],
+          source: "exception",
+          error: String(err),
+          company_id: null,
+        };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // subscription-info — looks at the subscriptions table + hire count.
     // -------------------------------------------------------------------
     ctx.data.register("subscription-info", async () => {

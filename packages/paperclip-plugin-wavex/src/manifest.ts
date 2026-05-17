@@ -24,6 +24,8 @@ const DELIVERABLES_SLOT = "wavex-deliverables";
 const FLEET_KPIS_SLOT = "wavex-fleet-kpis";
 const DELIVERABLES_THROUGHPUT_SLOT = "wavex-deliverables-throughput";
 const AGENT_STATUS_SLOT = "wavex-agent-status";
+// BYOC product surface: customer-discoverable connector catalog.
+const CONNECTORS_MARKETPLACE_SLOT = "wavex-connectors-marketplace";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -78,6 +80,12 @@ const manifest: PaperclipPluginManifestV1 = {
         id: AGENT_STATUS_SLOT,
         displayName: "WaveX Agent Status",
         exportName: "AgentStatusWidget",
+      },
+      {
+        type: "dashboardWidget",
+        id: CONNECTORS_MARKETPLACE_SLOT,
+        displayName: "WaveX Connectors Marketplace",
+        exportName: "ConnectorsMarketplaceWidget",
       },
       {
         type: "sidebar",

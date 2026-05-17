@@ -430,6 +430,181 @@ export function AgentStatusWidget(_: PluginWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard widget — Connectors Marketplace (BYOC connector catalog)
+// ---------------------------------------------------------------------------
+
+interface ConnectorRow {
+  slug: string;
+  display_name: string;
+  category: string;
+  path: "mcp" | "oauth" | "key" | "unsupported";
+  status: "connected" | "pending" | "available" | "needs_key" | "skipped";
+  oauth_initiate_url?: string;
+  docs_url?: string;
+}
+
+interface ConnectorsMarketplaceResponse {
+  connectors: ConnectorRow[];
+  source: string;
+  company_id: string | null;
+}
+
+const PATH_LABEL: Record<ConnectorRow["path"], string> = {
+  mcp: "MCP",
+  oauth: "OAuth",
+  key: "API key",
+  unsupported: "Not supported",
+};
+
+const PATH_COLOR: Record<ConnectorRow["path"], string> = {
+  mcp: "#a78bfa",
+  oauth: "#4ade80",
+  key: "#fbbf24",
+  unsupported: "#8a8f98",
+};
+
+const STATUS_BADGE: Record<ConnectorRow["status"], { label: string; color: string }> = {
+  connected: { label: "Connected", color: "#4ade80" },
+  pending: { label: "Pending", color: "#fbbf24" },
+  available: { label: "Available", color: "#8a8f98" },
+  needs_key: { label: "Needs key", color: "#fbbf24" },
+  skipped: { label: "Skipped", color: "#6b7280" },
+};
+
+export function ConnectorsMarketplaceWidget(_: PluginWidgetProps) {
+  const { data, loading, error } = usePluginData<ConnectorsMarketplaceResponse>(
+    "connectors-marketplace",
+    {},
+  );
+
+  if (loading) return <SkeletonCard label="WaveX Connectors Marketplace" />;
+  if (error) {
+    return (
+      <Card label="WaveX Connectors Marketplace">
+        <div style={{ color: "#ff6b6b" }}>Couldn't reach WaveX: {error.message}</div>
+      </Card>
+    );
+  }
+  if (!data || data.connectors.length === 0) {
+    return (
+      <Card label="WaveX Connectors Marketplace">
+        <div style={{ opacity: 0.7 }}>
+          {data?.source === "wavex-api-error" || data?.source === "exception"
+            ? "Couldn't fetch the connector catalog. Is the wavex-os mock-core running on :3101?"
+            : "No connectors discovered yet — finish onboarding to populate the catalog."}
+        </div>
+      </Card>
+    );
+  }
+
+  // Group by category for a tidier render.
+  const byCategory = data.connectors.reduce<Record<string, ConnectorRow[]>>((acc, c) => {
+    if (!acc[c.category]) acc[c.category] = [];
+    acc[c.category]!.push(c);
+    return acc;
+  }, {});
+  const connectedCount = data.connectors.filter((c) => c.status === "connected").length;
+  const availableCount = data.connectors.filter((c) => c.status === "available").length;
+
+  return (
+    <Card label="WaveX Connectors Marketplace">
+      <div style={{ display: "flex", gap: 12, fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
+        <span><b style={{ color: "#4ade80" }}>{connectedCount}</b> connected</span>
+        <span><b style={{ color: WAVEX_COLOR }}>{availableCount}</b> available</span>
+        <span>· {data.connectors.length} total</span>
+      </div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {Object.entries(byCategory).map(([cat, list]) => (
+          <div key={cat}>
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                opacity: 0.5,
+                marginBottom: 4,
+              }}
+            >
+              {cat}
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {list.map((c) => {
+                const badge = STATUS_BADGE[c.status];
+                const isConnected = c.status === "connected" || c.status === "pending";
+                const actionHref = c.docs_url ?? c.oauth_initiate_url ?? "#";
+                return (
+                  <div
+                    key={c.slug}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: "rgba(255,255,255,0.02)",
+                      fontSize: 13,
+                    }}
+                  >
+                    <span style={{ fontWeight: 500, flex: 1 }}>{c.display_name}</span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        color: PATH_COLOR[c.path],
+                        background: `color-mix(in srgb, ${PATH_COLOR[c.path]} 12%, transparent)`,
+                      }}
+                    >
+                      {PATH_LABEL[c.path]}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        color: badge.color,
+                        background: `color-mix(in srgb, ${badge.color} 12%, transparent)`,
+                      }}
+                    >
+                      {badge.label}
+                    </span>
+                    {!isConnected && c.docs_url ? (
+                      <a
+                        href={actionHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          color: WAVEX_COLOR,
+                          background: WAVEX_BG,
+                          textDecoration: "none",
+                          border: `1px solid ${WAVEX_COLOR}`,
+                          minWidth: 56,
+                          textAlign: "center",
+                        }}
+                      >
+                        Connect
+                      </a>
+                    ) : (
+                      <span style={{ minWidth: 56 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.4, marginTop: 8 }}>
+        Connect via your customer subscription · BYOC connectors marketplace
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar — current company's inception status
 // ---------------------------------------------------------------------------
 
