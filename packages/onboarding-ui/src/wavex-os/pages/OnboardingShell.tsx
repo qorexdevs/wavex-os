@@ -353,7 +353,7 @@ export function OnboardingShell() {
         role: "assistant",
         text: manualContext
           ? "Working with what you described…"
-          : "Got it. Reading your site and figuring out the shape of this…",
+          : "Got it — reading your site. This usually takes 60–90 seconds.",
         slot: { kind: "thinking", phase: "pillar-1" },
       },
     });

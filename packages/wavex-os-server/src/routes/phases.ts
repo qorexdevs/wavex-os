@@ -261,7 +261,9 @@ export function registerPhaseRoutes(app: FastifyInstance): void {
         const result = await generateConnectorManifest({
           companyId: parsed.data.companyId,
           responses,
-          skipInference: parsed.data.skipInference,
+          // Default to T0 (deterministic matrix) — T2 only when caller explicitly
+          // passes skipInference: false (e.g., the "Re-refine with T2" button).
+          skipInference: parsed.data.skipInference ?? true,
           liveConnections: live,
         });
         return { ok: true, manifest: result.manifest, source: result.source, warnings: result.warnings };

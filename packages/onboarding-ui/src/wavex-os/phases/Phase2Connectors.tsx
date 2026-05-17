@@ -8,7 +8,6 @@ import type { ConnectorManifest, ConnectorEntry } from "@wavex-os/plugin-onboard
 import { Card, H2, NavRow, P } from "../components/primitives";
 import { T2ProgressIndicator } from "../components/T2ProgressIndicator";
 import { AddConnectorWidget } from "../components/AddConnectorWidget";
-import { isT0FastMode } from "../lib/dev-flags";
 
 interface Props { companyId: string; onComplete: () => void; }
 
@@ -73,7 +72,9 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
           return;
         }
       } catch { /* fall through to generate */ }
-      if (alive) await generate(isT0FastMode());
+      // Default to T0 (deterministic matrix) on first visit; T2 is opt-in via
+      // the "Re-refine with T2" button below.
+      if (alive) await generate(true);
     })();
     return () => { alive = false; };
   }, [companyId]);
@@ -83,9 +84,9 @@ export function Phase2Connectors({ companyId, onComplete }: Props) {
       <H2>Phase 2 — Connectors</H2>
       <P>
         Derived from Pillars 1-5. <strong>Required</strong> connectors must be configured
-        before materialize; <strong>suggested</strong> can be added later. T2 enrichment
-        runs automatically — your Pillar 1 context (ICP, friction, differentiator) shapes
-        the per-connector rationale + can add/promote based on evidence.
+        before materialize; <strong>suggested</strong> can be added later. The deterministic
+        matrix runs by default — use <strong>↻ Re-refine with T2</strong> to apply AI
+        enrichment using your Pillar 1 context (ICP, friction, differentiator).
       </P>
 
       {error && <Card><p style={{ color: "var(--warning)", margin: 0 }}>✗ {error}</p></Card>}
