@@ -19,7 +19,8 @@
     "./inference": "./src/inference.ts",
     "./spend-intent": "./src/spend-intent.ts",
     "./login": "./src/login.ts",
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli.ts",
+    "./config": "./src/config.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

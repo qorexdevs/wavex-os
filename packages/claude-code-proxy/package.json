@@ -1,0 +1,32 @@
+{
+  "name": "@wavex-os/claude-code-proxy",
+  "version": "0.1.0",
+  "description": "Local Anthropic-compatible HTTP proxy that routes /v1/messages calls through Supabase Realtime to the operator's Mac. Customers point Claude Code at this proxy via ANTHROPIC_BASE_URL — Claude Code thinks it's talking to Anthropic directly, but every LLM call bills against the operator's Claude Max subscription via Pool B. Fakes SSE streaming on top of the non-streaming Realtime round-trip.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wavex-os-proxy": "./bin/wavex-os-proxy.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "node --import tsx ./src/cli.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.46.1",
+    "@wavex-os/cloud-client": "workspace:*",
+    "fastify": "^4.28.1",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
+  }
+}
