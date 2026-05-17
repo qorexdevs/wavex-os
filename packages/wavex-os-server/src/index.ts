@@ -44,6 +44,9 @@ import { registerConnectorsMarketplaceRoute } from "./routes/connectors-marketpl
 import { registerMcNarrateRoute } from "./routes/mc-narrate.js";
 import { registerActivationEventsRoute } from "./routes/activation-events.js";
 import { registerUserRoutes } from "./routes/users.js";
+import { registerPartnerEventsRoutes } from "./routes/partner-events.js";
+import { registerPartnerChecklistRoutes } from "./routes/partner-checklist.js";
+import { registerUpsellSignalsRoutes } from "./routes/upsell-signals.js";
 import { registerAuthEventsRoute } from "./routes/auth-events.js";
 import { registerSmokeTestEventsRoute } from "./routes/smoke-test-events.js";
 import { registerReferralRoutes } from "./routes/referrals.js";
@@ -95,6 +98,9 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerMcNarrateRoute(app);
   registerActivationEventsRoute(app);
   registerUserRoutes(app);
+  registerPartnerEventsRoutes(app);
+  registerPartnerChecklistRoutes(app);
+  registerUpsellSignalsRoutes(app);
   registerAuthEventsRoute(app);
   registerSmokeTestEventsRoute(app);
   registerReferralRoutes(app);
