@@ -1,6 +1,6 @@
 # Chat-First Onboarding — Smoke Test
 
-End-to-end happy path for the new `/onboarding-chat` shell. Run after pulling `feat/op-omega-chat-first`.
+End-to-end happy path for the new `/onboarding-chat` shell. Run after pulling `feat/wavex-os-chat-first`.
 
 ## Setup
 
@@ -39,14 +39,14 @@ Both `/onboarding` (legacy wizard) and `/onboarding-chat` (new shell) are live. 
 ## Dev flags
 
 - **`?t0=1`**: every T2 call returns deterministic fallback. TokenCounter total stays at $0. Theater Act 3 reads *"(quick draft)"*. End-to-end runtime under 60s.
-- **`?companyId=existing-slug`**: shell hydrates from `/op-omega/onboarding/status`. Pillars-1-5 already filled → chat would auto-advance past them (currently v1 just shows a welcome-back bubble; full resume hydration is v2 polish).
+- **`?companyId=existing-slug`**: shell hydrates from `/wavex-os/onboarding/status`. Pillars-1-5 already filled → chat would auto-advance past them (currently v1 just shows a welcome-back bubble; full resume hydration is v2 polish).
 
 ## Verifications
 
 - **TokenCounter accumulates** during streaming T2 phases (Pillar 1, Connector, Swarm, Workflow, Imprint).
 - **Workflow prefetch race**: with the SwarmStudio confirm and ImprintTheater, the workflow_manifest.json mtime should be within the last 10 minutes when finalize hits the route. Check by tailing the server logs — finalize should NOT call `generateWorkflowManifest` directly when prefetch succeeded; instead it reads from disk.
 - **Real elapsed time** in `T2ProgressIndicator`, not fake stage labels. Confirm by setting a long process — the bar reflects actual seconds and ETA percentile.
-- **No vendor modifications** — `vendor/op-omega/**` byte-identical to upstream.
+- **No vendor modifications** — `vendor/wavex-os/**` byte-identical to upstream.
 
 ## Known limitations (v1)
 

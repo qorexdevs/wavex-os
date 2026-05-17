@@ -28,19 +28,19 @@ specific toolkit + error message instead of generic worker failures.
 |---|---|---|
 | `SKILL_INITIAL_SWEEP.md` | Once, right after the customer finishes the tools step | Pings every connection. Files a `[connector-broken]` issue for each failure. Posts a single comment on a `[connector-summary]` issue listing OK + failed counts so the operator has a clean snapshot before activation. |
 | `SKILL_HEARTBEAT_SWEEP.md` | Every 30 minutes (or `WAVEX_CONNECTOR_SWEEP_MIN_INTERVAL_MIN` if set) | Same pings but quieter — only files an issue if a connector flips from healthy to broken since the last sweep. Logs results to `~/.wavex-os/instances/.../avatars/<id>/connector-health.jsonl`. |
-| `SKILL_RECOVER.md` | When the operator clicks "Reconnect" in the UI | Calls `/op-omega/onboarding/connectors/oauth/initiate` for the broken toolkit, returns the redirect URL, and waits for the callback. On success, closes the related broken-connector issue. |
+| `SKILL_RECOVER.md` | When the operator clicks "Reconnect" in the UI | Calls `/wavex-os/onboarding/connectors/oauth/initiate` for the broken toolkit, returns the redirect URL, and waits for the callback. On success, closes the related broken-connector issue. |
 
 ## Endpoint contract
 
-The agent calls these op-omega-server routes (live as of the F.5
+The agent calls these wavex-os-server routes (live as of the F.5
 follow-up; gated behind `COMPOSIO_API_KEY` — disabled mode returns
 empty results):
 
-- `POST /op-omega/onboarding/connectors/health-check`
+- `POST /wavex-os/onboarding/connectors/health-check`
   Body: `{ companyId, avatarId? }`
   → `{ results: [{ toolkit, connection_id, ok, error? }], all_healthy }`
 
-- `POST /op-omega/onboarding/connectors/oauth/initiate`
+- `POST /wavex-os/onboarding/connectors/oauth/initiate`
   Body: `{ companyId, userId?, avatarId?, toolkitSlug }`
   → `{ url, pendingConnectionId, needsLiveWiring? }`
 

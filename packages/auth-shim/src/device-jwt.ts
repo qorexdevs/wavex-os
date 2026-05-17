@@ -12,7 +12,7 @@
  * it in `~/.wavex-os/state/.env`; never commit it. The auth-shim
  * deliberately depends only on `node:crypto` so this validator can be
  * imported from any local service (inference-server, mock-core,
- * op-omega-server, future spend-intent proxy) without dragging a heavy
+ * wavex-os-server, future spend-intent proxy) without dragging a heavy
  * JWT library transitively into all of them.
  *
  * Claim shape minted by the cloud side (as documented by the

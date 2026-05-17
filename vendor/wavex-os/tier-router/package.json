@@ -1,0 +1,28 @@
+{
+  "name": "@wavex-os/plugin-tier-router",
+  "version": "0.1.0",
+  "description": "Routes outbound agent inference by tier (T0 deterministic / T1 Ollama local / T2 Claude Code via Max subscription / T2-overflow API). Consults @wavex-os/plugin-rate-limit-budget before every T2 routing decision.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

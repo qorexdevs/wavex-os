@@ -2,7 +2,7 @@
 
 **Purpose:** Given Pillar 1-4 answers, output a swarm manifest specifying which slots get filled, which template per slot, and the reports-to chain.
 
-**Caller:** `vendor/op-omega/onboarding/src/phases/phase-3-swarm/decision-matrix.ts`
+**Caller:** `vendor/wavex-os/onboarding/src/phases/phase-3-swarm/decision-matrix.ts`
 
 **Pool:** A — onboarding T2.
 
@@ -101,7 +101,7 @@ Return ONLY the JSON object.
 
 If the LLM call fails: wizard falls back to a deterministic decision-matrix tree based purely on the stage answer (no LLM). Deterministic version produces the right roster_shape every time but with less nuance in template_id selection — it picks the first template per slot that matches stage_fit, no GTM cross-check.
 
-The deterministic version is the V1 behavior (already shipped in `vendor/op-omega/onboarding/src/phases/phase-3-swarm/decision-matrix.ts`). The LLM call is an enhancement that adds GTM-fit selection on top.
+The deterministic version is the V1 behavior (already shipped in `vendor/wavex-os/onboarding/src/phases/phase-3-swarm/decision-matrix.ts`). The LLM call is an enhancement that adds GTM-fit selection on top.
 
 ## Why this prompt is bigger than ignition-kickoff
 

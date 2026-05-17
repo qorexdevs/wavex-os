@@ -3,7 +3,7 @@
  *  have explicit hand-authored affinities. Heuristics use the template's
  *  upstream division + filename keywords to assign reasonable defaults.
  *
- *  Output: packages/op-omega-server/src/selection/affinities-auto.ts
+ *  Output: packages/wavex-os-server/src/selection/affinities-auto.ts
  *  This file is GIT-COMMITTED (deterministic, repo-versioned) so the
  *  scorer doesn't need to do this work at runtime.
  *
@@ -18,8 +18,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const REGISTRY = path.join(ROOT, "packages", "agent-templates", "_registry.json");
-const OUT = path.join(ROOT, "packages", "op-omega-server", "src", "selection", "affinities-auto.ts");
-const EXPLICIT = path.join(ROOT, "packages", "op-omega-server", "src", "selection", "affinities.ts");
+const OUT = path.join(ROOT, "packages", "wavex-os-server", "src", "selection", "affinities-auto.ts");
+const EXPLICIT = path.join(ROOT, "packages", "wavex-os-server", "src", "selection", "affinities.ts");
 
 const args = process.argv.slice(2);
 const CHECK = args.includes("--check");

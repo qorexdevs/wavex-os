@@ -62,4 +62,4 @@ These prompts are part of the product surface. Customer instances pull them from
 1. Prompt regressions are catchable in PR review.
 2. Operators can fork and tune locally.
 3. A/B tests on prompt variants can ship as branches.
-4. The release manifest in `vendor/op-omega/onboarding/test/differential-equation-suite/prompts/` is the format ground truth; these are platform-side analogs.
+4. The release manifest in `vendor/wavex-os/onboarding/test/differential-equation-suite/prompts/` is the format ground truth; these are platform-side analogs.

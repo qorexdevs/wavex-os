@@ -1,6 +1,6 @@
 # Chat-First Onboarding — Overnight Audit Report
 
-**Branch:** `feat/op-omega-chat-first` (15+ commits ahead of `feat/op-omega-fidelity`)
+**Branch:** `feat/wavex-os-chat-first` (15+ commits ahead of `feat/wavex-os-fidelity`)
 **Date:** 2026-05-12 (overnight session)
 **Status:** Production-ready end-to-end. All known critical bugs resolved. Paperclip handoff verified working.
 
@@ -31,10 +31,10 @@ The chat-first onboarding at `/onboarding-chat` walks the full pipeline end-to-e
 HEAD →  fix(onboarding-ui): workflow runs real T2 + collapse stale thinking bubbles
         test(e2e): real-T2 walk uses focused scope + waits for Theater enabled
         fix(onboarding-ui): screenshot review feedback round
-        fix(op-omega-server): custom-only scope falls back to Operations
+        fix(wavex-os-server): custom-only scope falls back to Operations
         style(onboarding-ui): active-card accent + fade-in + skip-all credentials
         fix(onboarding-ui): collapse cards on submit + fast-mode Pillar 1 + e2e fast walk
-        feat(onboarding-ui, op-omega-server): centered hero + sub-fleet scope + smoke CLI
+        feat(onboarding-ui, wavex-os-server): centered hero + sub-fleet scope + smoke CLI
         test(e2e): chat-first walk for /onboarding-chat
         docs(onboarding): smoke test + UX primitives notes
         feat(onboarding-ui): pricing dialog mode + ActivateProgress
@@ -188,8 +188,8 @@ Topological sort runs in the bridge — parents hire before children. Kernel-inj
 ### Mount + state
 
 - `packages/onboarding-ui/src/main.tsx` mounts `OnboardingShell` at `/onboarding-chat`
-- Legacy `OmegaOnboarding` still mounted at `/onboarding` for parity comparison
-- State machine in `packages/onboarding-ui/src/op-omega/state/onboarding-reducer.ts`
+- Legacy `WavexOsOnboarding` still mounted at `/onboarding` for parity comparison
+- State machine in `packages/onboarding-ui/src/wavex-os/state/onboarding-reducer.ts`
 - Phase union:
   ```ts
   | { kind: "welcome" }
@@ -206,7 +206,7 @@ Topological sort runs in the bridge — parents hire before children. Kernel-inj
 
 ### File registry
 
-**Pages** (`packages/onboarding-ui/src/op-omega/pages/`):
+**Pages** (`packages/onboarding-ui/src/wavex-os/pages/`):
 - `OnboardingShell.tsx` — the shell, ~900 lines: TopBar, ChatThread, ChatInput, EmptyState (hero), reducer wiring, all phase effects
 - `SwarmStudio.tsx` — full-screen org chart reveal (reuses OrgGraph from components)
 - `ImprintTheater.tsx` — three-act finale (MC race → winner reveal → streaming imprint)
@@ -232,7 +232,7 @@ Topological sort runs in the bridge — parents hire before children. Kernel-inj
 - `scope-detect.ts` — keyword detector for sub-fleet pre-fill
 - `workflow-prefetch.ts` — present but unused (deprecated by workflow-in-Theater refactor)
 
-**Backend** (`packages/op-omega-server/src/routes/phases.ts` + `pillars.ts` + `activate.ts`):
+**Backend** (`packages/wavex-os-server/src/routes/phases.ts` + `pillars.ts` + `activate.ts`):
 - All routes wrapped in `withTokenAccounting`
 - Scope filter applied in `/swarm-manifest` POST handler
 - Finalize freshness check reuses prefetched workflow if mtime < 10 min
@@ -304,7 +304,7 @@ Chat-first adds one new artifact: `scope.json` (sub-fleet selection).
 
 ### ✅ Paperclip handoff parity
 
-Identical bridge behavior. Both flows call `bridgeAgents(manifest, companyId, db)` → `handoffToPaperclip(manifest, companyId)` via the same `/api/instance/:id/activate` route. The handoff itself is in `packages/op-omega-server/src/bridge/paperclip-handoff.ts` — neither UI touches it directly.
+Identical bridge behavior. Both flows call `bridgeAgents(manifest, companyId, db)` → `handoffToPaperclip(manifest, companyId)` via the same `/api/instance/:id/activate` route. The handoff itself is in `packages/wavex-os-server/src/bridge/paperclip-handoff.ts` — neither UI touches it directly.
 
 ### ⚠️ Features in legacy that are NOT in chat-first
 
@@ -312,12 +312,12 @@ These are deliberate omissions or missing functionality. Listed in priority orde
 
 | Feature | Legacy file | Impact on inference quality | Status |
 |---|---|---|---|
-| **Refinement Panel** — post-finalize T2 guidance loop where the operator types prose like "emphasize international distribution" and T2 proposes structural changes (connector adds, workflow task additions, swarm overlays). Apply selectively + revert. | `phases/RefinementPanel.tsx` (vendor-side route `/op-omega/onboarding/analyze-refinement` + `/apply-refinement` + `/revert-refinement`) | **HIGH.** Lets the operator iterate on the finalized manifest before activate. Without it, the chat-first operator gets one-shot inference quality. | Missing — recommend adding as Theater Act 4 or as a chat turn after the launch button. ~1-2 hour implementation. |
+| **Refinement Panel** — post-finalize T2 guidance loop where the operator types prose like "emphasize international distribution" and T2 proposes structural changes (connector adds, workflow task additions, swarm overlays). Apply selectively + revert. | `phases/RefinementPanel.tsx` (vendor-side route `/wavex-os/onboarding/analyze-refinement` + `/apply-refinement` + `/revert-refinement`) | **HIGH.** Lets the operator iterate on the finalized manifest before activate. Without it, the chat-first operator gets one-shot inference quality. | Missing — recommend adding as Theater Act 4 or as a chat turn after the launch button. ~1-2 hour implementation. |
 | **Redundancy Review** — pre-activate UI showing duplicate-template groups across the swarm with toggle to mute slots. | `components/RedundancyReview.tsx` (route `/api/instance/:id/redundancy` + `/mute-slot`) | **MEDIUM.** Prevents wasting Paperclip slots on functional duplicates. | Missing — could surface inside SwarmStudio or as a Theater pre-step. ~30 min implementation. |
 | **Pillar 1 inferred-signals panel** — legacy confirm screen shows ICP, competitive position, tone signal, primary acquisition channel as a preview before continue. Chat-first confirm card shows industry, business model, has-product, and `company_context` but not the deeper inferred signals. | `pillars/Pillar1.tsx:200-242` | **LOW.** All signals are persisted regardless; just not surfaced in the confirm card UI. | Missing — could expand `Pillar1ConfirmCard.tsx` to show all signals. ~15 min. |
 | **Pillar 3 baseline preview card** — shows the KPI defaults the system will seed based on `(product_state, stage)` selection. | `pillars/Pillar3.tsx:103-117` (via `previewBaseline()`) | **LOW.** Display-only; doesn't affect what gets seeded. | Missing in chat-first Pillar 3 prompt card. ~15 min. |
 | **Pillar 4 GTM profile card** — shows the derived gtm_profile_enum + which agents activate based on `(lead_sources, sales_motion)`. | `pillars/Pillar4.tsx:147-163` (via `deriveGtmProfile()`) | **LOW.** Same as above — display-only. | Missing in chat-first. ~15 min. |
-| **Pillar 5 Telegram test-send** — operator can fire a test message to verify bot token before continuing. | `pillars/Pillar5.tsx:53-68` (route `/op-omega/onboarding/pillar/5/test-send`) | **LOW.** Verification helper. | Missing in chat-first Pillar 5 prompt card. ~30 min — add a "Send test" button. |
+| **Pillar 5 Telegram test-send** — operator can fire a test message to verify bot token before continuing. | `pillars/Pillar5.tsx:53-68` (route `/wavex-os/onboarding/pillar/5/test-send`) | **LOW.** Verification helper. | Missing in chat-first Pillar 5 prompt card. ~30 min — add a "Send test" button. |
 | **HelpChat sidebar** — persistent conversational help anchored to whatever phase the operator is on. Backed by `getHelpChat` / `postHelpChat` API. | `components/HelpChat.tsx` (route `/api/instance/:id/help-chat`) | **NONE for inference quality**, but missing from chat-first UX. | Could be mounted as a side panel — but might feel redundant in a chat-first flow. Defer. |
 | **Pricing as full page** — legacy renders pricing as a dedicated step with 4-column grid; chat-first renders it as a dialog over dimmed Theater. | `pricing/Pricing.tsx` (legacy uses full-page mode, chat-first uses `dialogMode={true}`) | **NONE.** Same data, different layout. | Intentional difference. |
 | **"Skip T2 (T0 fast)" button on each phase** — legacy lets the operator opt out of inference per phase. Chat-first uses URL flag `?t0=1` globally instead. | All `phases/*.tsx` | **NONE.** Same capability, different ergonomics. | Intentional — chat-first centralizes the dev flag. |
@@ -346,7 +346,7 @@ These are deliberate omissions or missing functionality. Listed in priority orde
 
 5. **Investigate the connector "T2 + fallback" behavior.** Real T2 fires for the connector phase (~$0.16, 26s observed) but the on-disk `generated_by` field reads `T0 · decision-matrix-fallback`. This means the vendored generator's T2 returned terse output and fell back internally — operator paid for T2 but didn't get the T2 benefit. Worth probing whether the prompt or response handling could be improved. Vendor work — not blocking.
 
-6. **Token-accounting time-window attribution.** Imprint cost gets bundled into adjacent phase windows due to the existing time-window algorithm. Total cost is correct; per-phase attribution drifts. Recon noted this as "deferred: AsyncLocalStorage fix" — would require touching `packages/op-omega-server/src/lib/token-accounting.ts`. Not blocking.
+6. **Token-accounting time-window attribution.** Imprint cost gets bundled into adjacent phase windows due to the existing time-window algorithm. Total cost is correct; per-phase attribution drifts. Recon noted this as "deferred: AsyncLocalStorage fix" — would require touching `packages/wavex-os-server/src/lib/token-accounting.ts`. Not blocking.
 
 7. **Optionally restore parallelization.** The current architecture runs workflow + finalize serially inside Theater (adds 30-90s to wait time). The previous attempt at parallelization via `state/workflow-prefetch.ts` had a race condition. If you want to optimize Theater latency, the cleanest path is for SwarmStudio to AWAIT the prefetch HTTP response before transitioning to Theater — adds 0-30s to Studio confirm but Theater becomes faster.
 
@@ -382,10 +382,10 @@ open http://127.0.0.1:5173/onboarding
 
 | File | Change |
 |---|---|
-| `packages/onboarding-ui/src/op-omega/pages/OnboardingShell.tsx` | Persistent dark backdrop during full-screen phases; chat + top bar + input not rendered then |
+| `packages/onboarding-ui/src/wavex-os/pages/OnboardingShell.tsx` | Persistent dark backdrop during full-screen phases; chat + top bar + input not rendered then |
 | `AUDIT_REPORT.md` | This file (new) |
 
-Branch commits since the last user check-in: `b8d97df` (H1 backdrop fix + this audit report) is on `feat/op-omega-chat-first`. Run `git log --oneline` to see the full history.
+Branch commits since the last user check-in: `b8d97df` (H1 backdrop fix + this audit report) is on `feat/wavex-os-chat-first`. Run `git log --oneline` to see the full history.
 
 ---
 

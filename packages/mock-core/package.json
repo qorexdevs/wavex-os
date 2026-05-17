@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@wavex-os/db": "workspace:*",
-    "@wavex-os/op-omega-server": "workspace:*",
+    "@wavex-os/wavex-os-server": "workspace:*",
     "drizzle-orm": "^0.36.4",
     "fastify": "^4.28.1"
   },

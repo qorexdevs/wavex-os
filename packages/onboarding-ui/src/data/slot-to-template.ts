@@ -1,7 +1,7 @@
 /** Slot → templateId map (CLIENT mirror).
  *
- *  CANONICAL SOURCE: packages/op-omega-server/src/bridge/catalog.ts SLOT_TO_TEMPLATE.
- *  The server uses this at activation time to project op-omega's 33 dotted slots
+ *  CANONICAL SOURCE: packages/wavex-os-server/src/bridge/catalog.ts SLOT_TO_TEMPLATE.
+ *  The server uses this at activation time to project wavex-os's 33 dotted slots
  *  onto the wavex agent-templates registry. The client mirrors it so views that
  *  consume manifest.swarm_manifest.agents (Phase 3) can render with the same
  *  display name + origin badge that the post-Activate FleetGraph shows.

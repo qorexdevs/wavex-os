@@ -4,7 +4,7 @@
  *
  * Re-execs with `node --import tsx` so the TS sources in ../src/ can run
  * directly (cloud-client + auth-shim are workspace-linked TS sources, not
- * pre-built). This matches the op-omega-server pattern of "TS source is
+ * pre-built). This matches the wavex-os-server pattern of "TS source is
  * the source of truth, no separate build step".
  *
  * Usage:

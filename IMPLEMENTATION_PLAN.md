@@ -1,7 +1,7 @@
 # Implementation Plan — Demo-Scope: Pricing Screen
 
 **Status:** Plan mode. No code changes in this document.
-**Branch:** `feat/op-omega-fidelity` (PR #3 open).
+**Branch:** `feat/wavex-os-fidelity` (PR #3 open).
 **Scope:** Build the Pricing screen as a wizard step between Materialize-bridge and Paperclip-handoff. Everything else from the original prompt — Snapshot/Port, WaveX Agent, Flash-out, Demo Mode, Twilio integration — is deferred to a post-demo backlog at the bottom of this document.
 
 ---
@@ -16,7 +16,7 @@ You showed me a rendered pricing screen ("System Optimizer subscription" header,
 
 ### 1.2 Wizard flow today (relevant context)
 
-The current wavex onboarding sequence in `packages/onboarding-ui/src/op-omega/OmegaOnboarding.tsx`:
+The current wavex onboarding sequence in `packages/onboarding-ui/src/wavex-os/WavexOsOnboarding.tsx`:
 
 ```
 welcome → pillar-1 → pillar-2 → pillar-3 → pillar-4 → pillar-5
@@ -53,7 +53,7 @@ No `tier_subscriptions` table, no `TierConfig` const, no enforcement middleware.
 
 Two new files, one modified file. That's it.
 
-### 2.1 `packages/op-omega-server/src/config/pricing.ts` — new
+### 2.1 `packages/wavex-os-server/src/config/pricing.ts` — new
 
 The single source of truth for tier copy + structure. Server-side so the same const can power both the Pricing screen and (eventually) tier enforcement.
 
@@ -125,7 +125,7 @@ export const TIERS: TierConfig[] = [
 ];
 ```
 
-### 2.2 `packages/op-omega-server/src/routes/tiers.ts` — new
+### 2.2 `packages/wavex-os-server/src/routes/tiers.ts` — new
 
 Two endpoints. Both stubs for now.
 
@@ -146,7 +146,7 @@ Two endpoints. Both stubs for now.
 
 The POST handler doesn't write to a DB table yet — for the demo, it just acknowledges and lets the wizard advance. When tier enforcement ships later, this is where the `tier_subscriptions` row gets created.
 
-### 2.3 `packages/onboarding-ui/src/op-omega/pricing/Pricing.tsx` — new
+### 2.3 `packages/onboarding-ui/src/wavex-os/pricing/Pricing.tsx` — new
 
 Designed from the screenshot. Renders a 3-column grid with the 4th tier (Custom) wrapping to row 2, matching the layout in the image.
 
@@ -216,14 +216,14 @@ Design notes for matching the screenshot exactly:
 - Green checkmark icon before each feature line (`✓` or a small SVG)
 - Price uses size-mismatch: `$29` large/bold, `/ month` small/dim — same as screenshot
 
-### 2.4 `packages/onboarding-ui/src/op-omega/phases/Materialize.tsx` — modify
+### 2.4 `packages/onboarding-ui/src/wavex-os/phases/Materialize.tsx` — modify
 
 The current `activateAndNavigate()` runs bridge + handoff + window.open() in one shot. Split it:
 
 ```tsx
 // CURRENT (simplified):
 async function activateAndNavigate() {
-  const r = await opOmegaOnboardingApi.activate(companyId);  // bridges + handoffs server-side
+  const r = await wavexOsOnboardingApi.activate(companyId);  // bridges + handoffs server-side
   setActivated(r.inserted);
   setHandoff({ ... });
   if (r.paperclipHandoff.created.length > 0) {
@@ -234,14 +234,14 @@ async function activateAndNavigate() {
 
 // NEW:
 async function activateOnly() {
-  const r = await opOmegaOnboardingApi.activate(companyId);  // still runs bridge + handoff server-side
+  const r = await wavexOsOnboardingApi.activate(companyId);  // still runs bridge + handoff server-side
   setActivated(r.inserted);
   setHandoff({ ... });
   setPendingPaperclipUrl(r.paperclipHandoff.paperclipUrl);  // hold the URL, don't open yet
-  onAdvanceToPricing();  // tell OmegaOnboarding to render the Pricing phase
+  onAdvanceToPricing();  // tell WavexOsOnboarding to render the Pricing phase
 }
 
-// After Pricing returns (in OmegaOnboarding's handler):
+// After Pricing returns (in WavexOsOnboarding's handler):
 function proceedFromPricing(chosenTierId, origin) {
   if (pendingPaperclipUrl) {
     window.open(paperclipUiUrl(pendingPaperclipUrl), '_blank', 'noopener');
@@ -252,7 +252,7 @@ function proceedFromPricing(chosenTierId, origin) {
 
 Note: the server-side handoff already fired during `activate()`. The split is purely about WHEN we open the Paperclip tab + WHEN we redirect — to give the operator a moment to review pricing in between.
 
-### 2.5 `packages/onboarding-ui/src/op-omega/OmegaOnboarding.tsx` — modify
+### 2.5 `packages/onboarding-ui/src/wavex-os/WavexOsOnboarding.tsx` — modify
 
 Add `"pricing"` to the `Phase` union and to `VALID_PHASES`. Wire it into the phase-switch render block:
 
@@ -279,7 +279,7 @@ type Phase = ... | "materialize" | "pricing";
 )}
 ```
 
-State threading: the `paperclipUrl` from the activate response needs to survive the phase transition from `materialize` → `pricing`. Cleanest path: store on `sessionStorage` keyed by companyId in Materialize, read in Pricing's `proceedFromPricing`. (Alternative: pass via React state up to OmegaOnboarding — more typing but cleaner data flow.)
+State threading: the `paperclipUrl` from the activate response needs to survive the phase transition from `materialize` → `pricing`. Cleanest path: store on `sessionStorage` keyed by companyId in Materialize, read in Pricing's `proceedFromPricing`. (Alternative: pass via React state up to WavexOsOnboarding — more typing but cleaner data flow.)
 
 ---
 
@@ -287,13 +287,13 @@ State threading: the `paperclipUrl` from the activate response needs to survive 
 
 In order:
 
-1. Create `packages/op-omega-server/src/config/pricing.ts` with the 4 tier configs above
-2. Create `packages/op-omega-server/src/routes/tiers.ts` with GET + POST endpoints (stubs)
-3. Register the new route in `packages/op-omega-server/src/index.ts`
-4. Add `pricing` API client method to `packages/onboarding-ui/src/op-omega/lib/api.ts`
-5. Create `packages/onboarding-ui/src/op-omega/pricing/Pricing.tsx` + `TierCard` subcomponent
-6. Modify `packages/onboarding-ui/src/op-omega/phases/Materialize.tsx` — split activate from open-Paperclip
-7. Modify `packages/onboarding-ui/src/op-omega/OmegaOnboarding.tsx` — add `pricing` phase + route through it
+1. Create `packages/wavex-os-server/src/config/pricing.ts` with the 4 tier configs above
+2. Create `packages/wavex-os-server/src/routes/tiers.ts` with GET + POST endpoints (stubs)
+3. Register the new route in `packages/wavex-os-server/src/index.ts`
+4. Add `pricing` API client method to `packages/onboarding-ui/src/wavex-os/lib/api.ts`
+5. Create `packages/onboarding-ui/src/wavex-os/pricing/Pricing.tsx` + `TierCard` subcomponent
+6. Modify `packages/onboarding-ui/src/wavex-os/phases/Materialize.tsx` — split activate from open-Paperclip
+7. Modify `packages/onboarding-ui/src/wavex-os/WavexOsOnboarding.tsx` — add `pricing` phase + route through it
 8. Visual QA — refresh `localhost:5173`, walk to Materialize, click Activate → verify the Pricing screen appears, Subscribe + Skip both advance correctly with the Paperclip tab opening at the right moment
 9. Update `e2e/_demo-ricoma.spec.ts` — add a step that asserts the Pricing screen appears + clicks Skip to advance (avoids the test being broken by the new step)
 
@@ -313,7 +313,7 @@ None required for this scope.
 
 Light, demo-focused:
 
-- **Unit test** for `TIERS` const integrity (every tier has all required fields, prices match labels). One vitest file in `packages/op-omega-server/test/pricing-config.test.ts`.
+- **Unit test** for `TIERS` const integrity (every tier has all required fields, prices match labels). One vitest file in `packages/wavex-os-server/test/pricing-config.test.ts`.
 - **E2E spec update** to `e2e/_demo-ricoma.spec.ts`: assert the Pricing screen renders the 4 cards with the right copy + the Skip button advances cleanly to Mission Control.
 - **Manual smoke**: full wizard walk on localhost — fresh company, walk to Activate, see Pricing, click Subscribe on Founder → confirm Mission Control redirect + Paperclip tab opens.
 
@@ -323,7 +323,7 @@ That's it. No tier enforcement to test (deferred). No webhook idempotency, redac
 
 ## 6. Rollout
 
-For the demo, ship straight to the `feat/op-omega-fidelity` branch + push to fork. Open a PR comment on #3 noting the new pricing step.
+For the demo, ship straight to the `feat/wavex-os-fidelity` branch + push to fork. Open a PR comment on #3 noting the new pricing step.
 
 No feature flag. The pricing screen always renders between Materialize-bridge and Paperclip-handoff. The Skip button means the screen never blocks a demo from completing.
 

@@ -1,6 +1,6 @@
 # Chat-First Onboarding — QA Findings
 
-**Branch:** `feat/op-omega-chat-first`
+**Branch:** `feat/wavex-os-chat-first`
 **Tested:** 2026-05-12 (post 6-feature batch: Refinement Panel, breadcrumb-redo, resume hydration, real-time activate, Pillar field previews, Pillar 1 retry, Telegram test-send)
 
 ---
@@ -186,7 +186,7 @@ Run `open http://127.0.0.1:5173/onboarding-chat`, type `ricoma.com`, and verify:
 
 These existed before this batch — flagged for awareness, not regressions:
 
-1. **Token-accounting time-window attribution drift.** Costs for the imprint T2 call land in adjacent phase windows (typically `pillar_1`). Total cost is correct; per-phase breakdown is approximate. Noted in `packages/op-omega-server/src/lib/token-accounting.ts` as "deferred: AsyncLocalStorage fix."
+1. **Token-accounting time-window attribution drift.** Costs for the imprint T2 call land in adjacent phase windows (typically `pillar_1`). Total cost is correct; per-phase breakdown is approximate. Noted in `packages/wavex-os-server/src/lib/token-accounting.ts` as "deferred: AsyncLocalStorage fix."
 
 2. **Connector phase pays for T2 then falls back internally.** The vendored generator runs a T2 call (~$0.16, 26s), then if the output is terse, the generator internally falls back to the deterministic decision matrix. The manifest's `generated_by` reads `T0 · decision-matrix-fallback` but `withTokenAccounting` correctly bills the T2 call. Worth probing the vendored prompt as a follow-up — this is wasted spend on every walk.
 
@@ -210,7 +210,7 @@ All 6 features in `92340f3 + 195db5d + e210ba0 + 68f6b35 + 4740034` plus the pre
 - ✅ No fast walk regressions (was passing in 43s, now 1.1 min with refinement step added)
 - ✅ No real-T2 walk regressions (still 4-5 min, still ~$1.20-$1.40, scope filter still parks the right chiefs)
 - ✅ No Paperclip handoff regressions (still 35 agents mirrored, 0 errors, paperclipCompanyId returned)
-- ✅ Type-check passes across all three packages (`@wavex-os/onboarding-ui`, `@wavex-os/op-omega-server`, vendored plugin tests untouched)
+- ✅ Type-check passes across all three packages (`@wavex-os/onboarding-ui`, `@wavex-os/wavex-os-server`, vendored plugin tests untouched)
 
 ---
 
@@ -237,7 +237,7 @@ pnpm exec playwright test e2e/ --headed
 
 ## Branch state
 
-`feat/op-omega-chat-first` — 23 commits ahead of `feat/op-omega-fidelity`. Branch is shipping-ready end-to-end.
+`feat/wavex-os-chat-first` — 23 commits ahead of `feat/wavex-os-fidelity`. Branch is shipping-ready end-to-end.
 
 Open items for next session (none blocking):
 - (#3 Step 3) Model-per-phase env dial (~30 min, requires spawn-shim modification)

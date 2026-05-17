@@ -14,7 +14,7 @@
  *  Lightweight on purpose — no inference call, no per-frame polling. */
 
 import { useEffect, useState } from "react";
-import { useCompany } from "../../op-omega/lib/CompanyContext";
+import { useCompany } from "../../wavex-os/lib/CompanyContext";
 
 interface HandoffState {
   paperclipUrl: string | null;

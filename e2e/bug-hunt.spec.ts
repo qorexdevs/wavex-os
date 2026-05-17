@@ -15,19 +15,19 @@ async function seedFinalized(api: APIRequestContext, companyId: string): Promise
     const resp = await api.post(path, { data: body });
     if (!resp.ok()) throw new Error(`POST ${path} failed: ${resp.status()} ${await resp.text()}`);
   }
-  await post("/op-omega/onboarding/pillar/1", {
+  await post("/wavex-os/onboarding/pillar/1", {
     companyId, org_name: companyId,
     raw_input: "no product yet",
     manual_context: "Bug-hunt fixture seeded for e2e edge-case coverage of the activate + dashboard flow.",
   });
-  await post("/op-omega/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
-  await post("/op-omega/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
-  await post("/op-omega/onboarding/pillar/4", { companyId, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
-  await post("/op-omega/onboarding/pillar/5", { companyId, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
-  await post("/op-omega/onboarding/connector-manifest", { companyId, skipInference: true });
-  await post("/op-omega/onboarding/swarm-manifest", { companyId, skipInference: true });
-  await post("/op-omega/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true });
-  await post("/op-omega/onboarding/finalize", {
+  await post("/wavex-os/onboarding/pillar/2", { companyId, claude_plan: "max_5x" });
+  await post("/wavex-os/onboarding/pillar/3", { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
+  await post("/wavex-os/onboarding/pillar/4", { companyId, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
+  await post("/wavex-os/onboarding/pillar/5", { companyId, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
+  await post("/wavex-os/onboarding/connector-manifest", { companyId, skipInference: true });
+  await post("/wavex-os/onboarding/swarm-manifest", { companyId, skipInference: true });
+  await post("/wavex-os/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true });
+  await post("/wavex-os/onboarding/finalize", {
     companyId, orgId: companyId, skipInference: true,
     mc: { horizon_cycles: 5, n_runs: 5, seed: 42 },
   });
@@ -218,21 +218,21 @@ test.describe("bug hunt — composition + edge cases", () => {
     await seedFinalized(request, id);
 
     // First load — should exist after seedFinalized
-    const c = await request.get(`/op-omega/onboarding/connector-manifest?companyId=${id}`);
+    const c = await request.get(`/wavex-os/onboarding/connector-manifest?companyId=${id}`);
     const cJson = await c.json();
     expect(cJson.exists).toBe(true);
     expect(cJson.source).toBe("loaded");
 
-    const s = await request.get(`/op-omega/onboarding/swarm-manifest?companyId=${id}`);
+    const s = await request.get(`/wavex-os/onboarding/swarm-manifest?companyId=${id}`);
     const sJson = await s.json();
     expect(sJson.exists).toBe(true);
 
-    const w = await request.get(`/op-omega/onboarding/workflow-manifest?companyId=${id}`);
+    const w = await request.get(`/wavex-os/onboarding/workflow-manifest?companyId=${id}`);
     const wJson = await w.json();
     expect(wJson.exists).toBe(true);
 
     // GET on a non-existent company returns exists:false
-    const ne = await request.get(`/op-omega/onboarding/connector-manifest?companyId=nonexistent-bug-hunt`);
+    const ne = await request.get(`/wavex-os/onboarding/connector-manifest?companyId=nonexistent-bug-hunt`);
     const neJson = await ne.json();
     expect(neJson.exists).toBe(false);
     expect(neJson.manifest).toBe(null);
@@ -286,7 +286,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     const id = uniqueId("bh-recommend");
     await seedFinalized(request, id);
 
-    const r = await request.post(`/op-omega/onboarding/recommend-agent`, {
+    const r = await request.post(`/wavex-os/onboarding/recommend-agent`, {
       data: {
         companyId: id, parent_slot: "cmo",
         available_parents: [{ slot: "cmo", role_hint: "marketing" }, { slot: "cpo", role_hint: "product" }],
@@ -592,13 +592,13 @@ test.describe("bug hunt — composition + edge cases", () => {
     await expect(page).toHaveURL(new RegExp(`companyId=${expectedSlug}\\b`), { timeout: 60_000 });
 
     // Server wrote under the NEW slug, not the stale id
-    const newStatus = await request.get(`${API}/op-omega/onboarding/status?companyId=${expectedSlug}`);
+    const newStatus = await request.get(`${API}/wavex-os/onboarding/status?companyId=${expectedSlug}`);
     expect(newStatus.ok()).toBeTruthy();
     const newJson = await newStatus.json();
     expect(newJson.responses?.pillar_1?.org_name).toBe(intendedName);
 
     // Stale id has no pillar_1 (the rename worked — old folder never created)
-    const staleStatus = await request.get(`${API}/op-omega/onboarding/status?companyId=${staleId}`);
+    const staleStatus = await request.get(`${API}/wavex-os/onboarding/status?companyId=${staleId}`);
     const staleJson = await staleStatus.json();
     expect(staleJson.responses?.pillar_1).toBeFalsy();
 
@@ -670,7 +670,7 @@ test.describe("bug hunt — composition + edge cases", () => {
   test("B18a: POST /pillar/1/edit updates industry_hint without re-running T2", async ({ request }) => {
     const id = uniqueId("bh-edit");
     // Seed pillar_1 by directly POSTing with manual_context (no T2 needed)
-    const seed = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    const seed = await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "EditCo", raw_input: "no product yet",
         manual_context: "EditCo is a fixture for the pillar/1/edit endpoint test that verifies operator-supplied industry overrides land in the pillar_1 file.",
@@ -681,7 +681,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     const originalIndustry = seeded.response.industry_hint;
 
     // Patch industry_hint to a custom value
-    const edit = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+    const edit = await request.post(`${API}/wavex-os/onboarding/pillar/1/edit`, {
       data: { companyId: id, industry_hint: "embroidery_hardware" },
     });
     expect(edit.ok()).toBeTruthy();
@@ -690,7 +690,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     expect(edited.response.industry_hint).not.toBe(originalIndustry);
 
     // Verify persistence — fetch status should show the edited value
-    const status = await request.get(`${API}/op-omega/onboarding/status?companyId=${id}`);
+    const status = await request.get(`${API}/wavex-os/onboarding/status?companyId=${id}`);
     const j = await status.json();
     expect(j.responses.pillar_1.industry_hint).toBe("embroidery_hardware");
 
@@ -700,7 +700,7 @@ test.describe("bug hunt — composition + edge cases", () => {
   /** B18b: edit endpoint rejects when no pillar_1 exists yet */
   test("B18b: edit returns 409 before pillar_1 is submitted", async ({ request }) => {
     const id = uniqueId("bh-edit-noseed");
-    const r = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+    const r = await request.post(`${API}/wavex-os/onboarding/pillar/1/edit`, {
       data: { companyId: id, industry_hint: "fintech" },
     });
     expect(r.status()).toBe(409);
@@ -709,14 +709,14 @@ test.describe("bug hunt — composition + edge cases", () => {
   /** B18c: edit ignores empty patches (no override fields supplied) */
   test("B18c: edit with empty patch is a no-op (returns existing pillar_1)", async ({ request }) => {
     const id = uniqueId("bh-edit-empty");
-    const seed = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    const seed = await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "EditEmpty", raw_input: "no product yet",
         manual_context: "Fixture company for verifying that an edit call with no override fields returns the existing pillar_1 unchanged.",
       },
     });
     const seeded = await seed.json();
-    const r = await request.post(`${API}/op-omega/onboarding/pillar/1/edit`, {
+    const r = await request.post(`${API}/wavex-os/onboarding/pillar/1/edit`, {
       data: { companyId: id },
     });
     expect(r.ok()).toBeTruthy();
@@ -732,18 +732,18 @@ test.describe("bug hunt — composition + edge cases", () => {
     const id = uniqueId("bh-keys-url");
     // Seed pillar responses (the credentials route requires them) but don't
     // need to finalize — the route runs the connector matrix on demand.
-    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "KeysCo", raw_input: "no product yet",
         manual_context: "KeysCo is an e2e fixture company for verifying that the credential concierge endpoint exposes per-connector keysUrl deep links to the operator.",
       },
     });
-    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
 
-    const r = await request.get(`${API}/op-omega/onboarding/credentials/${id}`);
+    const r = await request.get(`${API}/wavex-os/onboarding/credentials/${id}`);
     expect(r.ok()).toBeTruthy();
     const j = await r.json();
     expect(Array.isArray(j.connectors)).toBe(true);
@@ -809,7 +809,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     // Seed pillar_1 with manual_context (no T2 → no real spend), then
     // manually craft a token-usage.json showing high spend, then set a cap
     // BELOW that. The next T2-triggering call should 429.
-    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "Cap", raw_input: "no product yet",
         manual_context: "Cap is a fixture for verifying that the budget enforcement gate fires before T2 calls when the cap has been reached.",
@@ -965,7 +965,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     test.skip(process.env.WAVEX_E2E_T2 !== "1", "Requires real T2 — set WAVEX_E2E_T2=1");
     const id = uniqueId("bh-chat-roundtrip");
     // Seed pillar_1 so the chat has context to ground in
-    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "ChatCo", raw_input: "no product yet",
         manual_context: "ChatCo is an e2e fixture for verifying that the help-chat endpoint loads pillar responses as context for T2 grounding.",
@@ -994,18 +994,18 @@ test.describe("bug hunt — composition + edge cases", () => {
   test("B23a: swarm-manifest auto-injects ceo.chief-of-staff under CEO", async ({ request }) => {
     const id = uniqueId("bh-cos-swarm");
     // Seed enough to call swarm-manifest
-    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "CoSCo", raw_input: "no product yet",
         manual_context: "CoSCo is an e2e fixture for verifying the kernel-slot injection adds Chief of Staff to the swarm manifest under CEO.",
       },
     });
-    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
-    await request.post(`${API}/op-omega/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
-    const r = await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+    await request.post(`${API}/wavex-os/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
+    const r = await request.post(`${API}/wavex-os/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } });
     expect(r.ok()).toBeTruthy();
     const j = await r.json();
     const cos = j.manifest.agents["ceo.chief-of-staff"];
@@ -1036,20 +1036,20 @@ test.describe("bug hunt — composition + edge cases", () => {
   /** B23c: re-running swarm-manifest is idempotent for kernel slots */
   test("B23c: re-generating swarm doesn't duplicate CoS", async ({ request }) => {
     const id = uniqueId("bh-cos-idempotent");
-    await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "Idem", raw_input: "no product yet",
         manual_context: "Fixture for verifying that calling swarm-manifest twice doesn't duplicate the kernel-injected Chief of Staff slot.",
       },
     });
-    await request.post(`${API}/op-omega/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
-    await request.post(`${API}/op-omega/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
-    await request.post(`${API}/op-omega/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/2`, { data: { companyId: id, claude_plan: "max_5x" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/3`, { data: { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/4`, { data: { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" } });
+    await request.post(`${API}/wavex-os/onboarding/pillar/5`, { data: { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" } });
+    await request.post(`${API}/wavex-os/onboarding/connector-manifest`, { data: { companyId: id, skipInference: true } });
 
-    const first = await (await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
-    const second = await (await request.post(`${API}/op-omega/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
+    const first = await (await request.post(`${API}/wavex-os/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
+    const second = await (await request.post(`${API}/wavex-os/onboarding/swarm-manifest`, { data: { companyId: id, skipInference: true } })).json();
     const cosKeys1 = Object.keys(first.manifest.agents).filter((k) => k === "ceo.chief-of-staff");
     const cosKeys2 = Object.keys(second.manifest.agents).filter((k) => k === "ceo.chief-of-staff");
     expect(cosKeys1).toHaveLength(1);
@@ -1090,7 +1090,7 @@ test.describe("bug hunt — composition + edge cases", () => {
     test.skip(process.env.WAVEX_E2E_T2 !== "1", "Requires real T2 — set WAVEX_E2E_T2=1");
     const id = uniqueId("bh-token-real");
     // Seed pillar 1 with a real T2 call (no manual_context — forces enrichment)
-    const p1 = await request.post(`${API}/op-omega/onboarding/pillar/1`, {
+    const p1 = await request.post(`${API}/wavex-os/onboarding/pillar/1`, {
       data: {
         companyId: id, org_name: "BugHunt", raw_input: "we sell SaaS dashboards",
         manual_context: "BugHunt is an analytics company that sells SaaS dashboards to engineering teams. Used as e2e fixture for token-accounting verification.",

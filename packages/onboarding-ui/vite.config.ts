@@ -31,7 +31,7 @@ export default defineConfig({
         target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
         changeOrigin: true,
       },
-      "/op-omega": {
+      "/wavex-os": {
         target: process.env.WAVEX_CORE_URL ?? "http://127.0.0.1:3101",
         changeOrigin: true,
       },

@@ -38,7 +38,7 @@ empty `ANTHROPIC_API_KEY`, guarantees `USER`/`LOGNAME`/`HOME`, then `exec`s
 
 ### 2. Handoff wires the wrapper by default
 
-`packages/op-omega-server/src/bridge/paperclip-handoff.ts` → `hireOne()`:
+`packages/wavex-os-server/src/bridge/paperclip-handoff.ts` → `hireOne()`:
 - `adapterConfig.command` defaults to the repo wrapper path (was bare `claude`)
 - `adapterConfig.env` **no longer sets `CLAUDE_CONFIG_DIR`**; it sets only
   `HOME` + `USER` + `LOGNAME`

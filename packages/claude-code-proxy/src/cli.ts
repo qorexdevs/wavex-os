@@ -1,7 +1,7 @@
 /**
  * TypeScript CLI entrypoint. Runs as TS source via `node --import tsx`.
  * The .mjs bin shim spawns this through tsx so we can import cloud-client
- * directly from its TS source (matches op-omega-server's pattern).
+ * directly from its TS source (matches wavex-os-server's pattern).
  */
 import { startProxy } from "./index.js";
 

@@ -18,7 +18,7 @@ async function seedPillars(request: APIRequestContext, companyId: string): Promi
   await request.delete(`/api/instance/${encodeURIComponent(companyId)}/reset`).catch(() => {});
 
   // Pillar 1 with manual_context (skips real T2)
-  let r = await request.post("/op-omega/onboarding/pillar/1", {
+  let r = await request.post("/wavex-os/onboarding/pillar/1", {
     data: {
       companyId,
       org_name: companyId,
@@ -30,19 +30,19 @@ async function seedPillars(request: APIRequestContext, companyId: string): Promi
   expect(r.ok(), `Pillar 1 seed failed: ${await r.text()}`).toBeTruthy();
 
   // Pillar 2 (claude probe — may be slow, ~3-5s)
-  r = await request.post("/op-omega/onboarding/pillar/2", {
+  r = await request.post("/wavex-os/onboarding/pillar/2", {
     data: { companyId, claude_plan: "max_20x" },
   });
   expect(r.ok(), `Pillar 2 seed failed: ${await r.text()}`).toBeTruthy();
 
   // Pillar 3
-  r = await request.post("/op-omega/onboarding/pillar/3", {
+  r = await request.post("/wavex-os/onboarding/pillar/3", {
     data: { companyId, product_state: "live_paying_customers", stage: "10k_100k_mrr" },
   });
   expect(r.ok(), `Pillar 3 seed failed: ${await r.text()}`).toBeTruthy();
 
   // Pillar 4
-  r = await request.post("/op-omega/onboarding/pillar/4", {
+  r = await request.post("/wavex-os/onboarding/pillar/4", {
     data: {
       companyId,
       lead_sources: ["inbound_ads_meta_google", "referral_word_of_mouth"],
@@ -53,7 +53,7 @@ async function seedPillars(request: APIRequestContext, companyId: string): Promi
   expect(r.ok(), `Pillar 4 seed failed: ${await r.text()}`).toBeTruthy();
 
   // Pillar 5
-  r = await request.post("/op-omega/onboarding/pillar/5", {
+  r = await request.post("/wavex-os/onboarding/pillar/5", {
     data: { companyId, comm_channel: "slack", urgency_routing: "digest_plus_urgent_phone" },
   });
   expect(r.ok(), `Pillar 5 seed failed: ${await r.text()}`).toBeTruthy();

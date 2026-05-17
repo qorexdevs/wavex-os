@@ -2,9 +2,9 @@
 
 **Purpose:** Generate the CEO's first ONE directive issue right after `activate` completes, so the fleet has visible work within 5min of going live (per `docs/IGNITION.md`).
 
-**Caller:** `packages/op-omega-server/src/bridge/ignition.ts` (lands in P1.2 of this turn).
+**Caller:** `packages/wavex-os-server/src/bridge/ignition.ts` (lands in P1.2 of this turn).
 
-**Pool:** platform — runs in op-omega-server with deterministic logic + ONE small T1 call to phrase the directive. The bulk of Ignition is mechanical (read manifest, create issues per slot); only this single CEO-voice phrasing is LLM-mediated.
+**Pool:** platform — runs in wavex-os-server with deterministic logic + ONE small T1 call to phrase the directive. The bulk of Ignition is mechanical (read manifest, create issues per slot); only this single CEO-voice phrasing is LLM-mediated.
 
 **Model:** Haiku 4.5 (fast, cheap, sufficient for one-sentence-rephrasing). ~2K input tokens, ~500 output tokens.
 

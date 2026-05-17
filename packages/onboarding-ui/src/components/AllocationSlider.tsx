@@ -8,7 +8,7 @@
  *    - onboarding Pillar 2 — sets the default before the fleet exists
  *    - Mission Control     — live-adjustable once the fleet is running
  *
- *  Backend: packages/op-omega-server/src/routes/inference-allocation.ts.
+ *  Backend: packages/wavex-os-server/src/routes/inference-allocation.ts.
  *  The swarm_pct value scales every agent's heartbeat interval at hire
  *  time (paperclip-handoff heartbeatConfigForSlot) — lower swarm % →
  *  longer intervals → the fleet consumes less of the Max window. */

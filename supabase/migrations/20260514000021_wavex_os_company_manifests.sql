@@ -1,7 +1,7 @@
 -- Cloud-resident store for finalized, signed onboarding company manifests.
 -- Until now the manifest lived ONLY on the operator's local disk at
 -- ~/.wavex-os/instances/default/companies/<companyId>/onboarding/company.manifest.json
--- which blocks any cross-device story. op-omega-server's /activate route
+-- which blocks any cross-device story. wavex-os-server's /activate route
 -- best-effort upserts the manifest here after writing it to disk, via the
 -- service-role SECURITY DEFINER RPC below (wavex_os is not REST-exposed).
 -- One row per wavex-os company_id; mutable (re-activation after refinement
@@ -22,7 +22,7 @@ create table wavex_os.company_manifests (
 );
 
 comment on table wavex_os.company_manifests is
-  'Cloud-resident store for finalized, signed onboarding company manifests. One row per wavex-os company_id; the op-omega-server /activate route best-effort upserts via wavex_os_record_company_manifest after writing the manifest to local disk. goal is the extracted manifest.goal for quick query without parsing the full jsonb.';
+  'Cloud-resident store for finalized, signed onboarding company manifests. One row per wavex-os company_id; the wavex-os-server /activate route best-effort upserts via wavex_os_record_company_manifest after writing the manifest to local disk. goal is the extracted manifest.goal for quick query without parsing the full jsonb.';
 
 create index company_manifests_user_idx on wavex_os.company_manifests (user_id);
 create index company_manifests_synced_idx on wavex_os.company_manifests (synced_at desc);
@@ -40,7 +40,7 @@ create policy "operator reads all company manifests"
   using (public.has_role(auth.uid(), 'admin'::public.app_role));
 
 -- Write path: service-role SECURITY DEFINER RPC. wavex_os is not exposed via
--- PostgREST, so the op-omega-server upserts through this `public`-schema RPC
+-- PostgREST, so the wavex-os-server upserts through this `public`-schema RPC
 -- keyed on company_id. Idempotent: re-activation after a refinement upserts.
 create or replace function public.wavex_os_record_company_manifest(
   p_company_id text,

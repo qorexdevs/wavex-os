@@ -11,10 +11,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { opOmegaOnboardingApi, ApiError } from "../op-omega/lib/api";
-import { humanizeBadge, humanizeAction, humanizeRunResult } from "../op-omega/lib/humanize";
-import { CoachmarkOverlay, type CoachmarkStep } from "../op-omega/components/Coachmark";
-import { useCoachmark } from "../op-omega/lib/coachmarks";
+import { wavexOsOnboardingApi, ApiError } from "../wavex-os/lib/api";
+import { humanizeBadge, humanizeAction, humanizeRunResult } from "../wavex-os/lib/humanize";
+import { CoachmarkOverlay, type CoachmarkStep } from "../wavex-os/components/Coachmark";
+import { useCoachmark } from "../wavex-os/lib/coachmarks";
 
 interface Avatar {
   avatarId: string;
@@ -90,7 +90,7 @@ export function AvatarDashboard() {
     let alive = true;
     void (async () => {
       try {
-        const r = await opOmegaOnboardingApi.getAvatar(id);
+        const r = await wavexOsOnboardingApi.getAvatar(id);
         if (alive) setAvatar(r);
       } catch (e) {
         if (alive) setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -326,12 +326,12 @@ function OverviewTab({ avatar }: { avatar: Avatar }) {
 
 function InboxTab({ avatarId }: { avatarId: string }) {
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
-  const [approvals, setApprovals] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.listAvatarApprovals>>["approvals"]>([]);
+  const [approvals, setApprovals] = useState<Awaited<ReturnType<typeof wavexOsOnboardingApi.listAvatarApprovals>>["approvals"]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [skills, setSkills] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.listAvatarSkills>>["skills"]>([]);
+  const [skills, setSkills] = useState<Awaited<ReturnType<typeof wavexOsOnboardingApi.listAvatarSkills>>["skills"]>([]);
   const [skillBusy, setSkillBusy] = useState<string | null>(null);
   // Phase 3 — autonomy preset + graduate button
   const [preset, setPreset] = useState<"cautious" | "balanced" | "aggressive" | null>(null);
@@ -339,7 +339,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
 
   const refresh = async () => {
     try {
-      const r = await opOmegaOnboardingApi.listAvatarApprovals(avatarId, filter);
+      const r = await wavexOsOnboardingApi.listAvatarApprovals(avatarId, filter);
       setApprovals(r.approvals);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -356,7 +356,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
 
   const refreshSkills = async () => {
     try {
-      const r = await opOmegaOnboardingApi.listAvatarSkills(avatarId);
+      const r = await wavexOsOnboardingApi.listAvatarSkills(avatarId);
       setSkills(r.skills);
     } catch { /* non-fatal: avatar may not be bridged yet */ }
   };
@@ -365,7 +365,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
 
   const refreshTrust = async () => {
     try {
-      const r = await opOmegaOnboardingApi.getAvatarTrust(avatarId);
+      const r = await wavexOsOnboardingApi.getAvatarTrust(avatarId);
       setPreset(r.trust?.autonomy_preset ?? null);
     } catch { /* non-fatal */ }
   };
@@ -375,7 +375,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
   async function graduate() {
     setGraduating(true);
     try {
-      const r = await opOmegaOnboardingApi.graduateAvatar(avatarId);
+      const r = await wavexOsOnboardingApi.graduateAvatar(avatarId);
       setPreset(r.trust.autonomy_preset);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -388,7 +388,7 @@ function InboxTab({ avatarId }: { avatarId: string }) {
     setSkillBusy(skill);
     try {
       const action = currentStatus === "paused" ? "resume" : "pause";
-      await opOmegaOnboardingApi.controlAvatarSkill(avatarId, skill, action);
+      await wavexOsOnboardingApi.controlAvatarSkill(avatarId, skill, action);
       await refreshSkills();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -419,13 +419,13 @@ function InboxTab({ avatarId }: { avatarId: string }) {
     setError(null);
     try {
       if (skill === "gmail" || skill === "outlook") {
-        const r = await opOmegaOnboardingApi.runAvatarMailTriage(avatarId, skill);
+        const r = await wavexOsOnboardingApi.runAvatarMailTriage(avatarId, skill);
         setRunMessage(humanizeRunResult(skill, r.result));
       } else if (skill === "google_calendar" || skill === "microsoft_calendar") {
-        const r = await opOmegaOnboardingApi.runAvatarCalendarTriage(avatarId, skill);
+        const r = await wavexOsOnboardingApi.runAvatarCalendarTriage(avatarId, skill);
         setRunMessage(humanizeRunResult(skill, r.result));
       } else if (skill === "slack") {
-        const r = await opOmegaOnboardingApi.runAvatarSlackDigest(avatarId);
+        const r = await wavexOsOnboardingApi.runAvatarSlackDigest(avatarId);
         setRunMessage(humanizeRunResult(skill, r.result));
       } else {
         setRunMessage(`I haven't been taught to run "${skill}" yet.`);
@@ -564,7 +564,7 @@ function ApprovalCard({
   avatarId, approval, onDecided,
 }: {
   avatarId: string;
-  approval: Awaited<ReturnType<typeof opOmegaOnboardingApi.listAvatarApprovals>>["approvals"][number];
+  approval: Awaited<ReturnType<typeof wavexOsOnboardingApi.listAvatarApprovals>>["approvals"][number];
   onDecided: () => void;
 }) {
   const [draft, setDraft] = useState(approval.payload.draftText ?? "");
@@ -577,7 +577,7 @@ function ApprovalCard({
     setError(null);
     try {
       const dirty = editing && draft !== (approval.payload.draftText ?? "");
-      await opOmegaOnboardingApi.decideAvatarApproval(avatarId, approval.id, {
+      await wavexOsOnboardingApi.decideAvatarApproval(avatarId, approval.id, {
         decision,
         editedPayload: dirty ? { draftText: draft } : undefined,
       });
@@ -746,7 +746,7 @@ function ApprovalCard({
 // ── Audit log ──────────────────────────────────────────────────────────
 
 function AuditTab({ avatarId }: { avatarId: string }) {
-  const [entries, setEntries] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.getAvatarAudit>>["entries"]>([]);
+  const [entries, setEntries] = useState<Awaited<ReturnType<typeof wavexOsOnboardingApi.getAvatarAudit>>["entries"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -754,7 +754,7 @@ function AuditTab({ avatarId }: { avatarId: string }) {
     let alive = true;
     void (async () => {
       try {
-        const r = await opOmegaOnboardingApi.getAvatarAudit(avatarId);
+        const r = await wavexOsOnboardingApi.getAvatarAudit(avatarId);
         if (alive) setEntries(r.entries);
       } catch (e) {
         if (alive) setError(e instanceof ApiError ? e.message : (e as Error).message);
@@ -806,8 +806,8 @@ function AuditTab({ avatarId }: { avatarId: string }) {
 // ── Memory tab ─────────────────────────────────────────────────────────
 
 function MemoryTab({ avatarId }: { avatarId: string }) {
-  const [preferences, setPreferences] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.getAvatarMemory>>["preferences"]>([]);
-  const [episodic, setEpisodic] = useState<Awaited<ReturnType<typeof opOmegaOnboardingApi.getAvatarMemory>>["episodic"]>([]);
+  const [preferences, setPreferences] = useState<Awaited<ReturnType<typeof wavexOsOnboardingApi.getAvatarMemory>>["preferences"]>([]);
+  const [episodic, setEpisodic] = useState<Awaited<ReturnType<typeof wavexOsOnboardingApi.getAvatarMemory>>["episodic"]>([]);
   const [loading, setLoading] = useState(true);
   const [distilling, setDistilling] = useState(false);
   const [distillMsg, setDistillMsg] = useState<string | null>(null);
@@ -815,7 +815,7 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
 
   const load = async () => {
     try {
-      const r = await opOmegaOnboardingApi.getAvatarMemory(avatarId, 30);
+      const r = await wavexOsOnboardingApi.getAvatarMemory(avatarId, 30);
       setPreferences(r.preferences);
       setEpisodic(r.episodic);
     } catch (e) {
@@ -831,7 +831,7 @@ function MemoryTab({ avatarId }: { avatarId: string }) {
     setDistilling(true);
     setDistillMsg(null);
     try {
-      const r = await opOmegaOnboardingApi.distillAvatarMemory(avatarId);
+      const r = await wavexOsOnboardingApi.distillAvatarMemory(avatarId);
       setDistillMsg(r.count > 0
         ? `Picked up ${r.count} new pattern${r.count === 1 ? "" : "s"}.`
         : "Nothing new yet — keep approving and tweaking; patterns will appear here.");

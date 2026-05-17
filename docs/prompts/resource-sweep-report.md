@@ -4,7 +4,7 @@
 
 **Caller:** `scripts/wrappers/resource-sweep.sh` → `POST /api/maintenance/page-operator` → this prompt (server-side) → Telegram bridge.
 
-**Pool:** platform — runs on the operator's Mac in the existing op-omega-server. Haiku, tiny tokens.
+**Pool:** platform — runs on the operator's Mac in the existing wavex-os-server. Haiku, tiny tokens.
 
 **Model:** Haiku 4.5. ~500 input, ~150 output.
 

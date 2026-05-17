@@ -9,10 +9,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { opOmegaOnboardingApi, ApiError } from "../op-omega/lib/api";
-import { ChipInput, RadioGroup } from "../op-omega/components/primitives";
-import { isT0FastMode } from "../op-omega/lib/dev-flags";
-import type { AvatarAutonomyPreset } from "../op-omega/state/onboarding-reducer";
+import { wavexOsOnboardingApi, ApiError } from "../wavex-os/lib/api";
+import { ChipInput, RadioGroup } from "../wavex-os/components/primitives";
+import { isT0FastMode } from "../wavex-os/lib/dev-flags";
+import type { AvatarAutonomyPreset } from "../wavex-os/state/onboarding-reducer";
 
 const PROVIDER_LABELS: Record<string, string> = {
   gmail: "Gmail", outlook: "Outlook",
@@ -78,8 +78,8 @@ export function AvatarSettings() {
     void (async () => {
       try {
         const [avatar, trustResp] = await Promise.all([
-          opOmegaOnboardingApi.getAvatar(id),
-          opOmegaOnboardingApi.getAvatarTrust(id),
+          wavexOsOnboardingApi.getAvatar(id),
+          wavexOsOnboardingApi.getAvatarTrust(id),
         ]);
         if (!alive) return;
         if (avatar.profile) setProfile(avatar.profile as ProfileShape);
@@ -224,7 +224,7 @@ function ProfileSection({
     setSaving(true);
     setError(null);
     try {
-      const r = await opOmegaOnboardingApi.updateAvatarProfile(avatarId, {
+      const r = await wavexOsOnboardingApi.updateAvatarProfile(avatarId, {
         name: name.trim(),
         role: role.trim(),
         workingHours: [startTime, endTime],
@@ -303,7 +303,7 @@ function TrustSection({
         privacy_zones: privacyZones,
         notify,
       };
-      await opOmegaOnboardingApi.setAvatarTrust(avatarId, next);
+      await wavexOsOnboardingApi.setAvatarTrust(avatarId, next);
       onSaved(next);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
@@ -396,7 +396,7 @@ function VoiceSection({
     setSaving(true);
     setError(null);
     try {
-      const r = await opOmegaOnboardingApi.analyzeAvatarVoice(
+      const r = await wavexOsOnboardingApi.analyzeAvatarVoice(
         avatarId, samples, isT0FastMode(),
         { signoff: signoff.trim() || undefined, guardrails: guardrails.length > 0 ? guardrails : undefined },
       );
@@ -617,7 +617,7 @@ function ProviderMetaPanel({
       const meta = {
         vips, privacy_zones: privacyZones, signoff: signoff.trim() || undefined,
       };
-      await opOmegaOnboardingApi.setAvatarToolMeta(avatarId, provider, meta);
+      await wavexOsOnboardingApi.setAvatarToolMeta(avatarId, provider, meta);
       onSaved(meta);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
@@ -682,7 +682,7 @@ function DangerZone({ avatarId }: { avatarId: string }) {
     setDeleting(true);
     setError(null);
     try {
-      await opOmegaOnboardingApi.deleteAvatar(avatarId);
+      await wavexOsOnboardingApi.deleteAvatar(avatarId);
       navigate("/", { replace: true });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);

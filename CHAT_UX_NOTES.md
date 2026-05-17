@@ -4,7 +4,7 @@ Documents the four reusable patterns introduced for the `/onboarding-chat` shell
 
 ## 1. The chat spine
 
-**File**: `packages/onboarding-ui/src/op-omega/pages/OnboardingShell.tsx`
+**File**: `packages/onboarding-ui/src/wavex-os/pages/OnboardingShell.tsx`
 
 A persistent three-zone layout: top bar (sticky), scrollable message thread, fixed input. The thread auto-scrolls on new messages. The shell holds a single `useReducer` against `state/onboarding-reducer.ts`; phase transitions never trigger route navigation.
 
@@ -18,7 +18,7 @@ Where `role ∈ { user, assistant, system }` and `slot` (when present) tags the 
 
 ## 2. Tappable chips with fill-in (`ResponseChips`)
 
-**File**: `packages/onboarding-ui/src/op-omega/components/ResponseChips.tsx`
+**File**: `packages/onboarding-ui/src/wavex-os/components/ResponseChips.tsx`
 
 The unified replacement for every `<select>` and `RadioGroup` in the onboarding. Supports:
 
@@ -32,7 +32,7 @@ For genuinely-singular fields (`product_state`, `sales_motion`, `comm_channel`, 
 
 ## 3. Inline cards inside chat bubbles
 
-**Files**: `packages/onboarding-ui/src/op-omega/components/inline-cards/*`
+**Files**: `packages/onboarding-ui/src/wavex-os/components/inline-cards/*`
 
 When the chat needs more than text — a confirmation form, a multi-question prompt, an option picker — the assistant emits a `ChatMessage` with a `slot` tag, and `SlotRenderer` mounts the bound component inside the message bubble. Examples:
 
@@ -46,7 +46,7 @@ When the operator confirms a card, the parent dispatches an action that BOTH adv
 
 ## 4. The slide-up drawer
 
-**File**: `packages/onboarding-ui/src/op-omega/components/CredentialDrawer.tsx`
+**File**: `packages/onboarding-ui/src/wavex-os/components/CredentialDrawer.tsx`
 
 For operations that require focused attention but shouldn't kick the operator out of the conversation — credentials are the prototypical example. The drawer is `position: fixed; inset: 0` with a backdrop that dims the chat behind it. The drawer panel pins to the bottom (`align-items: flex-end`) and grows up to `max-height: 85vh`. Backdrop click dismisses; explicit `Done` advances the reducer phase. The chat thread is preserved underneath and re-emerges intact when the drawer closes.
 

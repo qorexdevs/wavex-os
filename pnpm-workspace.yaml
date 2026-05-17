@@ -1,4 +1,4 @@
 packages:
   - "packages/*"
   - "apps/*"
-  - "vendor/op-omega/*"
+  - "vendor/wavex-os/*"

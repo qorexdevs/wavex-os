@@ -188,7 +188,7 @@ function buildPrompt(state, reasons) {
 
   const portsHint = Object.entries({
     mock_core: c.processes?.mock_core,
-    op_omega_server: c.processes?.op_omega_server,
+    wavex_os_server: c.processes?.wavex_os_server,
     paperclip: c.processes?.paperclip,
   })
     .map(([k, v]) => `  ${k}: ${v ?? "unknown"}`)
@@ -221,7 +221,7 @@ What you must NOT do:
 - DO NOT delete the device-token.json file or any file under ~/.wavex-os/state/.
 - DO NOT modify files outside the wavex-os repo or ~/.wavex-os/.
 - DO NOT make any git commits or push anything — fixes are local-only.
-- DO NOT touch frozen paths (vendor/op-omega/, packages/healing/, packages/observability/src/, scripts/wrappers/, templates/launchd/).
+- DO NOT touch frozen paths (vendor/wavex-os/, packages/healing/, packages/observability/src/, scripts/wrappers/, templates/launchd/).
 
 When done:
 - Print a single final line: "DOCTOR_RESULT: <fixed | partial | unable> — <one-sentence summary>"

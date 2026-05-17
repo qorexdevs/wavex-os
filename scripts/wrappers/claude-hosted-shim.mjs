@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 const args = process.argv.slice(2);
 
 // Short-circuit `--version` so anything that probes the binary identity
-// (op-omega's probeClaudeCode, doctor scripts, etc.) doesn't see a failure
+// (wavex-os's probeClaudeCode, doctor scripts, etc.) doesn't see a failure
 // when the hub-shim is wired in. Mirrors `claude --version`'s exit shape.
 if (args.includes("--version") || args.includes("-v")) {
   process.stdout.write("wavex-os hosted-shim 0.1.0 (Pool A relay)\n");
@@ -75,7 +75,7 @@ const model = process.env.WAVEX_INFERENCE_MODEL ?? "claude-sonnet-4-5";
 // ── inference-status: heartbeat so the UI's T2ProgressIndicator gets a live
 //    elapsed counter instead of freezing on a stale file from a prior run.
 //    The route reads ~/.wavex-os/state/inference-current.json (see
-//    packages/op-omega-server/src/routes/inference-status.ts).
+//    packages/wavex-os-server/src/routes/inference-status.ts).
 const STATUS_PATH = join(homedir(), ".wavex-os", "state", "inference-current.json");
 const startedAtMs = Date.now();
 function writeStatus(patch) {

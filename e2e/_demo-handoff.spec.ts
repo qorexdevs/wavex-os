@@ -33,19 +33,19 @@ test("end-to-end wizard → activate → Paperclip handoff visibility", async ({
   }
 
   console.log("[demo] seeding pillar responses…");
-  await post("/op-omega/onboarding/pillar/1", {
+  await post("/wavex-os/onboarding/pillar/1", {
     companyId: id, org_name: orgName, raw_input: "no product yet",
     manual_context: "DemoCo is an end-to-end fixture for verifying that the wizard's activate step correctly reports the Paperclip handoff result to the operator.",
   });
-  await post("/op-omega/onboarding/pillar/2", { companyId: id, claude_plan: "max_5x" });
-  await post("/op-omega/onboarding/pillar/3", { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
-  await post("/op-omega/onboarding/pillar/4", { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
-  await post("/op-omega/onboarding/pillar/5", { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
+  await post("/wavex-os/onboarding/pillar/2", { companyId: id, claude_plan: "max_5x" });
+  await post("/wavex-os/onboarding/pillar/3", { companyId: id, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
+  await post("/wavex-os/onboarding/pillar/4", { companyId: id, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
+  await post("/wavex-os/onboarding/pillar/5", { companyId: id, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
 
   console.log("[demo] generating connector / swarm / workflow manifests…");
-  await post("/op-omega/onboarding/connector-manifest", { companyId: id, skipInference: true });
-  await post("/op-omega/onboarding/swarm-manifest", { companyId: id, skipInference: true });
-  await post("/op-omega/onboarding/workflow-manifest", { companyId: id, skipInference: true, bypassBudgetCheck: true });
+  await post("/wavex-os/onboarding/connector-manifest", { companyId: id, skipInference: true });
+  await post("/wavex-os/onboarding/swarm-manifest", { companyId: id, skipInference: true });
+  await post("/wavex-os/onboarding/workflow-manifest", { companyId: id, skipInference: true, bypassBudgetCheck: true });
 
   // ── 2. Open browser at /onboarding?phase=materialize ──────────────────
   // The Materialize UI shows the Finalize button; we navigate AFTER seed

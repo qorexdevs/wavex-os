@@ -295,36 +295,36 @@ async function api(method, path, body) {
 async function walkOne(fx) {
   const cid = fx.id;
   log(`  pillar 1 ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/pillar/1", {
+  await api("POST", "/wavex-os/onboarding/pillar/1", {
     companyId: cid, org_name: fx.pillar1.org_name,
     raw_input: fx.pillar1.raw_input, manual_context: fx.pillar1.manual_context,
   });
   log(`  pillar 2 ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/pillar/2", { companyId: cid, claude_plan: fx.pillar2.claude_plan });
+  await api("POST", "/wavex-os/onboarding/pillar/2", { companyId: cid, claude_plan: fx.pillar2.claude_plan });
   log(`  pillar 3 ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/pillar/3", { companyId: cid, product_state: fx.pillar3.product_state, stage: fx.pillar3.stage });
+  await api("POST", "/wavex-os/onboarding/pillar/3", { companyId: cid, product_state: fx.pillar3.product_state, stage: fx.pillar3.stage });
   log(`  pillar 4 ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/pillar/4", { companyId: cid, lead_sources: fx.pillar4.lead_sources, sales_motion: fx.pillar4.sales_motion, close_channel: fx.pillar4.close_channel });
+  await api("POST", "/wavex-os/onboarding/pillar/4", { companyId: cid, lead_sources: fx.pillar4.lead_sources, sales_motion: fx.pillar4.sales_motion, close_channel: fx.pillar4.close_channel });
   log(`  pillar 5 ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/pillar/5", { companyId: cid, comm_channel: fx.pillar5.comm_channel, urgency_routing: fx.pillar5.urgency_routing });
+  await api("POST", "/wavex-os/onboarding/pillar/5", { companyId: cid, comm_channel: fx.pillar5.comm_channel, urgency_routing: fx.pillar5.urgency_routing });
 
   log(`  phase: connector ${fx.tag}…`);
-  const conn = await api("POST", "/op-omega/onboarding/connector-manifest", { companyId: cid, skipInference: SKIP_INFERENCE });
+  const conn = await api("POST", "/wavex-os/onboarding/connector-manifest", { companyId: cid, skipInference: SKIP_INFERENCE });
   log(`  phase: swarm ${fx.tag}…`);
-  const swarm = await api("POST", "/op-omega/onboarding/swarm-manifest", { companyId: cid, skipInference: SKIP_INFERENCE });
+  const swarm = await api("POST", "/wavex-os/onboarding/swarm-manifest", { companyId: cid, skipInference: SKIP_INFERENCE });
   log(`  phase: workflow ${fx.tag}…`);
-  await api("POST", "/op-omega/onboarding/workflow-manifest", { companyId: cid, skipInference: SKIP_INFERENCE, bypassBudgetCheck: true });
+  await api("POST", "/wavex-os/onboarding/workflow-manifest", { companyId: cid, skipInference: SKIP_INFERENCE, bypassBudgetCheck: true });
 
   // Skip every required credential for the battery (we don't have real ones)
-  const list = await api("GET", `/op-omega/onboarding/credentials/${encodeURIComponent(cid)}`);
+  const list = await api("GET", `/wavex-os/onboarding/credentials/${encodeURIComponent(cid)}`);
   for (const c of list.connectors) {
     if (c.bucket === "required" && c.status === "pending") {
-      await api("POST", "/op-omega/onboarding/credentials/skip", { companyId: cid, connectorId: c.connectorId, reason: "fixture-battery: no real credentials" });
+      await api("POST", "/wavex-os/onboarding/credentials/skip", { companyId: cid, connectorId: c.connectorId, reason: "fixture-battery: no real credentials" });
     }
   }
 
   log(`  finalize ${fx.tag}…`);
-  const fin = await api("POST", "/op-omega/onboarding/finalize", { companyId: cid, orgId: cid, skipInference: SKIP_INFERENCE, mc: { horizon_cycles: 5, n_runs: 5, seed: 42 } });
+  const fin = await api("POST", "/wavex-os/onboarding/finalize", { companyId: cid, orgId: cid, skipInference: SKIP_INFERENCE, mc: { horizon_cycles: 5, n_runs: 5, seed: 42 } });
 
   log(`  activate ${fx.tag}…`);
   const act = await api("POST", `/api/instance/${encodeURIComponent(cid)}/activate`);

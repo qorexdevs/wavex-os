@@ -111,7 +111,7 @@ test.describe("chat-first onboarding @ /onboarding-chat", () => {
     // chiefs by reading the swarm manifest from the API. CFO/CDO/COO
     // should be parked; CMO/CRO + their reports should be active.
     const swarmResp = await page.request.get(
-      `/op-omega/onboarding/swarm-manifest?companyId=${EXPECTED_SLUG}`,
+      `/wavex-os/onboarding/swarm-manifest?companyId=${EXPECTED_SLUG}`,
     );
     expect(swarmResp.ok()).toBeTruthy();
     const swarmJson = await swarmResp.json();

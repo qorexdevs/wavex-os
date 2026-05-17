@@ -157,9 +157,9 @@ importers:
 
   packages/inference-adapter:
     dependencies:
-      '@op-omega/plugin-tier-router':
+      '@wavex-os/plugin-tier-router':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/tier-router
+        version: link:../../vendor/wavex-os/tier-router
     devDependencies:
       '@types/node':
         specifier: ^20.16.5
@@ -210,9 +210,9 @@ importers:
       '@wavex-os/db':
         specifier: workspace:*
         version: link:../db
-      '@wavex-os/op-omega-server':
+      '@wavex-os/wavex-os-server':
         specifier: workspace:*
-        version: link:../op-omega-server
+        version: link:../wavex-os-server
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
@@ -253,9 +253,9 @@ importers:
 
   packages/onboarding-ui:
     dependencies:
-      '@op-omega/plugin-onboarding':
+      '@wavex-os/plugin-onboarding':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/onboarding
+        version: link:../../vendor/wavex-os/onboarding
       '@supabase/supabase-js':
         specifier: ^2.46.1
         version: 2.105.4
@@ -297,17 +297,17 @@ importers:
         specifier: ^5.4.6
         version: 5.4.21(@types/node@20.19.39)
 
-  packages/op-omega-server:
+  packages/wavex-os-server:
     dependencies:
-      '@op-omega/plugin-flywheel-kernel':
+      '@wavex-os/plugin-flywheel-kernel':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/flywheel-kernel
-      '@op-omega/plugin-onboarding':
+        version: link:../../vendor/wavex-os/flywheel-kernel
+      '@wavex-os/plugin-onboarding':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/onboarding
-      '@op-omega/plugin-tier-router':
+        version: link:../../vendor/wavex-os/onboarding
+      '@wavex-os/plugin-tier-router':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/tier-router
+        version: link:../../vendor/wavex-os/tier-router
       '@wavex-os/auth-shim':
         specifier: workspace:*
         version: link:../auth-shim
@@ -363,7 +363,7 @@ importers:
     devDependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/plugin-sdk
+        version: link:../../vendor/wavex-os/plugin-sdk
       '@types/node':
         specifier: ^20.16.5
         version: 20.19.39
@@ -387,7 +387,7 @@ importers:
     dependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*
-        version: link:../../vendor/op-omega/plugin-sdk
+        version: link:../../vendor/wavex-os/plugin-sdk
     devDependencies:
       '@types/node':
         specifier: ^20.16.5
@@ -396,7 +396,7 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
-  vendor/op-omega/flywheel-kernel:
+  vendor/wavex-os/flywheel-kernel:
     dependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*
@@ -412,12 +412,12 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@24.12.3)
 
-  vendor/op-omega/onboarding:
+  vendor/wavex-os/onboarding:
     dependencies:
-      '@op-omega/plugin-flywheel-kernel':
+      '@wavex-os/plugin-flywheel-kernel':
         specifier: workspace:*
         version: link:../flywheel-kernel
-      '@op-omega/plugin-tier-router':
+      '@wavex-os/plugin-tier-router':
         specifier: workspace:*
         version: link:../tier-router
       '@paperclipai/plugin-sdk':
@@ -440,7 +440,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@24.12.3)
 
-  vendor/op-omega/op-omega-flow-types:
+  vendor/wavex-os/wavex-os-flow-types:
     dependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*
@@ -468,7 +468,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@24.12.3)
 
-  vendor/op-omega/plugin-sdk:
+  vendor/wavex-os/plugin-sdk:
     dependencies:
       '@paperclipai/shared':
         specifier: workspace:*
@@ -490,7 +490,7 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
-  vendor/op-omega/shared:
+  vendor/wavex-os/shared:
     dependencies:
       zod:
         specifier: ^3.24.2
@@ -503,7 +503,7 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
-  vendor/op-omega/tier-router:
+  vendor/wavex-os/tier-router:
     dependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*

@@ -33,7 +33,7 @@ export function getClaudeBin(): string {
     return resolve(repoRoot(), "scripts/wavex-claude-spawn.sh");
   }
   if (mode === "apikey") {
-    return process.env.OP_OMEGA_CLAUDE_BIN ?? "claude";
+    return process.env.WAVEX_OS_CLAUDE_BIN ?? "claude";
   }
   // Hosted mode: tier-router's `claude -p` subprocess contract is satisfied
   // by a Node shim that proxies to the Mac mini's inference-server Pool A
@@ -56,7 +56,7 @@ export function getInferenceConfig(): InferenceConfig {
 }
 
 /** Apply the inference config to process.env so any code-path that consults
- *  OP_OMEGA_CLAUDE_BIN (notably the vendored tier-router worker entry) picks
+ *  WAVEX_OS_CLAUDE_BIN (notably the vendored tier-router worker entry) picks
  *  up the right bin without explicit option-passing. Idempotent.
  *
  *  Also enables WAVEX_INFERENCE_TRACK by default so the wrapper writes
@@ -64,7 +64,7 @@ export function getInferenceConfig(): InferenceConfig {
  *  Disable explicitly with WAVEX_INFERENCE_TRACK=0. */
 export function applyInferenceEnv(): InferenceConfig {
   const cfg = getInferenceConfig();
-  process.env.OP_OMEGA_CLAUDE_BIN = cfg.claudeBin;
+  process.env.WAVEX_OS_CLAUDE_BIN = cfg.claudeBin;
   if (process.env.WAVEX_INFERENCE_TRACK === undefined && cfg.mode === "oauth") {
     process.env.WAVEX_INFERENCE_TRACK = "1";
   }

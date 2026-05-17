@@ -12,7 +12,7 @@
 |---|---|
 | `git clone --depth 1` | **3 s** |
 | `pnpm install --prefer-offline` (warm cache) | **3 s** |
-| `pnpm -r --filter "./vendor/op-omega/*" build` | **7 s** |
+| `pnpm -r --filter "./vendor/wavex-os/*" build` | **7 s** |
 | `pnpm dev` boot (UI + mock-core healthy) | **2 s** |
 | **Cold start total** | **15 s** |
 | Disk footprint after install | 343 MB (276 MB node_modules) |
@@ -162,7 +162,7 @@ Output prints the `subscription_id` and the `TEST_USER_EMAIL` you'll need on the
 # 1. Fresh clone
 git clone https://github.com/aimerdoux/wavex-os.git
 cd wavex-os && pnpm install
-pnpm -r --filter "./vendor/op-omega/*" build
+pnpm -r --filter "./vendor/wavex-os/*" build
 
 # 2. Configure .env for inference + Supabase
 cat > packages/onboarding-ui/.env <<EOF

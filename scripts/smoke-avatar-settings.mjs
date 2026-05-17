@@ -19,7 +19,7 @@ function assert(cond, msg) {
 async function main() {
   // 1. Create an ephemeral avatar via the API so the delete test doesn't
   //    touch the long-lived dashboard test data.
-  const created = await fetch(`${API}/op-omega/onboarding/avatar`, {
+  const created = await fetch(`${API}/wavex-os/onboarding/avatar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -34,7 +34,7 @@ async function main() {
   console.log(`✓ created ephemeral avatar ${AID}`);
 
   // Seed trust so the settings page has values to show
-  await fetch(`${API}/op-omega/onboarding/avatar/${AID}/trust`, {
+  await fetch(`${API}/wavex-os/onboarding/avatar/${AID}/trust`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -43,7 +43,7 @@ async function main() {
   }).then((r) => r.json());
 
   // Seed a gmail connection so the per-tool meta panel renders
-  await fetch(`${API}/op-omega/onboarding/avatar/${AID}/tools`, {
+  await fetch(`${API}/wavex-os/onboarding/avatar/${AID}/tools`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider: "gmail" }),

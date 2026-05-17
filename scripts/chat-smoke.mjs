@@ -7,7 +7,7 @@
  *
  *  Run: node scripts/chat-smoke.mjs [companyId] [baseUrl]
  *  Defaults: companyId=smoke-<unix>, baseUrl=http://127.0.0.1:5173 (Vite
- *  proxies /op-omega and /api to mock-core on :3101). */
+ *  proxies /wavex-os and /api to mock-core on :3101). */
 
 const baseUrl = process.argv[3] ?? process.env.WAVEX_SMOKE_BASE_URL ?? "http://127.0.0.1:5173";
 const companyId = process.argv[2] ?? `smoke-${Math.floor(Date.now() / 1000).toString(36)}`;
@@ -94,7 +94,7 @@ async function main() {
 
   // ── Pillar 1 fast path via manual_context (skips T2 enrichment) ────
   await step("POST /pillar/1 (manual_context)", () =>
-    post("/op-omega/onboarding/pillar/1", {
+    post("/wavex-os/onboarding/pillar/1", {
       companyId,
       org_name: companyId,
       raw_input: "ricoma.com",
@@ -102,7 +102,7 @@ async function main() {
     }));
 
   await step("POST /pillar/1/edit", () =>
-    post("/op-omega/onboarding/pillar/1/edit", {
+    post("/wavex-os/onboarding/pillar/1/edit", {
       companyId,
       industry_hint: "dtc_ecommerce",
       business_model_hint: "subscription",
@@ -111,21 +111,21 @@ async function main() {
 
   // ── Pillar 2 verify probe (real claude check — fast but live) ──────
   await step("POST /pillar/2 (claude probe)", () =>
-    post("/op-omega/onboarding/pillar/2", {
+    post("/wavex-os/onboarding/pillar/2", {
       companyId,
       claude_plan: "max_20x",
     }));
 
   // ── Pillars 3-5 (deterministic) ────────────────────────────────────
   await step("POST /pillar/3", () =>
-    post("/op-omega/onboarding/pillar/3", {
+    post("/wavex-os/onboarding/pillar/3", {
       companyId,
       product_state: "live_paying_customers",
       stage: "10k_100k_mrr",
     }));
 
   await step("POST /pillar/4", () =>
-    post("/op-omega/onboarding/pillar/4", {
+    post("/wavex-os/onboarding/pillar/4", {
       companyId,
       lead_sources: ["inbound_ads_meta_google", "referral_word_of_mouth"],
       sales_motion: "assisted_demo",
@@ -133,7 +133,7 @@ async function main() {
     }));
 
   await step("POST /pillar/5", () =>
-    post("/op-omega/onboarding/pillar/5", {
+    post("/wavex-os/onboarding/pillar/5", {
       companyId,
       comm_channel: "slack",
       urgency_routing: "digest_plus_urgent_phone",
@@ -141,58 +141,58 @@ async function main() {
 
   // ── Status hydration ───────────────────────────────────────────────
   await step("GET /onboarding/status", () =>
-    get(`/op-omega/onboarding/status?companyId=${encodeURIComponent(companyId)}`));
+    get(`/wavex-os/onboarding/status?companyId=${encodeURIComponent(companyId)}`));
 
   // ── Sub-fleet scope (focused: marketing + revenue) ─────────────────
   await step("POST /scope (focused, marketing+revenue)", () =>
-    post("/op-omega/onboarding/scope", {
+    post("/wavex-os/onboarding/scope", {
       companyId,
       mode: "focused",
       departments: ["marketing", "revenue"],
     }));
 
   await step("GET /scope", () =>
-    get(`/op-omega/onboarding/scope?companyId=${encodeURIComponent(companyId)}`));
+    get(`/wavex-os/onboarding/scope?companyId=${encodeURIComponent(companyId)}`));
 
   // ── Phase 2: connectors (skipInference=true for speed) ─────────────
   await step("POST /connector-manifest (T0 fast)", () =>
-    post("/op-omega/onboarding/connector-manifest", { companyId, skipInference: true }));
+    post("/wavex-os/onboarding/connector-manifest", { companyId, skipInference: true }));
 
   await step("GET /credentials/:id", () =>
-    get(`/op-omega/onboarding/credentials/${encodeURIComponent(companyId)}`));
+    get(`/wavex-os/onboarding/credentials/${encodeURIComponent(companyId)}`));
 
   // ── Phase 3: swarm (skipInference=true) ────────────────────────────
   await step("POST /swarm-manifest (T0 fast)", () =>
-    post("/op-omega/onboarding/swarm-manifest", { companyId, skipInference: true }));
+    post("/wavex-os/onboarding/swarm-manifest", { companyId, skipInference: true }));
 
   // ── Phase 4: workflows (skipInference=true) ────────────────────────
   await step("POST /workflow-manifest (T0 fast)", () =>
-    post("/op-omega/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true }));
+    post("/wavex-os/onboarding/workflow-manifest", { companyId, skipInference: true, bypassBudgetCheck: true }));
 
   // ── Finalize (skipInference=true skips imprint T2) ─────────────────
   await step("POST /finalize (T0 fast)", () =>
-    post("/op-omega/onboarding/finalize", { companyId, skipInference: true }));
+    post("/wavex-os/onboarding/finalize", { companyId, skipInference: true }));
 
   // ── Monte Carlo report (used by ImprintTheater Act 1) ──────────────
   await step("GET /mc-report", () =>
-    get(`/op-omega/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`));
+    get(`/wavex-os/onboarding/mc-report?companyId=${encodeURIComponent(companyId)}`));
 
   // ── Refinement loop (post-finalize T2 guidance) ────────────────────
   const analyze = await step("POST /analyze-refinement", () =>
-    post("/op-omega/onboarding/analyze-refinement", {
+    post("/wavex-os/onboarding/analyze-refinement", {
       companyId,
       operatorGuidance: "Emphasize international distribution and add observability for the dealer channel.",
     }));
   const changeIds = (analyze?.changes ?? []).slice(0, 2).map((c) => c.id);
   await step(`POST /apply-refinement (${changeIds.length} change(s))`, () =>
-    post("/op-omega/onboarding/apply-refinement", {
+    post("/wavex-os/onboarding/apply-refinement", {
       companyId,
       operatorGuidance: "Emphasize international distribution and add observability for the dealer channel.",
       changes: (analyze?.changes ?? []).filter((c) => changeIds.includes(c.id)),
       regenerateImprint: false,
     }));
   await step("POST /revert-refinement", () =>
-    post("/op-omega/onboarding/revert-refinement", { companyId }));
+    post("/wavex-os/onboarding/revert-refinement", { companyId }));
 
   // ── Tiers + dummy subscription (Pricing) ───────────────────────────
   await step("GET /api/tiers", () => get("/api/tiers"));

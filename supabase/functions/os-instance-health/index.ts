@@ -68,7 +68,7 @@ interface DaemonState {
     processes?: {
       status?: string;
       mock_core?: string;
-      op_omega_server?: string;
+      wavex_os_server?: string;
       paperclip?: string;
       detail?: string | null;
       restarted?: string[];
@@ -96,7 +96,7 @@ function deriveHealth(state: DaemonState): DerivedHealth {
   const allDead =
     procs &&
     procs.mock_core === "dead" &&
-    procs.op_omega_server === "dead" &&
+    procs.wavex_os_server === "dead" &&
     procs.paperclip === "dead";
 
   let fleet_status: "healthy" | "degraded" | "down";

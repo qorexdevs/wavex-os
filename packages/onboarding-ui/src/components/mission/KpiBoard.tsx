@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { useCompany } from "../../op-omega/lib/CompanyContext";
+import { useCompany } from "../../wavex-os/lib/CompanyContext";
 
 interface ManifestPayload {
   ok: boolean;

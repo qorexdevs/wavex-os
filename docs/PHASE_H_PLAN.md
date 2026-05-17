@@ -104,7 +104,7 @@ You want to customize Paperclip without forking. **Use Paperclip's plugin API.**
 ### Approach
 
 1. New package: `packages/paperclip-plugin-wavex/`.
-2. Registers via `@paperclipai/plugin-sdk` (already vendored at `vendor/op-omega/plugin-sdk/`).
+2. Registers via `@paperclipai/plugin-sdk` (already vendored at `vendor/wavex-os/plugin-sdk/`).
 3. Hooks to override:
    - **Dashboard branding** — replace Paperclip logo + colors with WaveX.
    - **Custom routes** — add `/wavex/expert-agents`, `/wavex/inception-status`, `/wavex/cost-ledger` panels.

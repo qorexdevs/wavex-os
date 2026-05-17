@@ -14,7 +14,7 @@ local Claude executes. WaveX OS doesn't sell inference — it sells the
 | 1 | Pool C — Expert Agent injection | ✅ live | `wavex_os.injection_queue_v2` + the four Expert Agent workers under `scripts/` |
 | 2 | Mission Control fleet visibility | ✅ live | `wavex_os.instance_health` + admin Paperclip agents under `scripts/ops/admin-instance/` |
 | 3 | Manifest persistence + cross-machine sync | ✅ live (commit `818f3163`) | `wavex_os.company_manifests` + `stagePullManifest` in `scripts/wavex-bootstrap.mjs` |
-| 4 | Connector marketplace | ✅ live (commit `543243e2`) | `packages/op-omega-server/src/routes/connectors-marketplace.ts` + `ConnectorsMarketplaceWidget` in the Paperclip plugin |
+| 4 | Connector marketplace | ✅ live (commit `543243e2`) | `packages/wavex-os-server/src/routes/connectors-marketplace.ts` + `ConnectorsMarketplaceWidget` in the Paperclip plugin |
 | 5 | Pool A free-tier fallback | ✅ live | `tier-router` → hub Pool A (operator's Claude Max, capped) |
 
 All five are buildable + verifiable without touching the customer's inference path.
@@ -117,7 +117,7 @@ already-known to work.
 **Pieces that ship as of commit `543243e2`:**
 
 - NEW route: `GET /api/connectors/marketplace?companyId=auto` in
-  `packages/op-omega-server/src/routes/connectors-marketplace.ts`. Merges
+  `packages/wavex-os-server/src/routes/connectors-marketplace.ts`. Merges
   FEATURED_TOOLKITS with live vault state via `listConnectorStates`.
 - NEW plugin worker handler `connectors-marketplace` — proxies the marketplace
   route from the Paperclip plugin sandbox.
@@ -143,7 +143,7 @@ wizard without setting up Anthropic auth first.
 
 **Pieces that already ship:**
 
-- `tier-router` from the vendored op-omega plugin — routes T2 calls through
+- `tier-router` from the vendored wavex-os plugin — routes T2 calls through
   the hub when `WAVEX_INFERENCE_MODE=hosted`.
 - Hub Pool A inference endpoint backed by operator's Claude Max OAuth.
 - `daily_cap_cents` in the inference-server's admin config gates total spend.

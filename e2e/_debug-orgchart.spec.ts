@@ -18,17 +18,17 @@ test("debug: capture Phase 3 org chart layout", async ({ page }) => {
     const r = await api.post(path, { data: body });
     if (!r.ok()) throw new Error(`POST ${path}: ${r.status()} ${await r.text()}`);
   }
-  await post("/op-omega/onboarding/pillar/1", {
+  await post("/wavex-os/onboarding/pillar/1", {
     companyId: COMPANY, org_name: COMPANY,
     raw_input: "no product yet",
     manual_context: "Debug fixture for org chart layout — exercising the Phase 3 swarm visualization.",
   });
-  await post("/op-omega/onboarding/pillar/2", { companyId: COMPANY, claude_plan: "max_5x" });
-  await post("/op-omega/onboarding/pillar/3", { companyId: COMPANY, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
-  await post("/op-omega/onboarding/pillar/4", { companyId: COMPANY, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
-  await post("/op-omega/onboarding/pillar/5", { companyId: COMPANY, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
-  await post("/op-omega/onboarding/connector-manifest", { companyId: COMPANY, skipInference: true });
-  await post("/op-omega/onboarding/swarm-manifest", { companyId: COMPANY, skipInference: true });
+  await post("/wavex-os/onboarding/pillar/2", { companyId: COMPANY, claude_plan: "max_5x" });
+  await post("/wavex-os/onboarding/pillar/3", { companyId: COMPANY, product_state: "live_paying_customers", stage: "10k_100k_mrr" });
+  await post("/wavex-os/onboarding/pillar/4", { companyId: COMPANY, lead_sources: ["outbound_cold"], sales_motion: "assisted_demo", close_channel: "mostly_phone_video" });
+  await post("/wavex-os/onboarding/pillar/5", { companyId: COMPANY, comm_channel: "telegram", urgency_routing: "all_to_one_channel" });
+  await post("/wavex-os/onboarding/connector-manifest", { companyId: COMPANY, skipInference: true });
+  await post("/wavex-os/onboarding/swarm-manifest", { companyId: COMPANY, skipInference: true });
   await api.dispose();
 
   // The wizard auto-routes to the first incomplete phase. After pillars +

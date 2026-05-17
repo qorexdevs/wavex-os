@@ -37,7 +37,7 @@ End-to-end onboarding walkthrough with real T2 inference + Paperclip handoff. No
 - If it keeps failing: click "Skip T2 inference" on the relevant phase (loses fidelity but completes the demo)
 
 **Phase 2/3/4 stays "Continuing…" past 4 minutes**
-- T2 call probably stuck. Open dev tools → Network tab → check the POST to `/op-omega/onboarding/<phase>-manifest`
+- T2 call probably stuck. Open dev tools → Network tab → check the POST to `/wavex-os/onboarding/<phase>-manifest`
 - If 502/504 → claude rate-limited. Wait 30s, refresh, the wizard hydrates from disk (no replay)
 - If the response shows `source: "fallback"` — deterministic mode kicked in; demo still works, just point out that real T2 would refine further
 

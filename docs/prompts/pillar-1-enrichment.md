@@ -2,7 +2,7 @@
 
 **Purpose:** Given the operator's raw company description (≤200 words) plus optional URL, infer the 10 structured Pillar-1 fields the wizard needs to drive Phase 2/3 decision matrices.
 
-**Caller:** `vendor/op-omega/onboarding/src/phases/phase-1-pillar/enrichment.ts`
+**Caller:** `vendor/wavex-os/onboarding/src/phases/phase-1-pillar/enrichment.ts`
 
 **Pool:** A — WaveX-paid, anonymous, rate-limited via the inference-server.
 
@@ -88,7 +88,7 @@ This fallback is the critical reliability property from V2_CAPTURE_C §5 — onb
 
 ## Test fixtures
 
-Located at `vendor/op-omega/onboarding/test/differential-equation-suite/fixtures/`:
+Located at `vendor/wavex-os/onboarding/test/differential-equation-suite/fixtures/`:
 - `acme-b2b-saas-outbound.json` — happy path B2B SaaS
 - `acme-plg-startup.json` — PLG variant
 - `acme-no-product.json` — pre-product fallback case

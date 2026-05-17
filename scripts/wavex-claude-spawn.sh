@@ -58,7 +58,7 @@ ALLOWED_TOOLS="${WAVEX_CLAUDE_ALLOWED_TOOLS:-WebFetch,WebSearch,Read,Grep,Glob,B
 # the route boundary, so this shim is the only stable point to record them.
 # We append one JSONL event per call to ~/.wavex-os/state/t2-events.jsonl
 # and a node-side helper attributes events to (companyId, phase) by time
-# window. See packages/op-omega-server/src/lib/token-accounting.ts.
+# window. See packages/wavex-os-server/src/lib/token-accounting.ts.
 JSON_MODE=0
 prev_arg=""
 for arg in "$@"; do
