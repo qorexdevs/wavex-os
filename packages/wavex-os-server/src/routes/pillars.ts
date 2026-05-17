@@ -147,7 +147,7 @@ async function consolidatedPillar1Enrich(opts: {
   return {
     org_name: opts.orgName,
     company_context: sliced(refined.company_context, 1200) ?? opts.manualContext.slice(0, 1200),
-    enrichment_status: "manual_capture",
+    enrichment_status: "enriched",
     has_product: typeof refined.has_product === "boolean" ? refined.has_product : true,
     industry_hint: s(refined.industry_hint) ?? "unknown",
     business_model_hint: s(refined.business_model_hint) ?? "subscription",
