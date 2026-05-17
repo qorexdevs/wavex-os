@@ -123,7 +123,7 @@ async function lookupActiveSubscription(
 async function writeLedger(
   supabase: SupabaseClient,
   row: {
-    pool: "C";
+    pool: "B";
     subscription_id: string;
     request_id: string;
     model: string;
@@ -342,7 +342,7 @@ async function handleRequest(args: {
       void writeLedger(
         supabase,
         {
-          pool: "C",
+          pool: "B",
           subscription_id: subscriptionId,
           request_id,
           model,

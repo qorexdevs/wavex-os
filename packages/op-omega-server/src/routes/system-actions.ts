@@ -17,6 +17,12 @@
  *       Other platforms: returns a clear "Refresh page" hint — UI maps it
  *       to a non-terminal-command action.
  *
+ *    POST /api/system/pull-and-restart
+ *       git stash-if-dirty + git pull --ff-only + pnpm install (background).
+ *       This is the "Update now" magical-fix button — a customer can pull
+ *       a fresh bug fix without touching the terminal. Same recoverable
+ *       stash semantics as discard-local-changes.
+ *
  *  Daemon is spawned non-blocking after each action so /api/system/health
  *  returns the updated state within ~5s of the click. */
 
@@ -125,5 +131,68 @@ export function registerSystemActionsRoute(app: FastifyInstance): void {
     }
     const refreshed = await spawnDaemonRefresh();
     return { ok: true, results, daemon_refreshed: refreshed };
+  });
+
+  app.post("/api/system/pull-and-restart", async () => {
+    let stashed = false;
+    let stashLabel: string | null = null;
+    try {
+      const status = await execAsync("git status --porcelain", { cwd: REPO_ROOT });
+      if (status.stdout.trim()) {
+        stashLabel = `auto-pull-${new Date().toISOString()}`;
+        await execAsync(
+          `git stash push --include-untracked -m "${stashLabel}"`,
+          { cwd: REPO_ROOT, maxBuffer: 10 * 1024 * 1024 },
+        );
+        stashed = true;
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        error: "stash_failed",
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    let pulled = "";
+    try {
+      const r = await execAsync("git pull --ff-only", { cwd: REPO_ROOT, maxBuffer: 10 * 1024 * 1024 });
+      pulled = r.stdout.trim() || r.stderr.trim();
+    } catch (err) {
+      return {
+        ok: false,
+        step: "git_pull",
+        stashed,
+        stash_label: stashLabel,
+        error: "pull_failed",
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    const installPid = (() => {
+      try {
+        const child = spawn("pnpm", ["install", "--frozen-lockfile"], {
+          cwd: REPO_ROOT,
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+        return child.pid ?? null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const refreshed = await spawnDaemonRefresh();
+    return {
+      ok: true,
+      stashed,
+      stash_label: stashLabel,
+      pulled: pulled.slice(0, 400),
+      install_pid: installPid,
+      daemon_refreshed: refreshed,
+      detail:
+        "Pulled latest. Background install started — refresh the page in ~30s to use the new code.",
+    };
   });
 }
