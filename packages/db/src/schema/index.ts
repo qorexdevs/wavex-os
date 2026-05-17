@@ -9,3 +9,4 @@ export * from "./issues.js";
 export * from "./memory-episodic.js";
 export * from "./memory-preference.js";
 export * from "./memory-semantic.js";
+export * from "./users.js";
