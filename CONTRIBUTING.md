@@ -1,16 +1,20 @@
-# Contributing to WaveX OS
+# Contributing to WaveX OS / Tony Apple QA
 
 Thanks for considering a contribution. WaveX OS is in active development; the easiest way to help is to clone, run, and report what breaks.
 
+Looking for something to work on? Browse [good first issues](https://github.com/aimerdoux/wavex-os/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
+
 ---
 
-## Quickstart for contributors
+## Local dev setup
 
 ```bash
 git clone https://github.com/aimerdoux/wavex-os.git
 cd wavex-os
+npm install -g pnpm   # if you don't have pnpm yet
 pnpm install
-pnpm dev          # runs onboarding-ui + mock-core in parallel
+pnpm test             # run the test suite
+pnpm dev              # runs onboarding-ui + mock-core in parallel
 ```
 
 Open [http://localhost:5173](http://localhost:5173) — you'll land on Mission Control.
@@ -21,6 +25,19 @@ To work on individual packages:
 pnpm dev:ui       # just the onboarding wizard
 pnpm dev:core     # just the mock-core server
 ```
+
+---
+
+## Branch naming
+
+```
+feat/<short-description>        # new feature
+fix/<short-description>         # bug fix
+docs/<short-description>        # documentation only
+chore/<short-description>       # tooling, deps, config
+```
+
+Examples: `feat/pillar-6-form`, `fix/port-collision`, `docs/contributing-guide`
 
 ---
 
@@ -55,13 +72,27 @@ pnpm dev:core     # just the mock-core server
 
 ## Conventions
 
-### Commits
-Follow [Conventional Commits](https://www.conventionalcommits.org/) with a phase tag:
+### Commit message format
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/) with an area tag:
+
 ```
-feat(phase-c): live SSE spawn feed
-fix(installer): handle missing pnpm
-docs(architecture): clarify OAuth handoff
+feat(<area>): short description
+fix(<area>): short description
+docs(<area>): short description
+chore(<area>): short description
+test(<area>): short description
 ```
+
+Examples:
+
+```
+feat(wizard): add pillar-6 mobile-test-runner form
+fix(installer): handle missing pnpm gracefully
+docs(contributing): add branch naming guide
+```
+
+The subject line must be ≤72 characters. Use the body for "why", not "what".
 
 ### TypeScript
 Every package uses strict TypeScript. Before pushing:
@@ -99,13 +130,23 @@ The repo has a hardened `.gitignore` for `.env*`, `*.pem`, `*.key`, `secrets.jso
 
 ## Pull requests
 
-1. Fork the repo and create a feature branch.
+1. Fork the repo and create a branch following the naming convention above.
 2. Make your change. Match the existing code style (no new linters or formatters in a PR — that's a separate change).
-3. Ensure type-check + production build pass on every package you touched.
-4. If you changed UX, add a 1–2 sentence note in the PR description on what the user now sees.
-5. Open the PR against `main`.
+3. Run `pnpm test` and ensure it passes.
+4. Ensure type-check passes on every package you touched (`pnpm --filter <package> exec tsc --noEmit`).
+5. If you changed UX, add a 1–2 sentence note in the PR description on what the user now sees.
+6. Open the PR against `main`.
+7. Link the issue your PR closes (`Closes #123`).
+
+**PR checklist:**
+- [ ] `pnpm test` passes
+- [ ] TypeScript compiles cleanly on changed packages
+- [ ] Frozen paths untouched (see CLAUDE.md)
+- [ ] No plaintext secrets or keys committed
 
 For substantial changes (new package, architectural refactor, new dependency >100KB), open a discussion or issue first — the maintainer will tell you if it fits the roadmap before you sink hours.
+
+Need a starting point? Browse [good first issues](https://github.com/aimerdoux/wavex-os/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 ---
 

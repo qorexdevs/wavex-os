@@ -1,0 +1,37 @@
+{
+  "name": "tony-apple-qa",
+  "version": "0.1.0",
+  "description": "AI-powered QA operating system for mobile-app teams. Spin up a full QA agent fleet on your laptop in under an hour.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "tony-apple-qa": "./bin/tony-apple-qa.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node bin/tony-apple-qa.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "qa",
+    "mobile",
+    "ios",
+    "android",
+    "ai",
+    "agents",
+    "testing"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aimerdoux/wavex-os.git"
+  },
+  "homepage": "https://github.com/aimerdoux/wavex-os#readme",
+  "bugs": {
+    "url": "https://github.com/aimerdoux/wavex-os/issues"
+  }
+}

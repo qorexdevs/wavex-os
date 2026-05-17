@@ -2,6 +2,8 @@
 
 > Open-source operating system for running an AI agent company on your localhost.
 
+[![npm version](https://img.shields.io/npm/v/tony-apple-qa)](https://www.npmjs.com/package/tony-apple-qa)
+[![CI](https://github.com/aimerdoux/wavex-os/actions/workflows/ci.yml/badge.svg)](https://github.com/aimerdoux/wavex-os/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: 0.2.0 / Phase H](https://img.shields.io/badge/status-0.2.0%20%E2%80%94%20Phase%20H-4ec9b0)](docs/ROADMAP.md)
 [![Built on Paperclip](https://img.shields.io/badge/built%20on-Paperclip-86c5da)](https://github.com/paperclipai/paperclip)
@@ -101,7 +103,20 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan and [docs/ARCHITECTURE
 
 ---
 
-## Quickstart
+## Tony Apple QA — quick install
+
+**Tony Apple QA** is the mobile-app QA distribution of WaveX OS. It gives iOS and Android teams an AI-powered QA agent fleet that runs entirely on your laptop: smoke-test orchestration, regression coverage plans, release checklists, and a live Mission Control dashboard — all backed by your Claude Max subscription, no API keys or cloud accounts required.
+
+```bash
+npm install -g tony-apple-qa
+tony-apple-qa init
+```
+
+`tony-apple-qa init` opens the five-pillar wizard in your browser. Answer questions about your app, your Claude setup, and your QA goals; the wizard builds your agent roster and activates the fleet in under an hour. See [`packages/tony-apple-qa/`](packages/tony-apple-qa/) for the full CLI reference.
+
+---
+
+## Quickstart (from source)
 
 You need [Node ≥18](https://nodejs.org), [pnpm ≥9](https://pnpm.io), [git](https://git-scm.com), and a [Claude Max](https://claude.ai/upgrade) subscription on the same machine (the wizard reads from the system keychain).
 
@@ -299,6 +314,12 @@ Full attribution: [CREDITS.md](CREDITS.md).
 **v0.2.0 — Phase H** (Minimal inception kernel + four-layer self-healing). Production patterns from a 7-day deployment crystallized into open-source skills, services, and operational templates. Phase D (Paperclip handoff bridge) just shipped in this commit. Phase E completes OAuth handoff (Linux + Windows). Phase F adds Stripe + the hosted Optimizer.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan and what's done.
+
+---
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for local dev setup, branch conventions, and PR requirements. Browse [good first issues](https://github.com/aimerdoux/wavex-os/issues?q=is%3Aopen+label%3A%22good+first+issue%22) to find something to work on.
 
 ---
 
