@@ -182,7 +182,7 @@ async function maybeEnrichPillar1WithBYOC(
   return merged as unknown as typeof heuristicResult;
 }
 
-// ── Combined Pillar 1 enrichment (WAVAAAA-152) ─────────────────────────────
+// ── Combined Pillar 1 enrichment (WAVAAAA-157) ─────────────────────────────
 //
 // Replaces up to 2 sequential T2 calls (vendored deep-dive + BYOC refinement)
 // with 1 combined T2 call against pre-fetched URL content.
@@ -450,7 +450,7 @@ export function registerPillarRoutes(app: FastifyInstance): void {
         return { ok: true, response: result };
       }
 
-      // Combined path (WAVAAAA-152): server-side URL fetch + single T2 call.
+      // Combined path (WAVAAAA-157): server-side URL fetch + single T2 call.
       // Reduces up to 2 sequential T2 calls (vendored deep-dive + BYOC) to 1,
       // cutting latency from ~85s P50 to ~25s by sending pre-fetched content
       // instead of asking Claude to browse the web (reasoning_depth: shallow
