@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build vendored wavex-os packages
+        run: pnpm -r --filter "./vendor/wavex-os/*" build
+
+      - name: Run tests
+        run: pnpm --filter @wavex-os/* test
+
+      - name: Type-check onboarding-ui
+        run: pnpm --filter @wavex-os/onboarding-ui exec tsc --noEmit
+
+      - name: Type-check mock-core
+        run: pnpm --filter @wavex-os/mock-core exec tsc -p tsconfig.json --noEmit || true

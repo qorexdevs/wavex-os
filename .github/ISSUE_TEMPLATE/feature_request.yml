@@ -1,0 +1,72 @@
+name: Feature Request
+description: Suggest a new capability or improvement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a request, check [docs/ROADMAP.md](https://github.com/aimerdoux/wavex-os/blob/main/docs/ROADMAP.md) — it may already be planned for a future phase.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Describe the pain point or gap. "I'm trying to do X but can't because Y" is more useful than "please add Z".
+      placeholder: "Running a fleet of 35 agents generates a lot of log noise. I have no way to filter heartbeat logs by agent role…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? Be as specific as you can about the UI, API, or behavior change.
+      placeholder: "Add a role filter dropdown to Mission Control's agent list. When 'CMO' is selected, only CMO heartbeats appear in the log panel."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider? Why are they worse?
+    validations:
+      required: false
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How will we know this feature is working correctly? Define "done."
+      placeholder: |
+        - Selecting a role filter shows only that role's heartbeats
+        - Clearing the filter restores all agents
+        - Filter state persists across page refresh (localStorage)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Which area does this affect?
+      options:
+        - Onboarding wizard (5 pillars + 3 phases)
+        - Mission Control dashboard
+        - Paperclip handoff / runtime
+        - Agent templates
+        - Observability / self-healing
+        - CLI / installer
+        - Docs / DX
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Are you willing to open a PR for this?
+      options:
+        - label: Yes, I plan to implement this myself
+        - label: I can help review / test a PR
+        - label: No, just a suggestion

@@ -1,0 +1,99 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report. Please be as detailed as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: "When I run `pnpm dev` and open the wizard, step X crashes with error Y…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Clone the repo and run `pnpm install && pnpm dev`
+        2. Open http://localhost:5173
+        3. Click "Start onboarding"
+        4. Enter "My Company" and press Next
+        5. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Paste any error output or stack traces here.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: "e.g. 20.11.0 (run: node --version)"
+    validations:
+      required: true
+
+  - type: input
+    id: pnpm-version
+    attributes:
+      label: pnpm version
+      placeholder: "e.g. 9.1.0 (run: pnpm --version)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (x64)
+        - Linux (ARM)
+        - Windows (WSL2)
+        - Windows (native)
+      multiple: false
+    validations:
+      required: true
+
+  - type: dropdown
+    id: claude-plan
+    attributes:
+      label: Claude subscription tier
+      description: The wizard reads from your local Claude CLI keychain.
+      options:
+        - Claude Max (5x)
+        - Claude Max (1x)
+        - Claude Pro
+        - API key only
+        - Not applicable / unknown
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, relevant config values (redact secrets), or anything else that helps.
