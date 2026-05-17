@@ -36,11 +36,23 @@
  */
 import { createClient, type SupabaseClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { verifyDeviceJwt } from "@wavex-os/auth-shim";
-import { callAnthropicOAuth, inferenceBackend } from "../lib/anthropic-oauth.js";
+import {
+  callAnthropicOAuth,
+  callAnthropicOAuthRaw,
+  inferenceBackend,
+  type AnthropicMessagesResponse,
+} from "../lib/anthropic-oauth.js";
 
 const REQUEST_TOPIC_PREFIX = "wavex-inference-request:";
 const RESPONSE_TOPIC_PREFIX = "wavex-inference-response:";
 const BROADCAST_EVENT = "wavex-inference";
+
+// Anthropic-Messages-API variant — used by the customer-side proxy that
+// fronts Claude Code. Same auth + ledger contract as BROADCAST_EVENT, but
+// the payload is the FULL Messages API shape (messages[], tools, system).
+const ANTHROPIC_REQUEST_TOPIC_PREFIX = "wavex-anthropic-messages-request:";
+const ANTHROPIC_RESPONSE_TOPIC_PREFIX = "wavex-anthropic-messages-response:";
+const ANTHROPIC_BROADCAST_EVENT = "anthropic-messages";
 const REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_MODEL = process.env.WAVEX_OS_INFERENCE_MODEL ?? "claude-sonnet-4-6";
 const MAX_OUTPUT_TOKENS_HARD = 8000;
@@ -378,6 +390,239 @@ async function handleRequest(args: {
   }
 }
 
+interface AnthropicRequestPayload {
+  request_id?: unknown;
+  device_jwt?: unknown;
+  anthropic_request?: unknown;
+}
+
+/** Handle a wavex-anthropic-messages-request:<user_id> broadcast.
+ *  Same auth + ledger contract as handleRequest, but the payload IS the
+ *  Anthropic Messages API request body (passed through callAnthropicOAuthRaw)
+ *  and the response IS the Anthropic Messages API response body. Used by
+ *  the customer-side claude-code-proxy package. */
+async function handleAnthropicRequest(args: {
+  supabase: SupabaseClient;
+  topicUserId: string;
+  payload: AnthropicRequestPayload;
+  log: Logger;
+}): Promise<void> {
+  const { supabase, topicUserId, payload, log } = args;
+  const started = Date.now();
+
+  const request_id = typeof payload.request_id === "string" ? payload.request_id : null;
+  const device_jwt = typeof payload.device_jwt === "string" ? payload.device_jwt : null;
+  const anthropic_request =
+    payload.anthropic_request && typeof payload.anthropic_request === "object"
+      ? (payload.anthropic_request as {
+          model?: string;
+          max_tokens?: number;
+          messages?: Array<Record<string, unknown>>;
+          system?: string | Array<Record<string, unknown>>;
+          tools?: Array<Record<string, unknown>>;
+          tool_choice?: Record<string, unknown>;
+          temperature?: number;
+          top_p?: number;
+          top_k?: number;
+          stop_sequences?: string[];
+          metadata?: Record<string, unknown>;
+        })
+      : null;
+
+  if (
+    !request_id ||
+    !device_jwt ||
+    !anthropic_request ||
+    typeof anthropic_request.model !== "string" ||
+    typeof anthropic_request.max_tokens !== "number" ||
+    !Array.isArray(anthropic_request.messages)
+  ) {
+    log.warn({ topicUserId, hasReqId: !!request_id }, "ignoring malformed anthropic-messages request");
+    return;
+  }
+
+  let responseUserId = topicUserId;
+  const respond = async (body: Record<string, unknown>): Promise<void> => {
+    try {
+      const ch = supabase.channel(`${ANTHROPIC_RESPONSE_TOPIC_PREFIX}${responseUserId}`);
+      await new Promise<void>((resolve) => {
+        ch.subscribe((status) => {
+          if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
+        });
+        setTimeout(resolve, 5_000);
+      });
+      await ch.send({ type: "broadcast", event: ANTHROPIC_BROADCAST_EVENT, payload: body });
+      await supabase.removeChannel(ch);
+    } catch (e) {
+      log.error({ err: (e as Error).message, request_id }, "anthropic response broadcast failed");
+    }
+  };
+
+  // JWT verify
+  const v = verifyDeviceJwt(device_jwt);
+  if (!v.ok || !v.payload) {
+    log.warn({ topicUserId, request_id, reason: v.reason }, "device JWT verify failed (anthropic)");
+    await respond({
+      request_id,
+      ok: false,
+      error: "no_paired_device",
+      error_class: "auth",
+      message: `device JWT invalid: ${v.reason ?? "unknown"}`,
+    });
+    return;
+  }
+  responseUserId = v.payload.sub;
+
+  // Subscription gating (same as simple-prompt path).
+  let subscriptionId: string | null = null;
+  if (process.env.WAVEX_OS_INFERENCE_SKIP_SUB !== "1") {
+    const sub = await lookupActiveSubscription(supabase, v.payload.sub);
+    if (!sub.ok) {
+      await respond({
+        request_id,
+        ok: false,
+        error: "no_active_subscription",
+        error_class: "auth",
+        message: sub.error,
+      });
+      log.info(
+        {
+          request_id,
+          user_id: v.payload.sub,
+          outcome: "no_active_subscription",
+          duration_ms: Date.now() - started,
+        },
+        "anthropic-messages request rejected",
+      );
+      return;
+    }
+    subscriptionId = sub.row.id;
+  }
+
+  // Clamp max_tokens defensively.
+  const clampedMaxTokens = Math.min(
+    Math.max(anthropic_request.max_tokens, 1),
+    MAX_OUTPUT_TOKENS_HARD,
+  );
+
+  try {
+    let anthropicResponse: AnthropicMessagesResponse;
+
+    if (process.env.WAVEX_OS_INFERENCE_MOCK === "1") {
+      anthropicResponse = {
+        id: `msg_mock_${request_id}`,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "[MOCK] ok" }],
+        model: anthropic_request.model,
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 2 },
+      };
+    } else {
+      if (inferenceBackend() !== "oauth") {
+        await respond({
+          request_id,
+          ok: false,
+          error: "internal",
+          error_class: "other",
+          message: "WAVEX_INFERENCE_BACKEND must be oauth for realtime path",
+        });
+        return;
+      }
+      anthropicResponse = await callAnthropicOAuthRaw({
+        model: anthropic_request.model,
+        max_tokens: clampedMaxTokens,
+        messages: anthropic_request.messages,
+        system: anthropic_request.system,
+        tools: anthropic_request.tools,
+        tool_choice: anthropic_request.tool_choice,
+        temperature: anthropic_request.temperature,
+        top_p: anthropic_request.top_p,
+        top_k: anthropic_request.top_k,
+        stop_sequences: anthropic_request.stop_sequences,
+        metadata: anthropic_request.metadata,
+      });
+    }
+
+    const durationMs = Date.now() - started;
+    const u = anthropicResponse.usage;
+    const costUsd = calcCostUsd(anthropic_request.model, {
+      input_tokens: u.input_tokens,
+      output_tokens: u.output_tokens,
+      cache_read_input_tokens: u.cache_read_input_tokens,
+      cache_creation_input_tokens: u.cache_creation_input_tokens,
+    });
+    const costCents = Math.round(costUsd * 100);
+
+    await respond({
+      request_id,
+      ok: true,
+      anthropic_response: anthropicResponse,
+    });
+
+    if (subscriptionId) {
+      void writeLedger(
+        supabase,
+        {
+          pool: "B",
+          subscription_id: subscriptionId,
+          request_id,
+          model: anthropic_request.model,
+          prompt_tokens: u.input_tokens,
+          completion_tokens: u.output_tokens,
+          cache_read_tokens: u.cache_read_input_tokens ?? 0,
+          cache_creation_tokens: u.cache_creation_input_tokens ?? 0,
+          cost_cents: costCents,
+          status: "ok",
+          device_id: v.payload.device_id,
+        },
+        log,
+      );
+    }
+
+    log.info(
+      {
+        request_id,
+        user_id: v.payload.sub,
+        outcome: "ok",
+        duration_ms: durationMs,
+        cost_cents: costCents,
+        kind: "anthropic-messages",
+      },
+      "anthropic-messages request served",
+    );
+  } catch (e) {
+    const err = e as { status?: number; message?: string };
+    const status = err.status;
+    const error_class =
+      status === 429
+        ? "rate_limit"
+        : status === 401 || status === 403
+          ? "auth"
+          : typeof status === "number" && status >= 400 && status < 600
+            ? "upstream"
+            : "other";
+    await respond({
+      request_id,
+      ok: false,
+      error: "upstream_error",
+      error_class,
+      message: err.message ?? "anthropic_call_failed",
+    });
+    log.error(
+      {
+        err: err.message,
+        request_id,
+        user_id: v.payload.sub,
+        duration_ms: Date.now() - started,
+        kind: "anthropic-messages",
+      },
+      "anthropic-messages request failed",
+    );
+  }
+}
+
 export interface RealtimeWorkerDeps {
   log: Logger;
   supabaseUrl?: string;
@@ -407,28 +652,53 @@ export async function startRealtimeWorker(deps: RealtimeWorkerDeps): Promise<Rea
 
   const supabase = createClient(url, key, { auth: { persistSession: false } });
   const channelsByUserId = new Map<string, RealtimeChannel>();
+  const anthropicChannelsByUserId = new Map<string, RealtimeChannel>();
 
   const subscribeUser = async (userId: string): Promise<void> => {
-    if (channelsByUserId.has(userId)) return;
-    const topic = `${REQUEST_TOPIC_PREFIX}${userId}`;
-    const ch = supabase
-      .channel(topic)
-      .on("broadcast", { event: BROADCAST_EVENT }, (msg: { payload?: RequestPayload }) => {
-        void handleRequest({
-          supabase,
-          topicUserId: userId,
-          payload: msg.payload ?? {},
-          log,
+    if (!channelsByUserId.has(userId)) {
+      const topic = `${REQUEST_TOPIC_PREFIX}${userId}`;
+      const ch = supabase
+        .channel(topic)
+        .on("broadcast", { event: BROADCAST_EVENT }, (msg: { payload?: RequestPayload }) => {
+          void handleRequest({
+            supabase,
+            topicUserId: userId,
+            payload: msg.payload ?? {},
+            log,
+          });
+        })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            log.info({ topic, user_id: userId }, "realtime worker subscribed");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            log.warn({ topic, status }, "realtime channel status");
+          }
         });
-      })
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          log.info({ topic, user_id: userId }, "realtime worker subscribed");
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          log.warn({ topic, status }, "realtime channel status");
-        }
-      });
-    channelsByUserId.set(userId, ch);
+      channelsByUserId.set(userId, ch);
+    }
+
+    // Second channel: anthropic-messages variant for the Claude Code proxy.
+    if (!anthropicChannelsByUserId.has(userId)) {
+      const topic = `${ANTHROPIC_REQUEST_TOPIC_PREFIX}${userId}`;
+      const ch = supabase
+        .channel(topic)
+        .on("broadcast", { event: ANTHROPIC_BROADCAST_EVENT }, (msg: { payload?: AnthropicRequestPayload }) => {
+          void handleAnthropicRequest({
+            supabase,
+            topicUserId: userId,
+            payload: msg.payload ?? {},
+            log,
+          });
+        })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            log.info({ topic, user_id: userId }, "anthropic-messages worker subscribed");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            log.warn({ topic, status }, "anthropic-messages channel status");
+          }
+        });
+      anthropicChannelsByUserId.set(userId, ch);
+    }
   };
 
   const refresh = async (): Promise<void> => {
@@ -464,8 +734,19 @@ export async function startRealtimeWorker(deps: RealtimeWorkerDeps): Promise<Rea
           /* ignore */
         }
       }
+      for (const ch of anthropicChannelsByUserId.values()) {
+        try {
+          await supabase.removeChannel(ch);
+        } catch {
+          /* ignore */
+        }
+      }
       channelsByUserId.clear();
+      anthropicChannelsByUserId.clear();
     },
-    subscribedTopics: () => Array.from(channelsByUserId.keys()).map((u) => `${REQUEST_TOPIC_PREFIX}${u}`),
+    subscribedTopics: () => [
+      ...Array.from(channelsByUserId.keys()).map((u) => `${REQUEST_TOPIC_PREFIX}${u}`),
+      ...Array.from(anthropicChannelsByUserId.keys()).map((u) => `${ANTHROPIC_REQUEST_TOPIC_PREFIX}${u}`),
+    ],
   };
 }
