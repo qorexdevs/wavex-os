@@ -322,6 +322,11 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
             placeholder="acme.com  /  github.com/you/repo  /  no product yet"
             disabled={submitting}
           />
+          {!submitting && (
+            <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>
+              Context enrichment usually takes 60–90 seconds.
+            </div>
+          )}
         </Field>
 
         {/* Authoritative progress: real elapsed time + history-backed ETA. */}
