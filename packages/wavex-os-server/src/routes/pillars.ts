@@ -16,7 +16,9 @@ import {
   emptyPillarResponses,
   isPillarResponsesComplete,
   nextIncompletePillar,
+  looksLikeNoProduct,
 } from "@wavex-os/plugin-onboarding";
+import type { Pillar1Response } from "@wavex-os/plugin-onboarding";
 import { route as tierRoute } from "@wavex-os/plugin-tier-router";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { getInferenceMode } from "@wavex-os/inference-adapter";
@@ -180,6 +182,147 @@ async function maybeEnrichPillar1WithBYOC(
   return merged as unknown as typeof heuristicResult;
 }
 
+// ── Combined Pillar 1 enrichment (WAVAAAA-148) ─────────────────────────────
+//
+// Replaces up to 2 sequential T2 calls (vendored deep-dive + BYOC refinement)
+// with 1 combined T2 call against pre-fetched URL content.
+//
+// Why: the vendored handlePillar1 instructs Claude to browse multiple pages
+// (reasoning_depth: "deep", timeout 180s), costing ~85s P50. By fetching the
+// homepage server-side and sending the text directly, Claude only needs to do
+// structured extraction (reasoning_depth: "shallow", timeout 45s) → ~20-25s.
+//
+// Fallback: if URL fetch fails or combined T2 fails, we fall through to the
+// original vendored path so onboarding never hard-blocks.
+
+const COMBINED_FETCH_TIMEOUT_MS = 8_000;
+const COMBINED_T2_TIMEOUT_MS = 45_000;
+const COMBINED_URL_CONTENT_MAX = 12_000;
+
+function looksLikeUrl(s: string): boolean {
+  const t = s.trim().split(/\s/)[0];
+  return /^https?:\/\//i.test(t) || /^(?:[\w-]+\.)+[\w]{2,}(\/|$)/i.test(t);
+}
+
+async function fetchUrlContent(rawInput: string): Promise<string | null> {
+  if (!looksLikeUrl(rawInput)) return null;
+  try {
+    const first = rawInput.trim().split(/\s/)[0];
+    const url = /^https?:\/\//i.test(first) ? first : `https://${first}`;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), COMBINED_FETCH_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: ctl.signal,
+      headers: { "User-Agent": "WaveX-OS/1.0 (onboarding-enrichment)" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return text.length >= 100 ? text.slice(0, COMBINED_URL_CONTENT_MAX) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildCombinedEnrichmentPrompt(opts: {
+  orgName: string;
+  rawInput: string;
+  urlContent: string | null;
+  manualContext: string | undefined;
+}): string {
+  const parts: string[] = [
+    `Org name: ${opts.orgName}`,
+    `Raw input: ${opts.rawInput}`,
+  ];
+  if (opts.urlContent) {
+    parts.push(`Homepage content (server-fetched, first 12 K chars):\n${opts.urlContent}`);
+  }
+  if (opts.manualContext && opts.manualContext.length >= 40) {
+    parts.push(`Operator description (overrides homepage where more specific):\n${opts.manualContext}`);
+  }
+  return `You are extracting structured Pillar 1 onboarding signals for WaveX OS. Use only the provided content — do not browse the web.
+
+${parts.join("\n\n")}
+
+Rules:
+1. Be evidence-driven. Name specific products, customer types, and pricing when the content states them.
+2. Never hallucinate revenue numbers, customer names, or growth metrics not present in the input.
+3. If content is sparse, infer the most plausible values from the company name and domain.
+4. primary_friction_hypothesis: one crisp sentence about the single biggest obstacle to 10× growth.
+5. differentiator_hypothesis: what makes this company distinctly different from direct peers.
+
+Return ONLY this JSON object — no prose, no markdown fences:
+{
+  "company_context": "150-300 words describing what the company does, who it serves, how it makes money, and what is distinctive",
+  "industry_hint": "enterprise_saas|b2c|dev_tools|marketplace|ecommerce|fintech|healthtech|edtech|legal_tech|consumer_mobile|services_to_saas|dev_infrastructure|consumer_hardware|consumer_ai|unknown",
+  "business_model_hint": "subscription|usage_based|one_time|marketplace|open_core|unknown",
+  "ideal_customer_profile": "≤60 chars — who the product serves",
+  "revenue_model": "≤40 chars — how money is made",
+  "competitive_position": "category leader|vertical specialist|niche|emerging|unvalidated",
+  "primary_acquisition_channel": "content seo|outbound sales|referral|paid ads|partnerships|waitlist|community-led|creator-led",
+  "product_maturity_signal": "pre_mvp|mvp|ga|mature|legacy",
+  "tone_signal": "technical|friendly|authoritative|playful|enterprise",
+  "primary_friction_hypothesis": "≤200 chars",
+  "differentiator_hypothesis": "≤200 chars"
+}`;
+}
+
+async function runCombinedPillar1Enrichment(opts: {
+  orgName: string;
+  rawInput: string;
+  urlContent: string | null;
+  manualContext: string | undefined;
+  companyId: string;
+}): Promise<Omit<Pillar1Response, "enriched_at"> | null> {
+  const hasUrlContent = !!opts.urlContent;
+  const hasManualContext = !!(opts.manualContext && opts.manualContext.length >= 40);
+  if (!hasUrlContent && !hasManualContext) return null;
+
+  const prompt = buildCombinedEnrichmentPrompt(opts);
+  const resp = await tierRoute({
+    agent_id: "onboarding.pillar-1-combined",
+    prompt,
+    task_metadata: {
+      creativity_required: false,
+      customer_facing: false,
+      reasoning_depth: "shallow",
+      priority: "high",
+    },
+    companyId: opts.companyId,
+    outputFormat: "json",
+    timeout_ms: COMBINED_T2_TIMEOUT_MS,
+  });
+
+  const raw = resp.output.trim();
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  const p = JSON.parse(match[0]) as Record<string, unknown>;
+  if (typeof p.company_context !== "string" || !p.company_context) return null;
+
+  return {
+    org_name: opts.orgName,
+    company_context: p.company_context.slice(0, 3000),
+    enrichment_status: "enriched",
+    has_product: true,
+    industry_hint: typeof p.industry_hint === "string" ? p.industry_hint : "unknown",
+    business_model_hint: typeof p.business_model_hint === "string" ? p.business_model_hint : "subscription",
+    ideal_customer_profile: typeof p.ideal_customer_profile === "string" ? p.ideal_customer_profile : null,
+    revenue_model: typeof p.revenue_model === "string" ? p.revenue_model : null,
+    competitive_position: typeof p.competitive_position === "string" ? p.competitive_position : null,
+    primary_acquisition_channel: typeof p.primary_acquisition_channel === "string" ? p.primary_acquisition_channel : null,
+    product_maturity_signal: typeof p.product_maturity_signal === "string"
+      ? p.product_maturity_signal as Pillar1Response["product_maturity_signal"] : null,
+    tone_signal: typeof p.tone_signal === "string"
+      ? p.tone_signal as Pillar1Response["tone_signal"] : null,
+    primary_friction_hypothesis: typeof p.primary_friction_hypothesis === "string"
+      ? p.primary_friction_hypothesis.slice(0, 200) : null,
+    differentiator_hypothesis: typeof p.differentiator_hypothesis === "string"
+      ? p.differentiator_hypothesis.slice(0, 200) : null,
+    raw_input: opts.rawInput,
+  };
+}
+
 const pillar1Schema = z.object({
   companyId: z.string().min(1),
   org_name: z.string().min(1).max(120),
@@ -295,23 +438,57 @@ export function registerPillarRoutes(app: FastifyInstance): void {
 
   pillarRoute(1, pillar1Schema, async (body) => {
     return withTokenAccounting(body.companyId, "pillar_1", async () => {
-      const result = await handlePillar1({
-        org_name: body.org_name,
-        raw_input: body.raw_input,
+      // Pre-product fast path — no T2 needed.
+      if (looksLikeNoProduct(body.raw_input.trim())) {
+        const result = await handlePillar1({
+          org_name: body.org_name,
+          raw_input: body.raw_input,
+          companyId: body.companyId,
+          manual_context: body.manual_context,
+        });
+        await updatePillar(body.companyId, "pillar_1", result);
+        return { ok: true, response: result };
+      }
+
+      // Combined path (WAVAAAA-148): server-side URL fetch + single T2 call.
+      // Reduces up to 2 sequential T2 calls (vendored deep-dive + BYOC) to 1,
+      // cutting latency from ~85s P50 to ~25s by sending pre-fetched content
+      // instead of asking Claude to browse the web (reasoning_depth: shallow
+      // vs. deep, timeout 45s vs. 180s).
+      const urlContent = await fetchUrlContent(body.raw_input).catch(() => null);
+      const combined = await runCombinedPillar1Enrichment({
+        orgName: body.org_name,
+        rawInput: body.raw_input,
+        urlContent,
+        manualContext: body.manual_context,
         companyId: body.companyId,
-        manual_context: body.manual_context,
-      });
-      // BYOC always-enrich (QA P0-2): the vendored handlePillar1 short-
-      // circuits to regex heuristics when manual_context >= 40 chars
-      // (`enrichment_status: "manual_capture"`). Heuristic-only outputs
-      // include fabricated fields like `ideal_customer_profile:
-      // "enterprise ops teams"` that leak into every downstream agent.
-      // If we detect that path, fire a follow-up BYOC claude call to
-      // refine the heuristic fields. Customer's claude, customer's bill.
-      // Falls through silently if claude isn't available — better the
-      // heuristic than no answer at all.
-      const enriched = await maybeEnrichPillar1WithBYOC(body, result).catch(() => null);
-      const final = enriched ?? result;
+      }).catch(() => null);
+
+      let final: Pillar1Response;
+      if (combined) {
+        // Inject the combined result via deterministicOverride to skip the
+        // vendored T2 call. handlePillar1 will still apply heuristic fallbacks
+        // for any optional field our call left null, keeping the output shape
+        // identical to the original enrichment path.
+        final = await handlePillar1({
+          org_name: body.org_name,
+          raw_input: body.raw_input,
+          companyId: body.companyId,
+          manual_context: body.manual_context,
+          deterministicOverride: combined,
+        });
+      } else {
+        // Fallback: vendored deep-dive T2 + BYOC refinement (original path).
+        const vendored = await handlePillar1({
+          org_name: body.org_name,
+          raw_input: body.raw_input,
+          companyId: body.companyId,
+          manual_context: body.manual_context,
+        });
+        const enriched = await maybeEnrichPillar1WithBYOC(body, vendored).catch(() => null);
+        final = (enriched ?? vendored) as Pillar1Response;
+      }
+
       await updatePillar(body.companyId, "pillar_1", final);
       return { ok: true, response: final };
     });
