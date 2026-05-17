@@ -45,6 +45,7 @@ import { registerMcNarrateRoute } from "./routes/mc-narrate.js";
 import { registerActivationEventsRoute } from "./routes/activation-events.js";
 import { registerUserRoutes } from "./routes/users.js";
 import { registerAuthEventsRoute } from "./routes/auth-events.js";
+import { registerSmokeTestEventsRoute } from "./routes/smoke-test-events.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -93,6 +94,7 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerActivationEventsRoute(app);
   registerUserRoutes(app);
   registerAuthEventsRoute(app);
+  registerSmokeTestEventsRoute(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

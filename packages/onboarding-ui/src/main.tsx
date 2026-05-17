@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MissionControl from "./pages/MissionControl";
 import Pricing from "./pages/Pricing";
+import { Signup } from "./pages/Signup";
 import { CompanyProvider } from "./wavex-os/lib/CompanyContext";
 import { OnboardingShell } from "./wavex-os/pages/OnboardingShell";
 import { AvatarDashboard } from "./pages/AvatarDashboard";
@@ -29,6 +30,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/avatar/:id" element={<AvatarDashboard />} />
             <Route path="/avatar/:id/settings" element={<AvatarSettings />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </CompanyProvider>

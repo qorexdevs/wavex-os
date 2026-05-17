@@ -19,9 +19,13 @@ import { getSupabase, isSupabaseConfigured } from "../lib/supabase";
 export interface SignInWidgetProps {
   /** Called when sign-in state changes — pricing page uses this to gate Subscribe buttons. */
   onSessionChange: (session: Session | null) => void;
+  /** URL to redirect the user to after clicking the magic link.
+   *  Defaults to the /pricing page. Override for flows like /signup where
+   *  UTM params must be preserved across the magic-link round-trip. */
+  redirectTo?: string;
 }
 
-export function SignInWidget({ onSessionChange }: SignInWidgetProps): JSX.Element {
+export function SignInWidget({ onSessionChange, redirectTo }: SignInWidgetProps): JSX.Element {
   const supabase = getSupabase();
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
@@ -83,7 +87,7 @@ export function SignInWidget({ onSessionChange }: SignInWidgetProps): JSX.Elemen
     setSending(true);
     const { error: err } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/pricing` },
+      options: { emailRedirectTo: redirectTo ?? `${window.location.origin}/pricing` },
     });
     setSending(false);
     if (err) {
