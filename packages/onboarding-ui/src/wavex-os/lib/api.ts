@@ -1001,3 +1001,21 @@ export const wavexOsOnboardingApi = {
       "POST", "/api/tier-subscriptions", input,
     ),
 };
+
+export interface UserRecord {
+  id: string;
+  email: string | null;
+  isNewUser: boolean;
+  wizardStep: number;
+  wizardCompletedAt: string | null;
+}
+
+export const userApi = {
+  me: () => call<{ ok: true; user: UserRecord }>("GET", "/api/users/me"),
+
+  setWizardStep: (id: string, step: number) =>
+    call<{ ok: true; user: UserRecord }>("PATCH", `/api/users/${id}/wizard-step`, { step }),
+
+  completeWizard: (id: string) =>
+    call<{ ok: true; user: UserRecord }>("PATCH", `/api/users/${id}/complete-wizard`, {}),
+};

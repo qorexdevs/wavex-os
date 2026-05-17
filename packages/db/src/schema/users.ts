@@ -1,9 +1,10 @@
-import { boolean, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email"),
   isNewUser: boolean("is_new_user").notNull().default(true),
+  wizardStep: integer("wizard_step").notNull().default(1),
   wizardCompletedAt: timestamp("wizard_completed_at", { withTimezone: true }),
   // Referral v1 — set by POST /api/referrals/generate-code
   referralCode: text("referral_code"),
