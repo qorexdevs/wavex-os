@@ -1000,6 +1000,57 @@ describe.sequential("issue comment reopen routes", () => {
     );
   });
 
+  it("board user closing an in_progress issue with comment does not send assignee a comment wake", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue("in_progress"));
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...makeIssue("in_progress"),
+      ...patch,
+    }));
+
+    const res = await request(await installActor(createApp()))
+      .patch("/api/issues/11111111-1111-4111-8111-111111111111")
+      .send({ status: "done", comment: "closing this out" });
+
+    expect(res.status).toBe(200);
+    // wait for the async wakeup IIFE to complete (becameDone triggers listWakeableBlockedDependents)
+    await waitForWakeup(() =>
+      expect(mockIssueService.listWakeableBlockedDependents).toHaveBeenCalled(),
+    );
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_commented" }),
+    );
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_reopened_via_comment" }),
+    );
+  });
+
+  it("agent closing their own in_progress issue with comment does not send a comment wake", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue("in_progress"));
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...makeIssue("in_progress"),
+      ...patch,
+    }));
+
+    const res = await request(await installActor(createApp(), agentActor()))
+      .patch("/api/issues/11111111-1111-4111-8111-111111111111")
+      .send({ status: "done", comment: "all done" });
+
+    expect(res.status).toBe(200);
+    await waitForWakeup(() =>
+      expect(mockIssueService.listWakeableBlockedDependents).toHaveBeenCalled(),
+    );
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_commented" }),
+    );
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_reopened_via_comment" }),
+    );
+  });
+
   it("does not cancel active runs when an issue is marked done", async () => {
     const issue = {
       ...makeIssue("in_progress"),
