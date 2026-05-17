@@ -638,6 +638,27 @@ async function main() {
     `[wavex-local-ops] cycle ok in ${state.cycle_duration_ms}ms → ${STATE_FILE}` +
       ` (cloud_push=${cloud_push.status}${cloud_push.detail ? `: ${cloud_push.detail}` : ""})`,
   );
+
+  // Fire-and-forget Claude Doctor when the cycle leaves things in a state
+  // Claude Code can plausibly fix (build_failed, install_failed, dead
+  // processes, postgres-lock noise). The doctor runs with its own cooldown
+  // + lockfile — it'll no-op if nothing's broken or if a run is already
+  // in flight. Daemon never blocks on it.
+  if (process.env.WAVEX_CLAUDE_DOCTOR_DISABLED !== "1") {
+    const doctorScript = path.join(repoRoot, "scripts/wavex-claude-doctor.mjs");
+    try {
+      await fs.access(doctorScript);
+      const child = spawn(process.execPath, [doctorScript], {
+        detached: true,
+        stdio: "ignore",
+        env: process.env,
+      });
+      child.unref();
+    } catch {
+      // Script missing on older customer installs — silently skip.
+    }
+  }
+
   process.exit(0);
 }
 
