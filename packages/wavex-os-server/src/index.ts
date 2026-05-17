@@ -49,6 +49,7 @@ import { registerPartnerChecklistRoutes } from "./routes/partner-checklist.js";
 import { registerUpsellSignalsRoutes } from "./routes/upsell-signals.js";
 import { registerAuthEventsRoute } from "./routes/auth-events.js";
 import { registerSmokeTestEventsRoute } from "./routes/smoke-test-events.js";
+import { registerSmokeTestTriggerRoute } from "./routes/smoke-test-trigger.js";
 import { registerWizardEventsRoute } from "./routes/wizard-events.js";
 import { registerReferralRoutes } from "./routes/referrals.js";
 import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
@@ -104,6 +105,7 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerUpsellSignalsRoutes(app);
   registerAuthEventsRoute(app);
   registerSmokeTestEventsRoute(app);
+  registerSmokeTestTriggerRoute(app);
   registerWizardEventsRoute(app);
   registerReferralRoutes(app);
   startReferralEmailBScheduler();

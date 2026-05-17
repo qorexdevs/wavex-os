@@ -1002,6 +1002,40 @@ export const wavexOsOnboardingApi = {
     ),
 };
 
+export type SmokeTestPhase =
+  | "queued"
+  | "provisioning"
+  | "running"
+  | "analyzing"
+  | "done"
+  | "timed_out"
+  | "cancelled";
+
+export interface SmokeTestRunResponse {
+  ok: boolean;
+  runId: string;
+  companyId: string;
+  phase: SmokeTestPhase;
+  result?: "pass" | "fail";
+  startedAt: string;
+  elapsed_ms: number;
+}
+
+export const smokeTestApi = {
+  trigger: (companyId: string, userId?: string) =>
+    call<{ ok: true; runId: string; companyId: string }>(
+      "POST", "/api/smoke-test/trigger", { companyId, userId },
+    ),
+
+  getStatus: (runId: string) =>
+    call<SmokeTestRunResponse>("GET", `/api/smoke-test/run/${encodeURIComponent(runId)}`),
+
+  abort: (runId: string) =>
+    call<{ ok: true; cancelled: boolean; runId: string }>(
+      "DELETE", `/api/smoke-test/run/${encodeURIComponent(runId)}`,
+    ),
+};
+
 export interface UserRecord {
   id: string;
   email: string | null;
