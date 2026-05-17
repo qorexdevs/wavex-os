@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MissionControl from "./pages/MissionControl";
 import Pricing from "./pages/Pricing";
+import TonyApplePricing from "./pages/TonyApplePricing";
+import DesignPartners from "./pages/DesignPartners";
 import { Signup } from "./pages/Signup";
 import { CompanyProvider } from "./wavex-os/lib/CompanyContext";
 import { OnboardingShell } from "./wavex-os/pages/OnboardingShell";
@@ -31,7 +33,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/onboarding-chat" element={<OnboardingShell />} />
             <Route path="/avatar/:id" element={<AvatarDashboard />} />
             <Route path="/avatar/:id/settings" element={<AvatarSettings />} />
-            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/pricing" element={<TonyApplePricing />} />
+            <Route path="/lp/design-partners" element={<DesignPartners />} />
+            <Route path="/wavex-pricing" element={<Pricing />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
