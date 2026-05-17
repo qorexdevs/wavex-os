@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import Fastify from "fastify";
-import { registerOpOmegaRoutes } from "../src/index.js";
+import { registerWavexOsRoutes } from "../src/index.js";
 import { evaluateSignals, createExpansionIssue, type ExpansionIssueParams } from "../src/routes/upsell-signals.js";
 
 const BASE_BODY = {
@@ -41,7 +41,7 @@ beforeEach(async () => {
   delete process.env.SUPABASE_URL;
 
   app = Fastify({ logger: false });
-  registerOpOmegaRoutes(app);
+  registerWavexOsRoutes(app);
   await app.ready();
 });
 
@@ -338,7 +338,7 @@ describe("createExpansionIssue", () => {
   it("includes paperclip_issue in evaluate HTTP response when Paperclip is configured", async () => {
     // Re-create app with Paperclip env set
     const testApp = Fastify({ logger: false });
-    registerOpOmegaRoutes(testApp);
+    registerWavexOsRoutes(testApp);
     await testApp.ready();
     try {
       const r = await testApp.inject({
