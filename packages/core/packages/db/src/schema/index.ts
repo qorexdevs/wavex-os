@@ -71,3 +71,13 @@ export { pluginDatabaseNamespaces, pluginMigrations } from "./plugin_database.js
 export { pluginJobs, pluginJobRuns } from "./plugin_jobs.js";
 export { pluginWebhookDeliveries } from "./plugin_webhooks.js";
 export { pluginLogs } from "./plugin_logs.js";
+export { productActivationEvents } from "./product_activation_events.js";
+export type {
+  ProductActivationEventType,
+  ProductActivationEventPayload,
+  UserSignedUpPayload,
+  RepoConnectedPayload,
+  TestRunStartedPayload,
+  TestRunCompletedPayload,
+  UserActivatedPayload,
+} from "./product_activation_events.js";
