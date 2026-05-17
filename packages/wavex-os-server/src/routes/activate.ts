@@ -180,6 +180,36 @@ export function registerActivateRoute(app: FastifyInstance): void {
       // fails activate (see syncManifestToCloud).
       await syncManifestToCloud(companyId, manifest, newHash);
 
+      // Best-effort activation tracking — fires user_signed_up event for the
+      // WS3 activation funnel. Uses companyId as user_id for CLI installs
+      // (no traditional auth). Idempotent: duplicate rows are harmless since
+      // user_activated has the unique constraint (not user_signed_up).
+      void (async () => {
+        const supaUrl = process.env.SUPABASE_URL;
+        const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!supaUrl || !supaKey) return;
+        try {
+          await fetch(`${supaUrl}/rest/v1/wavex_os.product_activation_events`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Prefer: "return=minimal",
+              apikey: supaKey,
+              Authorization: `Bearer ${supaKey}`,
+            },
+            body: JSON.stringify({
+              company_id: companyId,
+              user_id: companyId,
+              event_type: "user_signed_up",
+              occurred_at: new Date().toISOString(),
+              payload: { source: "activate" },
+            }),
+          });
+        } catch {
+          // intentionally swallowed — must never fail activate
+        }
+      })();
+
       // Phase D — opt-in handoff to a running Paperclip instance. When
       // PAPERCLIP_HANDOFF_URL is set, the C-Suite is mirrored as real
       // Paperclip agents so they get heartbeats + claude CLI execution.

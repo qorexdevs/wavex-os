@@ -42,6 +42,9 @@ import { registerAvatarRoutes } from "./routes/avatar.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerConnectorsMarketplaceRoute } from "./routes/connectors-marketplace.js";
 import { registerMcNarrateRoute } from "./routes/mc-narrate.js";
+import { registerActivationEventsRoute } from "./routes/activation-events.js";
+import { registerUserRoutes } from "./routes/users.js";
+import { registerAuthEventsRoute } from "./routes/auth-events.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -87,6 +90,9 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerConnectorRoutes(app);
   registerConnectorsMarketplaceRoute(app);
   registerMcNarrateRoute(app);
+  registerActivationEventsRoute(app);
+  registerUserRoutes(app);
+  registerAuthEventsRoute(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

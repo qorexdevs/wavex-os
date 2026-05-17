@@ -222,6 +222,20 @@ async function main() {
   const totalMs = results.reduce((sum, r) => sum + r.ms, 0);
   if (failed.length === 0) {
     console.log(`${c.green}${c.bold}✓ ${passed}/${results.length} passed${c.reset}  ${c.gray}(${totalMs}ms total)${c.reset}`);
+
+    // Fire test_run_completed activation event (best-effort, never blocks exit).
+    // The server auto-derives user_activated if user_signed_up fired within 24h.
+    void fetch(`${baseUrl}/api/activation-events/emit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company_id: companyId,
+        user_id: companyId,
+        event_type: "test_run_completed",
+        payload: { run_id: `smoke-${Date.now()}`, status: "success", duration_s: Math.round(totalMs / 1000), platform: "chat-smoke" },
+      }),
+    }).catch(() => {});
+
     process.exit(0);
   } else {
     console.log(`${c.red}${c.bold}✗ ${failed.length} failed${c.reset}, ${passed} passed  ${c.gray}(${totalMs}ms total)${c.reset}`);
