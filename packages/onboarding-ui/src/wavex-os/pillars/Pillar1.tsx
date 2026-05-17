@@ -326,8 +326,8 @@ export function Pillar1({ companyId, initial, onComplete }: Props) {
 
         {submitting && (
           <div style={{ padding: "0.75rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, marginTop: "0.75rem" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: "0.5rem", color: "var(--text-dim)" }}>
-              ⟲ Working on your context — {enrichmentPhase + 1}/{ENRICHMENT_PHASES.length}
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: "0.5rem" }}>
+              Analyzing your app — this usually takes 60–90 seconds
             </div>
             <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", marginBottom: "0.5rem" }}>
               <div style={{
