@@ -185,9 +185,12 @@ export function T2ProgressIndicator({
     humanLabel = "Working on it";
   }
 
-  // Right-hand soft estimate. Hidden when stale or completed.
+  // Right-hand soft estimate. Before first poll resolves (no status yet) show
+  // explicit "~60–90 s" so operators know what they're waiting for from the
+  // first render rather than only after the polling loop has data.
   const rightSide = isCompleted ? `${elapsedSec}s`
     : isStale ? ""
+    : !status ? "~60–90 s"
     : humanRemaining(remainingSec);
 
   // Server-side phase label (technical) used in the details drawer.
@@ -214,14 +217,14 @@ export function T2ProgressIndicator({
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0, flex: 1 }}>
           <span
             aria-hidden
-            className={isAlive && !isCompleted ? "wavex-pulse-dot" : ""}
+            className={!isCompleted && !isStale ? "wavex-pulse-dot" : ""}
             style={{
               flex: "0 0 auto",
               width: 8,
               height: 8,
               borderRadius: "50%",
               background: dotColor,
-              boxShadow: isAlive && !isCompleted ? `0 0 8px ${dotColor}` : "none",
+              boxShadow: !isCompleted && !isStale ? `0 0 8px ${dotColor}` : "none",
             }}
           />
           <span style={{
