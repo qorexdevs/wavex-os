@@ -43,7 +43,7 @@ function CompanyPicker() {
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
       </select>
-      <Link to="/onboarding-chat" style={{ fontSize: 12, padding: "14px 8px", display: "inline-block" }}>+ New</Link>
+      <Link to="/onboarding-chat" style={{ fontSize: 12, padding: "8px", display: "inline-flex", alignItems: "center", minHeight: 44, minWidth: 44 }}>+ New</Link>
     </div>
   );
 }
