@@ -1,0 +1,30 @@
+name: Publish tony-apple-qa to npm
+
+on:
+  push:
+    tags:
+      - "tony-apple-qa@*"
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify CLI works
+        run: node packages/tony-apple-qa/bin/tony-apple-qa.js --help
+
+      - name: Publish tony-apple-qa
+        run: npm publish --access public --provenance
+        working-directory: packages/tony-apple-qa
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
