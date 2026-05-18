@@ -46,7 +46,7 @@ export default function DesignPartners(): JSX.Element {
         })()
       : "";
 
-  const bookingHref = CALENDAR_HREF === "#" ? "#" : `${CALENDAR_HREF}${utmSuffix}`;
+  const bookingHref = `${CALENDAR_HREF}${utmSuffix}`;
 
   return (
     <>
