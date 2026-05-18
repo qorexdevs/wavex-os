@@ -4,7 +4,8 @@
 
 [![npm version](https://img.shields.io/npm/v/tony-apple-qa)](https://www.npmjs.com/package/tony-apple-qa)
 [![CI](https://github.com/aimerdoux/wavex-os/actions/workflows/ci.yml/badge.svg)](https://github.com/aimerdoux/wavex-os/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/aimerdoux/wavex-os?style=social)](https://github.com/aimerdoux/wavex-os)
 [![Status: 0.2.0 / Phase H](https://img.shields.io/badge/status-0.2.0%20%E2%80%94%20Phase%20H-4ec9b0)](docs/ROADMAP.md)
 [![Built on Paperclip](https://img.shields.io/badge/built%20on-Paperclip-86c5da)](https://github.com/paperclipai/paperclip)
 
