@@ -3,13 +3,14 @@
  *
  * This is the real, typechecked implementation behind the `wavex-os`
  * bin declared in package.json. The bin entrypoint (`bin/wavex-os.mjs`)
- * is a thin launcher that bootstraps the `tsx` loader and then calls
- * `runCli()` here.
+ * is a plain Node ESM shim that imports the built `dist/cli.js` and calls
+ * `runCli()` here — no `tsx` loader, no re-exec dance.
  *
  * Subcommands:
  *   wavex-os login     pair this machine to a WaveX OS Console account
  *   wavex-os status    show the local pairing state (no network unless --refresh)
  *   wavex-os logout    delete the local device token bundle
+ *   wavex-os version   print the cloud-client version
  *   wavex-os init      → delegated to apps/installer (npx wavex-os init)
  *   wavex-os doctor    → delegated to apps/installer
  *   wavex-os audit     → delegated to apps/installer
@@ -299,6 +300,17 @@ function delegateToInstaller(cmd: string, rest: string[]): Promise<number> {
   });
 }
 
+/** Read the package version from this package's package.json (works from src or dist). */
+function readVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url)); // src/ or dist/
+    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function help(): void {
   console.log(`
 ${c.bold}wavex-os${c.reset} — WaveX OS command line
@@ -315,6 +327,7 @@ ${c.bold}Install / runtime ${c.dim}(delegated to wavex-os-installer)${c.reset}:
   ${c.cyan}wavex-os reset${c.reset}              Remove ~/.wavex-os (destructive)
 
   ${c.cyan}wavex-os --help${c.reset}             Show this message
+  ${c.cyan}wavex-os --version${c.reset}          Print the version
 
 ${c.bold}Docs:${c.reset} https://github.com/aimerdoux/wavex-os
 `);
@@ -327,6 +340,11 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
 
   if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") {
     help();
+    return 0;
+  }
+
+  if (cmd === "--version" || cmd === "-v" || cmd === "version") {
+    console.log(readVersion());
     return 0;
   }
 
