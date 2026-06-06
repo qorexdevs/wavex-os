@@ -9,6 +9,7 @@
  *   - getValidAccessToken returns access_token when expiry > 60s
  *   - introspect on a valid (locally-minted) token
  *   - introspect on an expired token
+ *   - CLI dispatcher: version/--help/bare/unknown-command exit codes
  *
  * Run as: pnpm wavex:cloud-client:smoke
  *
@@ -134,6 +135,41 @@ await deleteBundle();
 check("readBundle returns null after delete", (await readBundle()) === null);
 await deleteBundle();  // idempotent
 check("deleteBundle on missing file does not throw", true);
+
+console.log("\n── CLI dispatcher (offline paths) ──");
+const { runCli } = await import("../src/cli.ts");
+const pkgVersion = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
+
+// Capture console.log so the help/version output doesn't pollute the smoke log.
+const origLog = console.log;
+async function runCapture(argv) {
+  const lines = [];
+  console.log = (...a) => lines.push(a.join(" "));
+  try {
+    const code = await runCli(argv);
+    return { code, out: lines.join("\n") };
+  } finally {
+    console.log = origLog;
+  }
+}
+
+const ver = await runCapture(["version"]);
+check("`version` exits 0", ver.code === 0);
+check("`version` prints the package.json version", ver.out.trim() === pkgVersion,
+  `actual: ${ver.out.trim()}`);
+const verFlag = await runCapture(["--version"]);
+check("`--version` matches `version`", verFlag.code === 0 && verFlag.out === ver.out);
+const help = await runCapture(["--help"]);
+check("`--help` exits 0", help.code === 0);
+check("help lists cloud + installer subcommands",
+  ["login", "status", "logout", "version", "init", "doctor"].every((s) => help.out.includes(s)));
+const bare = await runCapture([]);
+check("bare invocation shows help and exits 0", bare.code === 0 && bare.out.includes("login"));
+const unknown = await runCapture(["frobnicate"]);
+check("unknown command exits 1", unknown.code === 1);
+check("unknown command names the offender", unknown.out.includes("frobnicate"));
 
 // Tidy sandbox
 rmSync(sandbox, { recursive: true, force: true });
