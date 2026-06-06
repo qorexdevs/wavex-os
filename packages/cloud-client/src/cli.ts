@@ -319,6 +319,7 @@ ${c.bold}Cloud / device pairing:${c.reset}
   ${c.cyan}wavex-os login${c.reset}              Pair this machine to your console account
   ${c.cyan}wavex-os status [--refresh]${c.reset} Show local pairing state
   ${c.cyan}wavex-os logout${c.reset}             Remove the local device token
+  ${c.cyan}wavex-os version${c.reset}            Print the cloud-client version
 
 ${c.bold}Install / runtime ${c.dim}(delegated to wavex-os-installer)${c.reset}:
   ${c.cyan}wavex-os init [company]${c.reset}     Bootstrap a new WaveX OS company
