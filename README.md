@@ -142,6 +142,17 @@ This boots two servers in parallel:
 
 Open [http://localhost:5173](http://localhost:5173) and you'll land on Mission Control. Click **Start onboarding** to begin the wizard.
 
+### Fast check without a full install
+
+To verify a fresh clone (or when working on `packages/cloud-client`) you don't need the full workspace install — a filtered install takes about 25 seconds and the offline smoke suite needs no network:
+
+```bash
+pnpm install --filter "@wavex-os/cloud-client..."   # builds the package via prepare
+npx -y tsx packages/cloud-client/scripts/smoke-offline.mjs
+```
+
+The suite covers config defaults, the device-token store, and the CLI dispatcher (17 checks). The mint+verify section is skipped unless `WAVEX_DEVICE_JWT_SECRET` is set — that's expected.
+
 ### Optional — hand off to a running Paperclip instance
 
 If you've got Paperclip running locally, point WaveX OS at it and the wizard's activate step will also hire your C-Suite as real Paperclip agents:
