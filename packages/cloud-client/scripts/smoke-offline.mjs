@@ -99,9 +99,13 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     user_id: "00000000-0000-0000-0000-000000000abc",
     device_id: "00000000-0000-0000-0000-000000000def",
   });
-  const stat = statSync(cfg.tokenPath);
-  check("file mode = 600 (octal)", (stat.mode & 0o777) === 0o600,
-    `actual: ${(stat.mode & 0o777).toString(8)}`);
+  if (process.platform === "win32") {
+    console.log("  ⚠ win32 — POSIX file modes don't apply, skipping chmod 600 check");
+  } else {
+    const stat = statSync(cfg.tokenPath);
+    check("file mode = 600 (octal)", (stat.mode & 0o777) === 0o600,
+      `actual: ${(stat.mode & 0o777).toString(8)}`);
+  }
   const re = await readBundle();
   check("readBundle returns the written bundle", re?.access_token === goodToken);
   const token = await getValidAccessToken();
