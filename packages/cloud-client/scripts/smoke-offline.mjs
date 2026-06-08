@@ -10,6 +10,7 @@
  *   - introspect on a valid (locally-minted) token
  *   - introspect on an expired token
  *   - CLI dispatcher: version/--help/bare/unknown-command exit codes
+ *   - `status --json` machine-readable output (unpaired + paired)
  *
  * Run as: pnpm wavex:cloud-client:smoke
  *
@@ -170,6 +171,43 @@ check("bare invocation shows help and exits 0", bare.code === 0 && bare.out.incl
 const unknown = await runCapture(["frobnicate"]);
 check("unknown command exits 1", unknown.code === 1);
 check("unknown command names the offender", unknown.out.includes("frobnicate"));
+
+console.log("\n── CLI: status --json ──");
+const jsonUnpaired = await runCapture(["status", "--json"]);
+check("`status --json` unpaired exits 1", jsonUnpaired.code === 1);
+let unpairedObj = null;
+try { unpairedObj = JSON.parse(jsonUnpaired.out); } catch { /* fails check below */ }
+check("`status --json` unpaired prints {paired:false}", unpairedObj?.paired === false,
+  `actual: ${jsonUnpaired.out}`);
+if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
+  console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired status --json");
+} else {
+  const now2 = Math.floor(Date.now() / 1000);
+  const statusToken = _signDeviceJwt_TEST_ONLY({
+    sub: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+    exp: now2 + 3600,
+  });
+  await writeBundle({
+    access_token: statusToken,
+    refresh_token: "refresh-opaque",
+    access_token_expires_at: now2 + 3600,
+    obtained_at: now2,
+    user_id: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+  });
+  const jsonPaired = await runCapture(["status", "--json"]);
+  check("`status --json` paired exits 0", jsonPaired.code === 0);
+  let pairedObj = null;
+  try { pairedObj = JSON.parse(jsonPaired.out); } catch { /* fails checks below */ }
+  check("`status --json` paired reports valid token",
+    pairedObj?.paired === true && pairedObj?.valid === true);
+  check("`status --json` includes device_id and expiry",
+    pairedObj?.device_id === "00000000-0000-0000-0000-000000000def" &&
+    typeof pairedObj?.access_token_expires_in_sec === "number" &&
+    pairedObj.access_token_expires_in_sec > 0);
+  await deleteBundle();
+}
 
 // Tidy sandbox
 rmSync(sandbox, { recursive: true, force: true });
