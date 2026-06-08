@@ -180,13 +180,21 @@ async function login(): Promise<number> {
   }
 }
 
-/** `wavex-os status` — show local pairing state. Pass --refresh to force a token refresh. */
+/**
+ * `wavex-os status` — show local pairing state.
+ * --refresh forces a token refresh; --json emits one machine-readable line.
+ */
 async function status(argv: string[]): Promise<number> {
   loadStateEnv();
   const wantRefresh = argv.includes("--refresh");
+  const asJson = argv.includes("--json");
 
   const introspect = await introspectBundle();
   if (!introspect.ok && introspect.reason === "no_bundle") {
+    if (asJson) {
+      console.log(JSON.stringify({ paired: false }));
+      return 1;
+    }
     console.log("");
     console.log(`  ${c.yellow}○${c.reset} Not paired.`);
     console.log(`    Run ${c.bold}wavex-os login${c.reset} to pair this machine.`);
@@ -198,6 +206,32 @@ async function status(argv: string[]): Promise<number> {
   const now = Math.floor(Date.now() / 1000);
   const expiresInSec = bundle.access_token_expires_at - now;
   const cfg = loadConfig();
+
+  if (asJson) {
+    const out: Record<string, unknown> = {
+      paired: true,
+      valid: introspect.ok,
+      user_id: bundle.user_id,
+      device_id: bundle.device_id,
+      token_path: cfg.tokenPath,
+      functions_url: cfg.functionsUrl,
+      access_token_expires_in_sec: expiresInSec,
+    };
+    if (!introspect.ok) out.reason = introspect.reason;
+    if (wantRefresh) {
+      try {
+        await getValidAccessToken(cfg);
+        out.refreshed = true;
+      } catch (err) {
+        out.refreshed = false;
+        out.refresh_error = err instanceof Error ? err.message : String(err);
+        console.log(JSON.stringify(out));
+        return 3;
+      }
+    }
+    console.log(JSON.stringify(out));
+    return 0;
+  }
 
   console.log("");
   if (introspect.ok) {
@@ -317,7 +351,7 @@ ${c.bold}wavex-os${c.reset} — WaveX OS command line
 
 ${c.bold}Cloud / device pairing:${c.reset}
   ${c.cyan}wavex-os login${c.reset}              Pair this machine to your console account
-  ${c.cyan}wavex-os status [--refresh]${c.reset} Show local pairing state
+  ${c.cyan}wavex-os status [--refresh] [--json]${c.reset} Show local pairing state
   ${c.cyan}wavex-os logout${c.reset}             Remove the local device token
   ${c.cyan}wavex-os version${c.reset}            Print the cloud-client version
 
