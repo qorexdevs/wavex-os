@@ -334,15 +334,36 @@ function delegateToInstaller(cmd: string, rest: string[]): Promise<number> {
   });
 }
 
-/** Read the package version from this package's package.json (works from src or dist). */
-function readVersion(): string {
+/** Read name + version from this package's package.json (works from src or dist). */
+function readPkg(): { name: string; version: string } {
   try {
     const here = dirname(fileURLToPath(import.meta.url)); // src/ or dist/
     const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
-    return typeof pkg.version === "string" ? pkg.version : "unknown";
+    return {
+      name: typeof pkg.name === "string" ? pkg.name : "@wavex-os/cloud-client",
+      version: typeof pkg.version === "string" ? pkg.version : "unknown",
+    };
   } catch {
-    return "unknown";
+    return { name: "@wavex-os/cloud-client", version: "unknown" };
   }
+}
+
+/** `wavex-os version [--json]` — print the version, optionally with runtime info. */
+function printVersion(rest: string[]): number {
+  const pkg = readPkg();
+  if (rest.includes("--json")) {
+    console.log(
+      JSON.stringify({
+        name: pkg.name,
+        version: pkg.version,
+        node: process.version,
+        platform: `${process.platform}-${process.arch}`,
+      }),
+    );
+  } else {
+    console.log(pkg.version);
+  }
+  return 0;
 }
 
 function help(): void {
@@ -353,7 +374,7 @@ ${c.bold}Cloud / device pairing:${c.reset}
   ${c.cyan}wavex-os login${c.reset}              Pair this machine to your console account
   ${c.cyan}wavex-os status [--refresh] [--json]${c.reset} Show local pairing state
   ${c.cyan}wavex-os logout${c.reset}             Remove the local device token
-  ${c.cyan}wavex-os version${c.reset}            Print the cloud-client version
+  ${c.cyan}wavex-os version [--json]${c.reset}   Print the cloud-client version
 
 ${c.bold}Install / runtime ${c.dim}(delegated to wavex-os-installer)${c.reset}:
   ${c.cyan}wavex-os init [company]${c.reset}     Bootstrap a new WaveX OS company
@@ -379,8 +400,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
   }
 
   if (cmd === "--version" || cmd === "-v" || cmd === "version") {
-    console.log(readVersion());
-    return 0;
+    return printVersion(rest);
   }
 
   switch (cmd) {
