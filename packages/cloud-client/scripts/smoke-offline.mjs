@@ -9,7 +9,7 @@
  *   - getValidAccessToken returns access_token when expiry > 60s
  *   - introspect on a valid (locally-minted) token
  *   - introspect on an expired token
- *   - CLI dispatcher: version/--help/bare/unknown-command exit codes
+ *   - CLI dispatcher: version/version --json/--help/bare/unknown-command exit codes
  *   - `status --json` machine-readable output (unpaired + paired)
  *
  * Run as: pnpm wavex:cloud-client:smoke
@@ -166,6 +166,13 @@ check("`version` prints the package.json version", ver.out.trim() === pkgVersion
   `actual: ${ver.out.trim()}`);
 const verFlag = await runCapture(["--version"]);
 check("`--version` matches `version`", verFlag.code === 0 && verFlag.out === ver.out);
+const verJson = await runCapture(["version", "--json"]);
+check("`version --json` exits 0", verJson.code === 0);
+let verObj = null;
+try { verObj = JSON.parse(verJson.out); } catch { /* fails check below */ }
+check("`version --json` reports name + version + runtime",
+  verObj?.version === pkgVersion && typeof verObj?.node === "string" && typeof verObj?.platform === "string",
+  `actual: ${verJson.out}`);
 const help = await runCapture(["--help"]);
 check("`--help` exits 0", help.code === 0);
 check("help lists cloud + installer subcommands",
