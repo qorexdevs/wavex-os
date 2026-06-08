@@ -188,7 +188,7 @@ Then:
 wavex-os login         # opens the browser, prints a pairing code, polls until claimed
 wavex-os status        # show local pairing state (--refresh rotates the token, --json for scripts)
 wavex-os logout        # remove the local device token
-wavex-os version       # print the cloud-client version (also: wavex-os --version)
+wavex-os version       # print the cloud-client version (--json adds node/platform for bug reports)
 ```
 
 `wavex-os login` runs the full device-pairing flow: it `POST`s `os-link-device`,
