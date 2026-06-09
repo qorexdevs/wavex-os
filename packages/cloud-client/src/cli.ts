@@ -270,17 +270,32 @@ async function status(argv: string[]): Promise<number> {
   return 0;
 }
 
-/** `wavex-os logout` — delete the local device token bundle. */
-async function logout(): Promise<number> {
+/**
+ * `wavex-os logout` — delete the local device token bundle.
+ * --json emits one machine-readable line and stays quiet otherwise.
+ */
+async function logout(argv: string[]): Promise<number> {
   loadStateEnv();
+  const asJson = argv.includes("--json");
   const introspect = await introspectBundle();
-  if (!introspect.ok && introspect.reason === "no_bundle") {
+  const hadToken = !(!introspect.ok && introspect.reason === "no_bundle");
+
+  if (!hadToken) {
+    if (asJson) {
+      console.log(JSON.stringify({ logged_out: true, had_token: false }));
+      return 0;
+    }
     console.log("");
     console.log(`  ${c.dim}Already logged out — no device token on disk.${c.reset}`);
     console.log("");
     return 0;
   }
+
   await deleteBundle();
+  if (asJson) {
+    console.log(JSON.stringify({ logged_out: true, had_token: true }));
+    return 0;
+  }
   console.log("");
   console.log(`  ${c.green}✓${c.reset} Logged out — device token removed.`);
   console.log(
@@ -373,7 +388,7 @@ ${c.bold}wavex-os${c.reset} — WaveX OS command line
 ${c.bold}Cloud / device pairing:${c.reset}
   ${c.cyan}wavex-os login${c.reset}              Pair this machine to your console account
   ${c.cyan}wavex-os status [--refresh] [--json]${c.reset} Show local pairing state
-  ${c.cyan}wavex-os logout${c.reset}             Remove the local device token
+  ${c.cyan}wavex-os logout [--json]${c.reset}    Remove the local device token
   ${c.cyan}wavex-os version [--json]${c.reset}   Print the cloud-client version
 
 ${c.bold}Install / runtime ${c.dim}(delegated to wavex-os-installer)${c.reset}:
@@ -409,7 +424,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
     case "status":
       return status(rest);
     case "logout":
-      return logout();
+      return logout(rest);
     default:
       if (INSTALLER_SUBCOMMANDS.has(cmd)) {
         return delegateToInstaller(cmd, rest);
