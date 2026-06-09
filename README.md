@@ -187,7 +187,7 @@ Then:
 ```bash
 wavex-os login         # opens the browser, prints a pairing code, polls until claimed
 wavex-os status        # show local pairing state (--refresh rotates the token, --json for scripts)
-wavex-os logout        # remove the local device token
+wavex-os logout        # remove the local device token (--json for scripts)
 wavex-os version       # print the cloud-client version (--json adds node/platform for bug reports)
 ```
 
