@@ -220,6 +220,38 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   await deleteBundle();
 }
 
+console.log("\n── CLI: logout --json ──");
+const logoutEmpty = await runCapture(["logout", "--json"]);
+check("`logout --json` with no token exits 0", logoutEmpty.code === 0);
+let logoutEmptyObj = null;
+try { logoutEmptyObj = JSON.parse(logoutEmpty.out); } catch { /* fails check below */ }
+check("`logout --json` reports had_token:false when nothing on disk",
+  logoutEmptyObj?.logged_out === true && logoutEmptyObj?.had_token === false,
+  `actual: ${logoutEmpty.out}`);
+if (process.env.WAVEX_DEVICE_JWT_SECRET) {
+  const now3 = Math.floor(Date.now() / 1000);
+  const logoutToken = _signDeviceJwt_TEST_ONLY({
+    sub: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+    exp: now3 + 3600,
+  });
+  await writeBundle({
+    access_token: logoutToken,
+    refresh_token: "refresh-opaque",
+    access_token_expires_at: now3 + 3600,
+    obtained_at: now3,
+    user_id: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+  });
+  const logoutPaired = await runCapture(["logout", "--json"]);
+  let logoutPairedObj = null;
+  try { logoutPairedObj = JSON.parse(logoutPaired.out); } catch { /* fails check below */ }
+  check("`logout --json` reports had_token:true and removes the bundle",
+    logoutPaired.code === 0 && logoutPairedObj?.had_token === true &&
+    (await readBundle()) === null,
+    `actual: ${logoutPaired.out}`);
+}
+
 // Tidy sandbox
 rmSync(sandbox, { recursive: true, force: true });
 
