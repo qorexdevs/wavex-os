@@ -306,6 +306,42 @@ async function logout(argv: string[]): Promise<number> {
 }
 
 /**
+ * `wavex-os whoami` — answer "am I paired, and as whom" in one line.
+ * status prints the full bundle; this is the quiet, scriptable identity check.
+ * --json emits one machine-readable line.
+ */
+async function whoami(argv: string[]): Promise<number> {
+  loadStateEnv();
+  const asJson = argv.includes("--json");
+  const introspect = await introspectBundle();
+
+  if (!introspect.ok && introspect.reason === "no_bundle") {
+    if (asJson) {
+      console.log(JSON.stringify({ paired: false }));
+      return 1;
+    }
+    console.log(`${c.yellow}○${c.reset} not paired — run ${c.bold}wavex-os login${c.reset}`);
+    return 1;
+  }
+
+  const bundle = introspect.bundle!;
+  if (asJson) {
+    console.log(
+      JSON.stringify({
+        paired: true,
+        valid: introspect.ok,
+        user_id: bundle.user_id,
+        device_id: bundle.device_id,
+      }),
+    );
+    return 0;
+  }
+  const mark = introspect.ok ? `${c.green}✓${c.reset}` : `${c.yellow}⚠${c.reset}`;
+  console.log(`${mark} ${bundle.user_id} ${c.dim}(device ${bundle.device_id})${c.reset}`);
+  return 0;
+}
+
+/**
  * Forward installer subcommands (init/doctor/audit/reset) to the frozen
  * apps/installer bin. Resolution order:
  *   1. repo-relative: <this-package>/../../apps/installer/bin/init.js
@@ -389,6 +425,7 @@ ${c.bold}Cloud / device pairing:${c.reset}
   ${c.cyan}wavex-os login${c.reset}              Pair this machine to your console account
   ${c.cyan}wavex-os status [--refresh] [--json]${c.reset} Show local pairing state
   ${c.cyan}wavex-os logout [--json]${c.reset}    Remove the local device token
+  ${c.cyan}wavex-os whoami [--json]${c.reset}    Show who this machine is paired as
   ${c.cyan}wavex-os version [--json]${c.reset}   Print the cloud-client version
 
 ${c.bold}Install / runtime ${c.dim}(delegated to wavex-os-installer)${c.reset}:
@@ -425,6 +462,8 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
       return status(rest);
     case "logout":
       return logout(rest);
+    case "whoami":
+      return whoami(rest);
     default:
       if (INSTALLER_SUBCOMMANDS.has(cmd)) {
         return delegateToInstaller(cmd, rest);
