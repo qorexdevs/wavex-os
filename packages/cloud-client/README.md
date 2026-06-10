@@ -21,10 +21,11 @@ pnpm wavex:os login          # = node packages/cloud-client/bin/wavex-os.mjs log
 | `wavex-os login` | Pair this machine: POST `os-link-device`, open the browser, poll until you claim the code, then write the device JWT + refresh token. |
 | `wavex-os status [--refresh] [--json]` | Show local pairing state. `--refresh` rotates the access token; `--json` emits one machine-readable line. |
 | `wavex-os logout` | Delete the local device token bundle (cloud-side revoke is separate). |
+| `wavex-os whoami [--json]` | One-line "who is this machine paired as". `--json` emits a machine-readable line. |
 | `wavex-os version [--json]` | Print the version. `--json` adds `node` + `platform` for bug reports. |
 | `wavex-os init / doctor / audit / reset` | Forwarded to the `wavex-os-installer` bin. |
 
-`login`, `status`, `logout`, and `version` are implemented here; the installer
+`login`, `status`, `logout`, `whoami`, and `version` are implemented here; the installer
 subcommands are delegated, so a single `wavex-os` binary covers the whole
 surface. The bin entrypoint (`bin/wavex-os.mjs`) imports the built
 `dist/cli.js` and calls `runCli()`, no `tsx` loader.
@@ -34,7 +35,7 @@ surface. The bin entrypoint (`bin/wavex-os.mjs`) imports the built
 | Code | Meaning |
 |---|---|
 | 0 | Success (paired, status queried, version printed). |
-| 1 | `status`: not paired yet. |
+| 1 | `status` / `whoami`: not paired yet. |
 | 2 | `login`: pairing code expired, run it again. |
 | 3 | `login`: pairing failed; `status --refresh`: refresh failed. |
 
