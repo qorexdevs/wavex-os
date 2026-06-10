@@ -11,6 +11,7 @@
  *   - introspect on an expired token
  *   - CLI dispatcher: version/version --json/--help/bare/unknown-command exit codes
  *   - `status --json` machine-readable output (unpaired + paired)
+ *   - `whoami --json` machine-readable output (unpaired + paired)
  *
  * Run as: pnpm wavex:cloud-client:smoke
  *
@@ -250,6 +251,42 @@ if (process.env.WAVEX_DEVICE_JWT_SECRET) {
     logoutPaired.code === 0 && logoutPairedObj?.had_token === true &&
     (await readBundle()) === null,
     `actual: ${logoutPaired.out}`);
+}
+
+console.log("\n── CLI: whoami --json ──");
+const whoamiUnpaired = await runCapture(["whoami", "--json"]);
+check("`whoami --json` unpaired exits 1", whoamiUnpaired.code === 1);
+let whoamiUnpairedObj = null;
+try { whoamiUnpairedObj = JSON.parse(whoamiUnpaired.out); } catch { /* fails check below */ }
+check("`whoami --json` unpaired prints {paired:false}", whoamiUnpairedObj?.paired === false,
+  `actual: ${whoamiUnpaired.out}`);
+if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
+  console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired whoami --json");
+} else {
+  const now4 = Math.floor(Date.now() / 1000);
+  const whoamiToken = _signDeviceJwt_TEST_ONLY({
+    sub: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+    exp: now4 + 3600,
+  });
+  await writeBundle({
+    access_token: whoamiToken,
+    refresh_token: "refresh-opaque",
+    access_token_expires_at: now4 + 3600,
+    obtained_at: now4,
+    user_id: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+  });
+  const whoamiPaired = await runCapture(["whoami", "--json"]);
+  check("`whoami --json` paired exits 0", whoamiPaired.code === 0);
+  let whoamiPairedObj = null;
+  try { whoamiPairedObj = JSON.parse(whoamiPaired.out); } catch { /* fails checks below */ }
+  check("`whoami --json` paired reports user_id + device_id + valid",
+    whoamiPairedObj?.paired === true && whoamiPairedObj?.valid === true &&
+    whoamiPairedObj?.user_id === "00000000-0000-0000-0000-000000000abc" &&
+    whoamiPairedObj?.device_id === "00000000-0000-0000-0000-000000000def",
+    `actual: ${whoamiPaired.out}`);
+  await deleteBundle();
 }
 
 // Tidy sandbox
