@@ -326,14 +326,14 @@ async function whoami(argv: string[]): Promise<number> {
 
   const bundle = introspect.bundle!;
   if (asJson) {
-    console.log(
-      JSON.stringify({
-        paired: true,
-        valid: introspect.ok,
-        user_id: bundle.user_id,
-        device_id: bundle.device_id,
-      }),
-    );
+    const out: Record<string, unknown> = {
+      paired: true,
+      valid: introspect.ok,
+      user_id: bundle.user_id,
+      device_id: bundle.device_id,
+    };
+    if (!introspect.ok) out.reason = introspect.reason;
+    console.log(JSON.stringify(out));
     return 0;
   }
   const mark = introspect.ok ? `${c.green}✓${c.reset}` : `${c.yellow}⚠${c.reset}`;
