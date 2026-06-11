@@ -286,6 +286,28 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     whoamiPairedObj?.user_id === "00000000-0000-0000-0000-000000000abc" &&
     whoamiPairedObj?.device_id === "00000000-0000-0000-0000-000000000def",
     `actual: ${whoamiPaired.out}`);
+
+  // Paired but expired: whoami --json should surface a reason like status does
+  const expiredWhoamiToken = _signDeviceJwt_TEST_ONLY({
+    sub: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+    exp: now4 - 3600,
+  });
+  await writeBundle({
+    access_token: expiredWhoamiToken,
+    refresh_token: "refresh-opaque",
+    access_token_expires_at: now4 - 3600,
+    obtained_at: now4 - 7200,
+    user_id: "00000000-0000-0000-0000-000000000abc",
+    device_id: "00000000-0000-0000-0000-000000000def",
+  });
+  const whoamiExpired = await runCapture(["whoami", "--json"]);
+  let whoamiExpiredObj = null;
+  try { whoamiExpiredObj = JSON.parse(whoamiExpired.out); } catch { /* fails check below */ }
+  check("`whoami --json` paired-but-expired reports valid=false + reason",
+    whoamiExpiredObj?.paired === true && whoamiExpiredObj?.valid === false &&
+    typeof whoamiExpiredObj?.reason === "string",
+    `actual: ${whoamiExpired.out}`);
   await deleteBundle();
 }
 
