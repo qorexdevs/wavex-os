@@ -326,11 +326,13 @@ async function whoami(argv: string[]): Promise<number> {
 
   const bundle = introspect.bundle!;
   if (asJson) {
+    const now = Math.floor(Date.now() / 1000);
     const out: Record<string, unknown> = {
       paired: true,
       valid: introspect.ok,
       user_id: bundle.user_id,
       device_id: bundle.device_id,
+      access_token_expires_in_sec: bundle.access_token_expires_at - now,
     };
     if (!introspect.ok) out.reason = introspect.reason;
     console.log(JSON.stringify(out));
