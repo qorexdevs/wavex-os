@@ -308,6 +308,12 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     whoamiExpiredObj?.paired === true && whoamiExpiredObj?.valid === false &&
     typeof whoamiExpiredObj?.reason === "string",
     `actual: ${whoamiExpired.out}`);
+
+  // Same expired bundle, plain whoami should print the reason inline, not just a ⚠
+  const whoamiExpiredHuman = await runCapture(["whoami"]);
+  check("`whoami` paired-but-expired prints the reason inline",
+    whoamiExpiredHuman.out.includes(whoamiExpiredObj?.reason ?? " "),
+    `actual: ${whoamiExpiredHuman.out}`);
   await deleteBundle();
 }
 

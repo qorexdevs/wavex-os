@@ -337,7 +337,8 @@ async function whoami(argv: string[]): Promise<number> {
     return 0;
   }
   const mark = introspect.ok ? `${c.green}✓${c.reset}` : `${c.yellow}⚠${c.reset}`;
-  console.log(`${mark} ${bundle.user_id} ${c.dim}(device ${bundle.device_id})${c.reset}`);
+  const why = introspect.ok ? "" : ` ${c.yellow}(${introspect.reason})${c.reset}`;
+  console.log(`${mark} ${bundle.user_id} ${c.dim}(device ${bundle.device_id})${c.reset}${why}`);
   return 0;
 }
 
