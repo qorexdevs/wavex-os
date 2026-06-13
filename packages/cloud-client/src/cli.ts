@@ -339,7 +339,11 @@ async function whoami(argv: string[]): Promise<number> {
     return 0;
   }
   const mark = introspect.ok ? `${c.green}✓${c.reset}` : `${c.yellow}⚠${c.reset}`;
-  const why = introspect.ok ? "" : ` ${c.yellow}(${introspect.reason})${c.reset}`;
+  const now = Math.floor(Date.now() / 1000);
+  const expiresInMin = Math.floor((bundle.access_token_expires_at - now) / 60);
+  const why = introspect.ok
+    ? ` ${c.dim}expires in ${expiresInMin} min${c.reset}`
+    : ` ${c.yellow}(${introspect.reason})${c.reset}`;
   console.log(`${mark} ${bundle.user_id} ${c.dim}(device ${bundle.device_id})${c.reset}${why}`);
   return 0;
 }
