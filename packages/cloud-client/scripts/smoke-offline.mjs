@@ -291,6 +291,12 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     whoamiPairedObj.access_token_expires_in_sec > 0,
     `actual: ${whoamiPaired.out}`);
 
+  // Plain whoami on a valid token should hint at expiry like status does
+  const whoamiPairedHuman = await runCapture(["whoami"]);
+  check("`whoami` paired-and-valid prints an expiry hint",
+    /expires in -?\d+ min/.test(whoamiPairedHuman.out),
+    `actual: ${whoamiPairedHuman.out}`);
+
   // Paired but expired: whoami --json should surface a reason like status does
   const expiredWhoamiToken = _signDeviceJwt_TEST_ONLY({
     sub: "00000000-0000-0000-0000-000000000abc",
