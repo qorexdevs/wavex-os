@@ -290,6 +290,9 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     typeof whoamiPairedObj?.access_token_expires_in_sec === "number" &&
     whoamiPairedObj.access_token_expires_in_sec > 0,
     `actual: ${whoamiPaired.out}`);
+  check("`whoami --json` paired carries the absolute expiry timestamp",
+    whoamiPairedObj?.access_token_expires_at === now4 + 3600,
+    `actual: ${whoamiPaired.out}`);
 
   // Plain whoami on a valid token should hint at expiry like status does
   const whoamiPairedHuman = await runCapture(["whoami"]);
