@@ -216,6 +216,7 @@ async function status(argv: string[]): Promise<number> {
       token_path: cfg.tokenPath,
       functions_url: cfg.functionsUrl,
       access_token_expires_in_sec: expiresInSec,
+      access_token_expires_at: bundle.access_token_expires_at,
     };
     if (!introspect.ok) out.reason = introspect.reason;
     if (wantRefresh) {
