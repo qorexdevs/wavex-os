@@ -218,6 +218,8 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     pairedObj?.device_id === "00000000-0000-0000-0000-000000000def" &&
     typeof pairedObj?.access_token_expires_in_sec === "number" &&
     pairedObj.access_token_expires_in_sec > 0);
+  check("`status --json` carries absolute expiry matching the bundle",
+    pairedObj?.access_token_expires_at === now2 + 3600);
   await deleteBundle();
 }
 

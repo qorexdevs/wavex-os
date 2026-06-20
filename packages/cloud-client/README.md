@@ -41,10 +41,10 @@ surface. The bin entrypoint (`bin/wavex-os.mjs`) imports the built
 
 `status --json` prints `{"paired":false}` and exits 1 when there is no bundle,
 otherwise `{"paired":true,"valid":...,"user_id":...,"device_id":...,
-"access_token_expires_in_sec":...}`. `whoami --json` carries the same
-`access_token_expires_in_sec` plus the absolute `access_token_expires_at`, so a
-script can gate on time-left from the cheaper identity call without a full
-`status`, or compare the expiry against its own clock.
+"access_token_expires_in_sec":...,"access_token_expires_at":...}`. Both the
+relative `_in_sec` and the absolute unix `_at` are present, so a script can show
+time-left or compare the expiry against its own clock. `whoami --json` carries
+the same pair from the cheaper identity call without a full `status`.
 
 ## Environment
 
