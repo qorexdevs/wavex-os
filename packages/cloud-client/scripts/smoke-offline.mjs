@@ -231,6 +231,9 @@ try { logoutEmptyObj = JSON.parse(logoutEmpty.out); } catch { /* fails check bel
 check("`logout --json` reports had_token:false when nothing on disk",
   logoutEmptyObj?.logged_out === true && logoutEmptyObj?.had_token === false,
   `actual: ${logoutEmpty.out}`);
+check("`logout --json` carries the token_path it cleared",
+  typeof logoutEmptyObj?.token_path === "string" && logoutEmptyObj.token_path.length > 0,
+  `actual: ${logoutEmpty.out}`);
 if (process.env.WAVEX_DEVICE_JWT_SECRET) {
   const now3 = Math.floor(Date.now() / 1000);
   const logoutToken = _signDeviceJwt_TEST_ONLY({
