@@ -280,10 +280,11 @@ async function logout(argv: string[]): Promise<number> {
   const asJson = argv.includes("--json");
   const introspect = await introspectBundle();
   const hadToken = !(!introspect.ok && introspect.reason === "no_bundle");
+  const tokenPath = loadConfig().tokenPath;
 
   if (!hadToken) {
     if (asJson) {
-      console.log(JSON.stringify({ logged_out: true, had_token: false }));
+      console.log(JSON.stringify({ logged_out: true, had_token: false, token_path: tokenPath }));
       return 0;
     }
     console.log("");
@@ -294,7 +295,7 @@ async function logout(argv: string[]): Promise<number> {
 
   await deleteBundle();
   if (asJson) {
-    console.log(JSON.stringify({ logged_out: true, had_token: true }));
+    console.log(JSON.stringify({ logged_out: true, had_token: true, token_path: tokenPath }));
     return 0;
   }
   console.log("");
