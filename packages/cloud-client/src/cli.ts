@@ -334,6 +334,7 @@ async function whoami(argv: string[]): Promise<number> {
       valid: introspect.ok,
       user_id: bundle.user_id,
       device_id: bundle.device_id,
+      token_path: loadConfig().tokenPath,
       access_token_expires_in_sec: bundle.access_token_expires_at - now,
       access_token_expires_at: bundle.access_token_expires_at,
     };
