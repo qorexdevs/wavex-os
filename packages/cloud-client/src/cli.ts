@@ -192,7 +192,7 @@ async function status(argv: string[]): Promise<number> {
   const introspect = await introspectBundle();
   if (!introspect.ok && introspect.reason === "no_bundle") {
     if (asJson) {
-      console.log(JSON.stringify({ paired: false }));
+      console.log(JSON.stringify({ paired: false, token_path: loadConfig().tokenPath }));
       return 1;
     }
     console.log("");
@@ -319,7 +319,7 @@ async function whoami(argv: string[]): Promise<number> {
 
   if (!introspect.ok && introspect.reason === "no_bundle") {
     if (asJson) {
-      console.log(JSON.stringify({ paired: false }));
+      console.log(JSON.stringify({ paired: false, token_path: loadConfig().tokenPath }));
       return 1;
     }
     console.log(`${c.yellow}○${c.reset} not paired — run ${c.bold}wavex-os login${c.reset}`);
