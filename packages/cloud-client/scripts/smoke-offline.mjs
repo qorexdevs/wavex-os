@@ -191,6 +191,9 @@ let unpairedObj = null;
 try { unpairedObj = JSON.parse(jsonUnpaired.out); } catch { /* fails check below */ }
 check("`status --json` unpaired prints {paired:false}", unpairedObj?.paired === false,
   `actual: ${jsonUnpaired.out}`);
+check("`status --json` unpaired still carries token_path",
+  typeof unpairedObj?.token_path === "string" && unpairedObj.token_path.startsWith(sandbox),
+  `actual: ${jsonUnpaired.out}`);
 if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired status --json");
 } else {
@@ -264,6 +267,9 @@ check("`whoami --json` unpaired exits 1", whoamiUnpaired.code === 1);
 let whoamiUnpairedObj = null;
 try { whoamiUnpairedObj = JSON.parse(whoamiUnpaired.out); } catch { /* fails check below */ }
 check("`whoami --json` unpaired prints {paired:false}", whoamiUnpairedObj?.paired === false,
+  `actual: ${whoamiUnpaired.out}`);
+check("`whoami --json` unpaired still carries token_path like status does",
+  typeof whoamiUnpairedObj?.token_path === "string" && whoamiUnpairedObj.token_path.startsWith(sandbox),
   `actual: ${whoamiUnpaired.out}`);
 if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired whoami --json");
