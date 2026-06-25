@@ -192,7 +192,10 @@ async function status(argv: string[]): Promise<number> {
   const introspect = await introspectBundle();
   if (!introspect.ok && introspect.reason === "no_bundle") {
     if (asJson) {
-      console.log(JSON.stringify({ paired: false, token_path: loadConfig().tokenPath }));
+      const cfg = loadConfig();
+      console.log(
+        JSON.stringify({ paired: false, token_path: cfg.tokenPath, functions_url: cfg.functionsUrl }),
+      );
       return 1;
     }
     console.log("");
