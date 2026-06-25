@@ -194,6 +194,9 @@ check("`status --json` unpaired prints {paired:false}", unpairedObj?.paired === 
 check("`status --json` unpaired still carries token_path",
   typeof unpairedObj?.token_path === "string" && unpairedObj.token_path.startsWith(sandbox),
   `actual: ${jsonUnpaired.out}`);
+check("`status --json` unpaired still carries functions_url like the paired branch",
+  typeof unpairedObj?.functions_url === "string" && unpairedObj.functions_url.includes("functions/v1"),
+  `actual: ${jsonUnpaired.out}`);
 if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired status --json");
 } else {
