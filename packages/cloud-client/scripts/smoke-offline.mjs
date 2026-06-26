@@ -226,6 +226,8 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     pairedObj.access_token_expires_in_sec > 0);
   check("`status --json` carries absolute expiry matching the bundle",
     pairedObj?.access_token_expires_at === now2 + 3600);
+  check("`status --json` paired-and-valid reports access_token_expired=false",
+    pairedObj?.access_token_expired === false);
   await deleteBundle();
 }
 
@@ -307,6 +309,9 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
     typeof whoamiPairedObj?.access_token_expires_in_sec === "number" &&
     whoamiPairedObj.access_token_expires_in_sec > 0,
     `actual: ${whoamiPaired.out}`);
+  check("`whoami --json` paired-and-valid reports access_token_expired=false like status does",
+    whoamiPairedObj?.access_token_expired === false,
+    `actual: ${whoamiPaired.out}`);
   check("`whoami --json` paired carries the absolute expiry timestamp",
     whoamiPairedObj?.access_token_expires_at === now4 + 3600,
     `actual: ${whoamiPaired.out}`);
@@ -344,6 +349,9 @@ if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   check("`whoami --json` paired-but-expired reports a non-positive expiry",
     typeof whoamiExpiredObj?.access_token_expires_in_sec === "number" &&
     whoamiExpiredObj.access_token_expires_in_sec <= 0,
+    `actual: ${whoamiExpired.out}`);
+  check("`whoami --json` paired-but-expired reports access_token_expired=true",
+    whoamiExpiredObj?.access_token_expired === true,
     `actual: ${whoamiExpired.out}`);
 
   // Same expired bundle, plain whoami should print the reason inline, not just a ⚠
