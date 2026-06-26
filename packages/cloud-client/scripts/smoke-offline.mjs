@@ -274,6 +274,9 @@ check("`whoami --json` unpaired prints {paired:false}", whoamiUnpairedObj?.paire
 check("`whoami --json` unpaired still carries token_path like status does",
   typeof whoamiUnpairedObj?.token_path === "string" && whoamiUnpairedObj.token_path.startsWith(sandbox),
   `actual: ${whoamiUnpaired.out}`);
+check("`whoami --json` unpaired carries functions_url like status does",
+  typeof whoamiUnpairedObj?.functions_url === "string" && whoamiUnpairedObj.functions_url.includes("functions/v1"),
+  `actual: ${whoamiUnpaired.out}`);
 if (!process.env.WAVEX_DEVICE_JWT_SECRET) {
   console.log("  ⚠ WAVEX_DEVICE_JWT_SECRET not set — skipping paired whoami --json");
 } else {
