@@ -220,6 +220,7 @@ async function status(argv: string[]): Promise<number> {
       functions_url: cfg.functionsUrl,
       access_token_expires_in_sec: expiresInSec,
       access_token_expires_at: bundle.access_token_expires_at,
+      access_token_expired: expiresInSec <= 0,
     };
     if (!introspect.ok) out.reason = introspect.reason;
     if (wantRefresh) {
@@ -333,14 +334,16 @@ async function whoami(argv: string[]): Promise<number> {
   const bundle = introspect.bundle!;
   if (asJson) {
     const now = Math.floor(Date.now() / 1000);
+    const expiresInSec = bundle.access_token_expires_at - now;
     const out: Record<string, unknown> = {
       paired: true,
       valid: introspect.ok,
       user_id: bundle.user_id,
       device_id: bundle.device_id,
       token_path: loadConfig().tokenPath,
-      access_token_expires_in_sec: bundle.access_token_expires_at - now,
+      access_token_expires_in_sec: expiresInSec,
       access_token_expires_at: bundle.access_token_expires_at,
+      access_token_expired: expiresInSec <= 0,
     };
     if (!introspect.ok) out.reason = introspect.reason;
     console.log(JSON.stringify(out));
