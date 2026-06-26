@@ -322,7 +322,8 @@ async function whoami(argv: string[]): Promise<number> {
 
   if (!introspect.ok && introspect.reason === "no_bundle") {
     if (asJson) {
-      console.log(JSON.stringify({ paired: false, token_path: loadConfig().tokenPath }));
+      const cfg = loadConfig();
+      console.log(JSON.stringify({ paired: false, token_path: cfg.tokenPath, functions_url: cfg.functionsUrl }));
       return 1;
     }
     console.log(`${c.yellow}○${c.reset} not paired — run ${c.bold}wavex-os login${c.reset}`);
