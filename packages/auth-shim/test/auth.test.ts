@@ -117,4 +117,47 @@ describe("production mode enforcement", () => {
     };
     assertBoardOrgAccess(req);
   });
+
+  it("write operations require an active membership", () => {
+    const base = {
+      type: "board" as const,
+      source: "session" as const,
+      userId: "u1",
+      isInstanceAdmin: false,
+      companyIds: ["c1"],
+    };
+
+    const active: AuthRequest = {
+      method: "POST",
+      actor: { ...base, memberships: [{ companyId: "c1", status: "active" }] },
+    };
+    assertCompanyAccess(active, "c1");
+
+    const invited: AuthRequest = {
+      method: "POST",
+      actor: { ...base, memberships: [{ companyId: "c1", status: "invited" }] },
+    };
+    expect(() => assertCompanyAccess(invited, "c1")).toThrow(/Active membership required/);
+
+    const missing: AuthRequest = {
+      method: "DELETE",
+      actor: { ...base, memberships: [{ companyId: "c2", status: "active" }] },
+    };
+    expect(() => assertCompanyAccess(missing, "c1")).toThrow(/Active membership required/);
+  });
+
+  it("safe methods skip the membership check", () => {
+    const req: AuthRequest = {
+      method: "GET",
+      actor: {
+        type: "board",
+        source: "session",
+        userId: "u1",
+        isInstanceAdmin: false,
+        companyIds: ["c1"],
+        memberships: [{ companyId: "c1", status: "removed" }],
+      },
+    };
+    assertCompanyAccess(req, "c1");
+  });
 });
