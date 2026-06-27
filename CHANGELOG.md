@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+Operator-facing CLI hardening. The `wavex-os` command in `@wavex-os/cloud-client` grows a scriptable surface so pairing state, identity, and token health are machine-readable for support and CI.
+
+### Added
+
+- **`wavex-os version` command** — prints the package version; `--json` adds `node` + `platform` so a bug report carries the runtime in one line.
+- **`--json` across the CLI** (`version` / `status` / `whoami` / `logout`) — each emits one machine-readable line. `status --json` prints `{"paired":false}` (exit 1) when there is no bundle, otherwise the full pairing record.
+- **Token expiry in output** — `status`/`whoami --json` carry both the relative `access_token_expires_in_sec` and the absolute unix `access_token_expires_at`, so a script can show time-left or compare against its own clock. Plain `whoami` shows a time-left hint and a reason when the token is invalid or expired.
+- **More identity fields in `--json`** — `token_path` (where the bundle lives), `functions_url` on the unpaired path, and an `access_token_expired` flag on paired `status`/`whoami`.
+- **`wavex-os whoami`** — one-line "who is this machine paired as" from the cheap identity call, without a full `status`.
+- **Hosted hub url in inference config** (`@wavex-os/inference-adapter`) — surfaced so the tier-router can target a hosted hub.
+- **Offline smoke suite** (`packages/cloud-client/scripts/smoke-offline.mjs`) — covers the CLI dispatcher, both `--json` paths, and paired/unpaired bundle states with no network. Package README documents it.
+
+### Fixed
+
+- **License hygiene** — `LICENSE` truncated to canonical Apache-2.0, `NOTICE` added, and the community README badge corrected MIT → Apache-2.0. `CODE_OF_CONDUCT` added and linked from `CONTRIBUTING`.
+- **WCAG touch target** — the `+ New` link padded to a 44px minimum so it meets the tap-target guideline.
+
+---
+
 ## [0.3.0] — 2026-05-12
 
 Clean-slate V2 rebuild. Backports five weeks of production-fleet learnings into agent templates and adds the monetization + reliability layers. Full manifest: [docs/V2_MANIFEST.md](docs/V2_MANIFEST.md).
