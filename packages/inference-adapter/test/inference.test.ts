@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { applyInferenceEnv, getClaudeBin, getInferenceConfig, getInferenceMode } from "../src/index.js";
+import { applyInferenceEnv, getClaudeBin, getHostedHubUrl, getInferenceConfig, getInferenceMode } from "../src/index.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -8,6 +8,7 @@ beforeEach(() => {
   delete process.env.WAVEX_INFERENCE_MODE;
   delete process.env.NODE_ENV;
   delete process.env.WAVEX_OS_CLAUDE_BIN;
+  delete process.env.WAVEX_INFERENCE_HUB_URL;
 });
 
 afterEach(() => {
@@ -71,11 +72,47 @@ describe("applyInferenceEnv", () => {
   });
 });
 
+describe("getHostedHubUrl", () => {
+  it("returns the normalized hub url in hosted mode", () => {
+    process.env.WAVEX_INFERENCE_MODE = "hosted";
+    process.env.WAVEX_INFERENCE_HUB_URL = "https://hub.example.com//";
+    expect(getHostedHubUrl()).toBe("https://hub.example.com");
+  });
+
+  it("trims surrounding whitespace", () => {
+    process.env.WAVEX_INFERENCE_MODE = "hosted";
+    process.env.WAVEX_INFERENCE_HUB_URL = "  https://hub.example.com  ";
+    expect(getHostedHubUrl()).toBe("https://hub.example.com");
+  });
+
+  it("is undefined outside hosted mode even if the url is set", () => {
+    process.env.WAVEX_INFERENCE_MODE = "oauth";
+    process.env.WAVEX_INFERENCE_HUB_URL = "https://hub.example.com";
+    expect(getHostedHubUrl()).toBeUndefined();
+  });
+
+  it("is undefined in hosted mode when the url is unset or blank", () => {
+    process.env.WAVEX_INFERENCE_MODE = "hosted";
+    expect(getHostedHubUrl()).toBeUndefined();
+    process.env.WAVEX_INFERENCE_HUB_URL = "   ";
+    expect(getHostedHubUrl()).toBeUndefined();
+  });
+});
+
 describe("getInferenceConfig", () => {
   it("bundles mode + bin together", () => {
     process.env.WAVEX_INFERENCE_MODE = "oauth";
     const cfg = getInferenceConfig();
     expect(cfg.mode).toBe("oauth");
     expect(cfg.claudeBin).toMatch(/wavex-claude-spawn\.sh$/);
+    expect(cfg.hubUrl).toBeUndefined();
+  });
+
+  it("carries hubUrl in hosted mode", () => {
+    process.env.WAVEX_INFERENCE_MODE = "hosted";
+    process.env.WAVEX_INFERENCE_HUB_URL = "https://hub.example.com/";
+    const cfg = getInferenceConfig();
+    expect(cfg.mode).toBe("hosted");
+    expect(cfg.hubUrl).toBe("https://hub.example.com");
   });
 });
