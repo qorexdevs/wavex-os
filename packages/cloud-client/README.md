@@ -39,12 +39,18 @@ surface. The bin entrypoint (`bin/wavex-os.mjs`) imports the built
 | 2 | `login`: pairing code expired, run it again. |
 | 3 | `login`: pairing failed; `status --refresh`: refresh failed. |
 
-`status --json` prints `{"paired":false}` and exits 1 when there is no bundle,
-otherwise `{"paired":true,"valid":...,"user_id":...,"device_id":...,
-"access_token_expires_in_sec":...,"access_token_expires_at":...}`. Both the
-relative `_in_sec` and the absolute unix `_at` are present, so a script can show
-time-left or compare the expiry against its own clock. `whoami --json` carries
-the same pair from the cheaper identity call without a full `status`.
+`status --json` exits 1 with `{"paired":false,"token_path":...,
+"functions_url":...}` when there is no bundle, otherwise exits 0 with
+`{"paired":true,"valid":...,"user_id":...,"device_id":...,"token_path":...,
+"functions_url":...,"access_token_expires_in_sec":...,
+"access_token_expires_at":...,"access_token_expired":...}` (plus `"reason"` when
+the token is present but no longer valid, and `"refreshed"` / `"refresh_error"`
+when you pass `--refresh`). Both the relative `_in_sec` and the absolute unix
+`_at` are present and `access_token_expired` is the precomputed boolean, so a
+script can show time-left or branch on expiry without reading the clock itself.
+`whoami --json` carries the same identity pair (and the same `access_token_*`
+fields) from the cheaper call without a full `status`; `logout --json` emits
+`{"logged_out":true,"had_token":...,"token_path":...}`.
 
 ## Environment
 
