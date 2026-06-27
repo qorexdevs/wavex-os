@@ -43,15 +43,27 @@ export function getClaudeBin(): string {
   return resolve(repoRoot(), "scripts/wrappers/claude-hosted-shim.mjs");
 }
 
+/** The hub endpoint hosted-mode T2 calls route to, normalized the same way
+ *  the claude-hosted-shim consumes it (trailing slashes stripped). Returns
+ *  undefined outside hosted mode or when WAVEX_INFERENCE_HUB_URL is unset/blank,
+ *  so callers can tell "not hosted" apart from "hosted but misconfigured". */
+export function getHostedHubUrl(): string | undefined {
+  if (getInferenceMode() !== "hosted") return undefined;
+  const raw = (process.env.WAVEX_INFERENCE_HUB_URL ?? "").trim().replace(/\/+$/, "");
+  return raw || undefined;
+}
+
 export interface InferenceConfig {
   mode: ReturnType<typeof getInferenceMode>;
   claudeBin: string;
+  hubUrl?: string;
 }
 
 export function getInferenceConfig(): InferenceConfig {
   return {
     mode: getInferenceMode(),
     claudeBin: getClaudeBin(),
+    hubUrl: getHostedHubUrl(),
   };
 }
 
