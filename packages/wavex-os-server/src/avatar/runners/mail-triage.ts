@@ -165,6 +165,32 @@ function inPrivacyZone(thread: MailThread, zones: string[]): boolean {
   return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
 }
 
+const VALID_CLASSIFICATION = new Set(["now", "soon", "fyi"]);
+
+/** Coerce the classifier's raw JSON into a valid MailClassification. The
+ *  model is prompted for the now/soon/fyi enum but can drift; an off-enum
+ *  value breaks statusForPreset's autonomy gate and a >1 confidence shows
+ *  as 150% on the dashboard, so pin both to their allowed range. */
+export function normalizeClassification(raw: {
+  classification?: string;
+  draft?: string | null;
+  confidence?: number;
+  reasoning?: string;
+  open_question?: string | null;
+}): MailClassification {
+  return {
+    classification: VALID_CLASSIFICATION.has(raw.classification ?? "")
+      ? (raw.classification as MailClassification["classification"])
+      : "fyi",
+    draft: raw.draft ?? null,
+    confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
+      ? Math.min(1, Math.max(0, raw.confidence))
+      : 0.5,
+    reasoning: raw.reasoning ?? "no reasoning provided",
+    open_question: raw.open_question ?? null,
+  };
+}
+
 async function classifyOne(
   avatarId: string,
   provider: MailProvider,
@@ -193,14 +219,7 @@ async function classifyOne(
       return resp.output.trim();
     });
     const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(cleaned) as MailClassification;
-    return {
-      classification: parsed.classification ?? "fyi",
-      draft: parsed.draft ?? null,
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-      reasoning: parsed.reasoning ?? "no reasoning provided",
-      open_question: parsed.open_question ?? null,
-    };
+    return normalizeClassification(JSON.parse(cleaned));
   } catch {
     return provider.classifyStub(thread);
   }
