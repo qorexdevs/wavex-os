@@ -24,6 +24,7 @@ Operator-facing CLI hardening. The `wavex-os` command in `@wavex-os/cloud-client
 
 - **License hygiene** — `LICENSE` truncated to canonical Apache-2.0, `NOTICE` added, and the community README badge corrected MIT → Apache-2.0. `CODE_OF_CONDUCT` added and linked from `CONTRIBUTING`.
 - **WCAG touch target** — the `+ New` link padded to a 44px minimum so it meets the tap-target guideline.
+- **Avatar triage robustness** — the slack-digest, mail-triage, and calendar-triage runners coerce the model's raw JSON to the allowed enum and a `[0,1]` confidence before writing an approval, so a drifted `"critical"` importance or a `1.5` confidence can't reach the dashboard.
 
 ---
 
