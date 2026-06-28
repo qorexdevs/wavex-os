@@ -96,6 +96,37 @@ Return JSON only:
 }`;
 }
 
+const VALID_SUGGESTED = new Set(["accept", "decline", "propose-time"]);
+
+/** Coerce the recommender's raw JSON into a valid recommendation. The model
+ *  is prompted for the three-way enum + a 0-1 confidence but can drift
+ *  (suggested "maybe", confidence 1.5) — an off-enum suggestion writes an
+ *  approval the operator can't act on and a >1 confidence renders as 150%, so
+ *  pin both here. proposed_times only ride along with propose-time. */
+export function normalizeRecommendation(raw: {
+  suggested?: string;
+  proposed_times?: unknown;
+  draft_message?: string | null;
+  confidence?: number;
+  reasoning?: string;
+}): CalendarRecommendation {
+  const suggested = VALID_SUGGESTED.has(raw.suggested ?? "")
+    ? (raw.suggested as CalendarRecommendation["suggested"])
+    : "decline";
+  const times = Array.isArray(raw.proposed_times)
+    ? raw.proposed_times.filter((t): t is string => typeof t === "string")
+    : null;
+  return {
+    suggested,
+    proposed_times: suggested === "propose-time" ? times : null,
+    draft_message: raw.draft_message ?? null,
+    confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
+      ? Math.min(1, Math.max(0, raw.confidence))
+      : 0.5,
+    reasoning: raw.reasoning ?? "no reasoning provided",
+  };
+}
+
 async function recommendOne(
   avatarId: string,
   provider: CalendarProvider,
@@ -124,14 +155,7 @@ async function recommendOne(
       return resp.output.trim();
     });
     const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(cleaned) as CalendarRecommendation;
-    return {
-      suggested: parsed.suggested ?? "decline",
-      proposed_times: parsed.proposed_times ?? null,
-      draft_message: parsed.draft_message ?? null,
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-      reasoning: parsed.reasoning ?? "no reasoning provided",
-    };
+    return normalizeRecommendation(JSON.parse(cleaned));
   } catch {
     return provider.recommendStub(event);
   }
