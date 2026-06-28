@@ -41,6 +41,14 @@ describe("normalizeRecommendation", () => {
     expect(normalizeRecommendation({ suggested: "propose-time", proposed_times: "tomorrow" }).proposed_times).toBeNull();
   });
 
+  it("drops proposed_times that don't parse as a datetime", () => {
+    const rec = normalizeRecommendation({
+      suggested: "propose-time",
+      proposed_times: ["2026-06-29T15:00:00Z", "any time Tuesday", "next week"],
+    });
+    expect(rec.proposed_times).toEqual(["2026-06-29T15:00:00Z"]);
+  });
+
   it("clamps confidence into [0,1] and defaults non-finite", () => {
     expect(normalizeRecommendation({ suggested: "accept", confidence: 1.5 }).confidence).toBe(1);
     expect(normalizeRecommendation({ suggested: "accept", confidence: -0.2 }).confidence).toBe(0);

@@ -102,7 +102,9 @@ const VALID_SUGGESTED = new Set(["accept", "decline", "propose-time"]);
  *  is prompted for the three-way enum + a 0-1 confidence but can drift
  *  (suggested "maybe", confidence 1.5) — an off-enum suggestion writes an
  *  approval the operator can't act on and a >1 confidence renders as 150%, so
- *  pin both here. proposed_times only ride along with propose-time. */
+ *  pin both here. proposed_times only ride along with propose-time, and each
+ *  has to parse as a real datetime — a model that answers "any time Tuesday"
+ *  would otherwise hand the RSVP path a slot it can't actually send. */
 export function normalizeRecommendation(raw: {
   suggested?: string;
   proposed_times?: unknown;
@@ -114,7 +116,7 @@ export function normalizeRecommendation(raw: {
     ? (raw.suggested as CalendarRecommendation["suggested"])
     : "decline";
   const times = Array.isArray(raw.proposed_times)
-    ? raw.proposed_times.filter((t): t is string => typeof t === "string")
+    ? raw.proposed_times.filter((t): t is string => typeof t === "string" && Number.isFinite(Date.parse(t)))
     : null;
   return {
     suggested,
