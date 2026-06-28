@@ -118,6 +118,24 @@ function classifyStub(mention: SlackMention): SlackClassification {
   return STUB_CLASSIFICATIONS[last] ?? STUB_CLASSIFICATIONS["1"];
 }
 
+const VALID_IMPORTANCE = new Set(["urgent", "info", "fyi"]);
+
+/** Coerce a model's raw JSON into a valid classification. The classifier is
+ *  prompted to return the three-way enum but can drift (importance "high",
+ *  confidence 1.5) — an off-enum importance renders no dashboard badge and a
+ *  >1 confidence shows as 150%, so pin both to the allowed range here. */
+export function normalizeClassification(raw: { importance?: string; confidence?: number; reasoning?: string }): SlackClassification {
+  return {
+    importance: VALID_IMPORTANCE.has(raw.importance ?? "")
+      ? (raw.importance as SlackClassification["importance"])
+      : "fyi",
+    confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
+      ? Math.min(1, Math.max(0, raw.confidence))
+      : 0.5,
+    reasoning: raw.reasoning ?? "no reasoning provided",
+  };
+}
+
 function buildClassifierPrompt(mention: SlackMention, profile: AvatarProfile, trust: TrustFile | null, preferences: Array<{ rule: string }>): string {
   const vips = (trust?.vips ?? []).map((v) => `- ${v.email}${v.label ? ` (${v.label})` : ""}`).join("\n");
   const prefBlock = preferences.length > 0
@@ -170,12 +188,8 @@ async function classifyOne(
       return resp.output.trim();
     });
     const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(cleaned) as SlackClassification;
-    return {
-      importance: parsed.importance ?? "fyi",
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-      reasoning: parsed.reasoning ?? "no reasoning provided",
-    };
+    const parsed = JSON.parse(cleaned) as Partial<SlackClassification>;
+    return normalizeClassification(parsed);
   } catch {
     return classifyStub(mention);
   }
