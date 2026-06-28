@@ -3,7 +3,15 @@
  *  confidence, and proposed_times that only ride with propose-time. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeRecommendation } from "../src/avatar/runners/calendar-triage.js";
+import { normalizeRecommendation, markConflicts } from "../src/avatar/runners/calendar-triage.js";
+import type { CalendarEvent } from "../src/avatar/runners/calendar/types.js";
+
+function ev(eventId: string, start: string, end: string): CalendarEvent {
+  return {
+    eventId, summary: eventId, organizer: { name: "o", email: "o@x.com" },
+    attendees: [], start, end, responseStatus: "needsAction",
+  };
+}
 
 describe("normalizeRecommendation", () => {
   it("passes a well-formed propose-time recommendation through", () => {
@@ -60,5 +68,40 @@ describe("normalizeRecommendation", () => {
     const rec = normalizeRecommendation({ suggested: "decline" });
     expect(rec.reasoning).toBe("no reasoning provided");
     expect(rec.draft_message).toBeNull();
+  });
+});
+
+describe("markConflicts", () => {
+  it("flags both invites when their ranges overlap", () => {
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z"),
+      ev("b", "2026-06-29T10:30:00Z", "2026-06-29T11:30:00Z"),
+    ]);
+    expect(events.map((e) => e.hasConflict)).toEqual([true, true]);
+  });
+
+  it("leaves back-to-back invites unflagged", () => {
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z"),
+      ev("b", "2026-06-29T11:00:00Z", "2026-06-29T12:00:00Z"),
+    ]);
+    expect(events.every((e) => e.hasConflict)).toBe(false);
+  });
+
+  it("only flags the invites that actually clash", () => {
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z"),
+      ev("b", "2026-06-29T10:30:00Z", "2026-06-29T11:30:00Z"),
+      ev("c", "2026-06-29T14:00:00Z", "2026-06-29T15:00:00Z"),
+    ]);
+    expect(events.map((e) => Boolean(e.hasConflict))).toEqual([true, true, false]);
+  });
+
+  it("skips invites whose times don't parse", () => {
+    const events = markConflicts([
+      ev("a", "not a date", "still not"),
+      ev("b", "2026-06-29T10:30:00Z", "2026-06-29T11:30:00Z"),
+    ]);
+    expect(events.every((e) => e.hasConflict)).toBe(false);
   });
 });

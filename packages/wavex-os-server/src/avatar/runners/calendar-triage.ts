@@ -66,6 +66,27 @@ function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): 
   return startMin >= (sH * 60 + sM) && startMin <= (eH * 60 + eM);
 }
 
+/** Flag invites that overlap another pending invite in the same batch. The
+ *  prompt asks the model to weigh a "hard conflict" but never told it whether
+ *  one exists — the runner is the only place that sees the whole batch, so it
+ *  marks hasConflict here. Two events conflict when their [start,end) ranges
+ *  intersect; events whose times don't parse are skipped, not treated as
+ *  conflicting. */
+export function markConflicts(events: CalendarEvent[]): CalendarEvent[] {
+  const spans = events.map((e) => ({ start: Date.parse(e.start), end: Date.parse(e.end) }));
+  for (let i = 0; i < events.length; i++) {
+    const a = spans[i];
+    if (!Number.isFinite(a.start) || !Number.isFinite(a.end)) continue;
+    for (let j = 0; j < events.length; j++) {
+      if (i === j) continue;
+      const b = spans[j];
+      if (!Number.isFinite(b.start) || !Number.isFinite(b.end)) continue;
+      if (a.start < b.end && b.start < a.end) { events[i].hasConflict = true; break; }
+    }
+  }
+  return events;
+}
+
 function buildRecommenderPrompt(provider: CalendarProvider, event: CalendarEvent, profile: AvatarProfile, trust: TrustFile | null, preferences: Array<{ rule: string }>): string {
   const vips = (trust?.vips ?? []).map((v) => `- ${v.email}${v.label ? ` (${v.label})` : ""}`).join("\n");
   const prefBlock = preferences.length > 0
@@ -79,6 +100,7 @@ ${vips ? `VIPs (favor accept):\n${vips}\n\n` : ""}${prefBlock}Invite:
 - Start: ${event.start}
 - End: ${event.end}
 - Attendees: ${event.attendees.join(", ") || "(none listed)"}
+- Conflicts with another pending invite: ${event.hasConflict ? "yes" : "no"}
 ${event.body ? `- Body: ${event.body}` : ""}
 
 Decide ONE of:
@@ -226,7 +248,7 @@ export async function runCalendarTriage(
   result.agentId = agentId;
   if (!agentId) { result.errors.push({ eventId: "<bootstrap>", message: `no ${provider.id} sub-agent in mapping` }); return result; }
 
-  const events = await provider.fetchPendingInvites(avatarId, { dryRun });
+  const events = markConflicts(await provider.fetchPendingInvites(avatarId, { dryRun }));
 
   for (const event of events) {
     result.processed += 1;
@@ -252,6 +274,7 @@ export async function runCalendarTriage(
           start: event.start,
           end: event.end,
           inside_working_hours: insideHours,
+          has_conflict: event.hasConflict ?? false,
           suggested: rec.suggested,
           proposed_times: rec.proposed_times,
           draft_message: rec.draft_message,
