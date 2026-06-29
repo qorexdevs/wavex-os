@@ -129,6 +129,24 @@ export function inPrivacyZone(mention: Pick<SlackMention, "channel" | "author">,
   return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
 }
 
+/** Collapse repeated @-mentions that land in the same Slack thread into one.
+ *  Slack reports every mention separately, so an operator pinged three times in
+ *  one back-and-forth would get three dashboard cards for a single conversation.
+ *  Keep one mention per threadTs — the most recent, since the latest message is
+ *  the current state of the ask — and drop the earlier ones before
+ *  classification, so a busy thread costs one inference call instead of N.
+ *  Mentions with no threadTs are standalone and always kept; input order is
+ *  preserved. */
+export function dedupeThreadMentions(mentions: SlackMention[]): SlackMention[] {
+  const latestTs = new Map<string, string>();
+  for (const m of mentions) {
+    if (!m.threadTs) continue;
+    const prev = latestTs.get(m.threadTs);
+    if (prev === undefined || m.ts > prev) latestTs.set(m.threadTs, m.ts);
+  }
+  return mentions.filter((m) => !m.threadTs || latestTs.get(m.threadTs) === m.ts);
+}
+
 const MASS_MENTION = /@(everyone|channel|here)\b/i;
 
 /** True when the mention's author is on the trust file's VIP list (email match,
@@ -290,7 +308,7 @@ export async function runSlackDigest(
   if (!agentId) { result.errors.push({ ts: "<bootstrap>", message: "no slack sub-agent in mapping" }); return result; }
 
   // Real Slack pull lands together with Composio OAuth in slice 3.
-  const mentions = dryRun ? fixtures(avatarId) : [];
+  const mentions = dedupeThreadMentions(dryRun ? fixtures(avatarId) : []);
 
   for (const mention of mentions) {
     result.processed += 1;
