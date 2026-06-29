@@ -2,7 +2,7 @@
  *  classification JSON to the urgent/info/fyi enum and a [0,1] confidence. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeClassification, inPrivacyZone, isVipAuthor, applyVipFloor } from "../src/avatar/runners/slack-digest.js";
+import { normalizeClassification, inPrivacyZone, isVipAuthor, applyVipFloor, applyBroadcastCeiling } from "../src/avatar/runners/slack-digest.js";
 
 describe("normalizeClassification", () => {
   it("passes a well-formed classification through unchanged", () => {
@@ -91,5 +91,32 @@ describe("applyVipFloor", () => {
     expect(applyVipFloor(fyi, { ...base, author: { name: "Sam", email: "sam@yourco.example" } }, vips).importance).toBe("fyi");
     const info = { importance: "info" as const, confidence: 0.6, reasoning: "ask, no deadline" };
     expect(applyVipFloor(info, base, vips)).toEqual(info);
+  });
+});
+
+describe("applyBroadcastCeiling", () => {
+  const vips = [{ email: "ceo@yourco.example" }];
+  const urgent = { importance: "urgent" as const, confidence: 0.8, reasoning: "model called it urgent" };
+  const base = {
+    channel: "#general", channelId: "C1", author: { name: "People Ops", email: "people@yourco.example" },
+    ts: "2026-01-01T00:00:00Z", text: "@operator @everyone please mark your PTO before Monday",
+    permalink: "https://x.example/1",
+  };
+
+  it("caps a non-VIP urgent broadcast down to info", () => {
+    const out = applyBroadcastCeiling(urgent, base, vips);
+    expect(out.importance).toBe("info");
+    expect(out.reasoning).toContain("broadcast");
+  });
+
+  it("leaves a VIP broadcast at urgent", () => {
+    const out = applyBroadcastCeiling(urgent, { ...base, author: { name: "Chief", email: "ceo@yourco.example" } }, vips);
+    expect(out.importance).toBe("urgent");
+  });
+
+  it("does not touch a direct urgent ping or an already lower rating", () => {
+    expect(applyBroadcastCeiling(urgent, { ...base, text: "@operator can you look now?" }, vips).importance).toBe("urgent");
+    const fyi = { importance: "fyi" as const, confidence: 0.4, reasoning: "low" };
+    expect(applyBroadcastCeiling(fyi, base, vips)).toEqual(fyi);
   });
 });
