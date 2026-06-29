@@ -57,12 +57,27 @@ async function readJson<T>(path: string): Promise<T | null> {
   try { return JSON.parse(await readFile(path, "utf8")) as T; } catch { return null; }
 }
 
-function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): boolean {
-  const start = new Date(event.start);
+/** Minutes-since-midnight of an instant as it reads on the operator's wall
+ *  clock. getUTCHours ignored profile.tz, so a 16:00 America/Los_Angeles
+ *  invite resolved to 23:00 UTC and fell outside a 09:00-17:00 window it was
+ *  squarely inside; resolve hour/minute in profile.tz instead. An unknown tz
+ *  (Intl throws) falls back to UTC rather than dropping the signal. */
+function localStartMinutes(start: Date, tz: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour12: false, hour: "2-digit", minute: "2-digit",
+    }).formatToParts(start);
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    const m = Number(parts.find((p) => p.type === "minute")?.value);
+    if (Number.isFinite(h) && Number.isFinite(m)) return (h % 24) * 60 + m;
+  } catch { /* unknown tz — fall through to UTC */ }
+  return start.getUTCHours() * 60 + start.getUTCMinutes();
+}
+
+export function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): boolean {
   const [sH, sM] = profile.working_hours[0].split(":").map(Number);
   const [eH, eM] = profile.working_hours[1].split(":").map(Number);
-  // Compare on the operator's tz instant — naive but fine for fixture work.
-  const startMin = start.getUTCHours() * 60 + start.getUTCMinutes();
+  const startMin = localStartMinutes(new Date(event.start), profile.tz);
   return startMin >= (sH * 60 + sM) && startMin <= (eH * 60 + eM);
 }
 
