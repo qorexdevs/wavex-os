@@ -3,7 +3,7 @@
  *  gate and the dashboard. */
 
 import { describe, expect, it } from "vitest";
-import { matchVip, normalizeClassification } from "../src/avatar/runners/mail-triage.js";
+import { isNoReplySender, matchVip, normalizeClassification } from "../src/avatar/runners/mail-triage.js";
 
 describe("normalizeClassification", () => {
   it("passes a well-formed classification through unchanged", () => {
@@ -58,5 +58,24 @@ describe("matchVip", () => {
     expect(matchVip("random@nowhere.com", vips)).toBeNull();
     expect(matchVip("", vips)).toBeNull();
     expect(matchVip("ceo@acme.com", [])).toBeNull();
+  });
+});
+
+describe("isNoReplySender", () => {
+  it("flags common no-reply local-parts regardless of separators or case", () => {
+    expect(isNoReplySender("noreply@acme.com")).toBe(true);
+    expect(isNoReplySender("No-Reply@Acme.com")).toBe(true);
+    expect(isNoReplySender("no_reply@acme.com")).toBe(true);
+    expect(isNoReplySender("do-not-reply@billing.acme.com")).toBe(true);
+    expect(isNoReplySender("mailer-daemon@acme.com")).toBe(true);
+    expect(isNoReplySender("postmaster@acme.com")).toBe(true);
+    expect(isNoReplySender("noreply-bounce@sendgrid.net")).toBe(true);
+  });
+
+  it("leaves a normal human sender alone", () => {
+    expect(isNoReplySender("ceo@acme.com")).toBe(false);
+    expect(isNoReplySender("jane.doe@partner.io")).toBe(false);
+    expect(isNoReplySender("replies@acme.com")).toBe(false);
+    expect(isNoReplySender("")).toBe(false);
   });
 });
