@@ -100,9 +100,12 @@ function buildClassifierPrompt(provider: MailProvider, thread: MailThread, profi
 - Delegates first: ${(voice.delegates ?? []).join(", ") || "(unknown)"}`
     : "Voice profile not captured.";
 
+  const senderVip = matchVip(thread.from.email, ctx.vips);
   const vipBlock = ctx.vips.length > 0
     ? `VIP table (always classify as "now" unless content is clearly transactional):
-${ctx.vips.map((v) => `- ${v.email}${v.label ? ` (${v.label})` : ""}`).join("\n")}`
+${ctx.vips.map((v) => `- ${v.email}${v.label ? ` (${v.label})` : ""}`).join("\n")}${
+      senderVip ? `\n\nThis thread's sender IS on the VIP table${senderVip.label ? ` (${senderVip.label})` : ""}. Classify as "now" unless the content is clearly transactional.` : ""
+    }`
     : "VIPs: none flagged.";
 
   const guardrailsBlock = ctx.guardrails.length > 0
@@ -163,6 +166,20 @@ function inPrivacyZone(thread: MailThread, zones: string[]): boolean {
   if (zones.length === 0) return false;
   const hay = `${thread.subject} ${thread.from.email} ${thread.from.name}`.toLowerCase();
   return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
+}
+
+/** Deterministic VIP lookup by sender email. The classifier prompt already
+ *  lists the VIP table, but the model's "VIP sender" reasoning is prose the
+ *  approval card can't trust — so match the address ourselves (exact,
+ *  case-insensitive) and surface the result in the payload alongside the
+ *  draft. Returns the matched VIP entry or null. */
+export function matchVip(
+  email: string,
+  vips: Array<{ email: string; label?: string }>,
+): { email: string; label?: string } | null {
+  const needle = email.trim().toLowerCase();
+  if (!needle) return null;
+  return vips.find((v) => v.email.trim().toLowerCase() === needle) ?? null;
 }
 
 const VALID_CLASSIFICATION = new Set(["now", "soon", "fyi"]);
@@ -277,6 +294,7 @@ async function createApproval(
   avatarId: string,
   thread: MailThread,
   classification: MailClassification,
+  vip: { email: string; label?: string } | null,
   initialStatus: "pending" | "approved",
 ): Promise<string> {
   const id = `apv_${randomBytes(8).toString("hex")}`;
@@ -297,6 +315,8 @@ async function createApproval(
       from: thread.from,
       preview: thread.preview,
       receivedAt: thread.receivedAt,
+      fromVip: vip !== null,
+      vipLabel: vip?.label ?? null,
       draftText: classification.draft,
       classification: classification.classification,
       confidence: classification.confidence,
@@ -382,8 +402,9 @@ export async function runMailTriage(
       }
       const cls = await classifyOne(avatarId, provider, thread, profile, voice, ctx, { dryRun, skipInference });
       if (cls.classification !== "fyi") result.drafted += 1;
+      const vip = matchVip(thread.from.email, ctx.vips);
       const status = statusForPreset(ctx.autonomy_preset, cls);
-      await createApproval(provider, handoff.paperclipUrl, handoff.paperclipCompanyId, agentId, avatarId, thread, cls, status);
+      await createApproval(provider, handoff.paperclipUrl, handoff.paperclipCompanyId, agentId, avatarId, thread, cls, vip, status);
       result.approvalsCreated += 1;
     } catch (e) {
       result.errors.push({ threadId: thread.threadId, message: e instanceof Error ? e.message : String(e) });
