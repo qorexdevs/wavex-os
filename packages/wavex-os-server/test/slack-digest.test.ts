@@ -2,7 +2,7 @@
  *  classification JSON to the urgent/info/fyi enum and a [0,1] confidence. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeClassification, inPrivacyZone, isVipAuthor, applyVipFloor, applyBroadcastCeiling } from "../src/avatar/runners/slack-digest.js";
+import { normalizeClassification, inPrivacyZone, isVipAuthor, applyVipFloor, applyBroadcastCeiling, dedupeThreadMentions } from "../src/avatar/runners/slack-digest.js";
 
 describe("normalizeClassification", () => {
   it("passes a well-formed classification through unchanged", () => {
@@ -118,5 +118,36 @@ describe("applyBroadcastCeiling", () => {
     expect(applyBroadcastCeiling(urgent, { ...base, text: "@operator can you look now?" }, vips).importance).toBe("urgent");
     const fyi = { importance: "fyi" as const, confidence: 0.4, reasoning: "low" };
     expect(applyBroadcastCeiling(fyi, base, vips)).toEqual(fyi);
+  });
+});
+
+describe("dedupeThreadMentions", () => {
+  const m = (channelId: string, ts: string, threadTs?: string) => ({
+    channel: "#eng", channelId, author: { name: "Sam", email: "sam@yourco.example" },
+    ts, text: "@operator ping", permalink: `https://x.example/${channelId}`, threadTs,
+  });
+
+  it("keeps every mention when none are threaded", () => {
+    const out = dedupeThreadMentions([m("A", "2026-01-01T00:00:00Z"), m("B", "2026-01-01T01:00:00Z")]);
+    expect(out.map((x) => x.channelId)).toEqual(["A", "B"]);
+  });
+
+  it("collapses a thread to its most recent mention", () => {
+    const out = dedupeThreadMentions([
+      m("A", "2026-01-01T00:00:00Z", "T1"),
+      m("B", "2026-01-01T02:00:00Z", "T1"),
+      m("C", "2026-01-01T01:00:00Z", "T1"),
+    ]);
+    expect(out.map((x) => x.channelId)).toEqual(["B"]);
+  });
+
+  it("dedupes per thread and keeps standalone mentions, preserving order", () => {
+    const out = dedupeThreadMentions([
+      m("A", "2026-01-01T00:00:00Z", "T1"),
+      m("B", "2026-01-01T00:30:00Z"),
+      m("C", "2026-01-01T01:00:00Z", "T1"),
+      m("D", "2026-01-01T01:30:00Z", "T2"),
+    ]);
+    expect(out.map((x) => x.channelId)).toEqual(["B", "C", "D"]);
   });
 });
