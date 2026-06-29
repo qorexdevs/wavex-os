@@ -151,6 +151,20 @@ export function applyVipFloor(cls: SlackClassification, mention: SlackMention, v
   return { ...cls, importance: "urgent", reasoning: `${cls.reasoning} (VIP author, raised from fyi)` };
 }
 
+/** The mirror of applyVipFloor. The classifier can also drift the other way and
+ *  call a mass broadcast (@everyone/@channel/@here) "urgent", but a blast to the
+ *  whole channel is by definition not a personal ask — it sorts as if every
+ *  urgent ping in the operator's inbox is just noise. Cap a non-VIP broadcast
+ *  down to "info" so a real direct urgent ping is never buried under it. A VIP's
+ *  broadcast is left alone: when someone on the trust file blasts the channel it
+ *  can genuinely matter, same carve-out applyVipFloor makes. */
+export function applyBroadcastCeiling(cls: SlackClassification, mention: SlackMention, vips: Array<{ email: string }>): SlackClassification {
+  if (cls.importance !== "urgent") return cls;
+  if (!MASS_MENTION.test(mention.text)) return cls;
+  if (isVipAuthor(mention.author, vips)) return cls;
+  return { ...cls, importance: "info", reasoning: `${cls.reasoning} (broadcast, lowered from urgent)` };
+}
+
 const VALID_IMPORTANCE = new Set(["urgent", "info", "fyi"]);
 
 /** Coerce a model's raw JSON into a valid classification. The classifier is
@@ -290,7 +304,8 @@ export async function runSlackDigest(
         continue;
       }
       const raw = await classifyOne(avatarId, mention, profile, trust, preferences, { dryRun, skipInference });
-      const cls = applyVipFloor(raw, mention, trust?.vips ?? []);
+      const floored = applyVipFloor(raw, mention, trust?.vips ?? []);
+      const cls = applyBroadcastCeiling(floored, mention, trust?.vips ?? []);
       const id = `apv_${randomBytes(8).toString("hex")}`;
       const now = new Date().toISOString();
       const approval: AvatarApproval = {
