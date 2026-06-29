@@ -12,6 +12,7 @@ export interface CalendarEvent {
   responseStatus: "needsAction" | "accepted" | "declined" | "tentative";
   body?: string;                // short description if available
   hasConflict?: boolean;        // populated by the runner, not the provider
+  conflictKind?: "hard" | "soft"; // runner-set: hard = heavy overlap, soft = partial
 }
 
 export interface CalendarRecommendation {

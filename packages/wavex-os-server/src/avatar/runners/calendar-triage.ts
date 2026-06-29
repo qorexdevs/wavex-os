@@ -71,7 +71,14 @@ function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): 
  *  one exists — the runner is the only place that sees the whole batch, so it
  *  marks hasConflict here. Two events conflict when their [start,end) ranges
  *  intersect; events whose times don't parse are skipped, not treated as
- *  conflicting. */
+ *  conflicting.
+ *
+ *  The prompt also splits decline (hard conflict) from propose-time (soft
+ *  conflict), so a bare boolean under-informs it. conflictKind grades the
+ *  overlap against the shorter of the two events: cover at least half of it
+ *  and the clash is "hard" (the invite genuinely collides), less than half is
+ *  "soft" (a tail overlap worth proposing around). An event keeps its
+ *  strongest grade across all the invites it clashes with. */
 export function markConflicts(events: CalendarEvent[]): CalendarEvent[] {
   const spans = events.map((e) => ({ start: Date.parse(e.start), end: Date.parse(e.end) }));
   for (let i = 0; i < events.length; i++) {
@@ -81,7 +88,13 @@ export function markConflicts(events: CalendarEvent[]): CalendarEvent[] {
       if (i === j) continue;
       const b = spans[j];
       if (!Number.isFinite(b.start) || !Number.isFinite(b.end)) continue;
-      if (a.start < b.end && b.start < a.end) { events[i].hasConflict = true; break; }
+      if (a.start < b.end && b.start < a.end) {
+        events[i].hasConflict = true;
+        const overlap = Math.min(a.end, b.end) - Math.max(a.start, b.start);
+        const shorter = Math.min(a.end - a.start, b.end - b.start);
+        const kind = shorter > 0 && overlap / shorter >= 0.5 ? "hard" : "soft";
+        if (kind === "hard" || events[i].conflictKind === undefined) events[i].conflictKind = kind;
+      }
     }
   }
   return events;
@@ -100,7 +113,7 @@ ${vips ? `VIPs (favor accept):\n${vips}\n\n` : ""}${prefBlock}Invite:
 - Start: ${event.start}
 - End: ${event.end}
 - Attendees: ${event.attendees.join(", ") || "(none listed)"}
-- Conflicts with another pending invite: ${event.hasConflict ? "yes" : "no"}
+- Conflicts with another pending invite: ${event.hasConflict ? `yes (${event.conflictKind ?? "soft"})` : "no"}
 ${event.body ? `- Body: ${event.body}` : ""}
 
 Decide ONE of:
@@ -275,6 +288,7 @@ export async function runCalendarTriage(
           end: event.end,
           inside_working_hours: insideHours,
           has_conflict: event.hasConflict ?? false,
+          conflict_kind: event.conflictKind ?? null,
           suggested: rec.suggested,
           proposed_times: rec.proposed_times,
           draft_message: rec.draft_message,
