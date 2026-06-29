@@ -3,7 +3,7 @@
  *  confidence, and proposed_times that only ride with propose-time. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeRecommendation, markConflicts, eventInsideWorkingHours } from "../src/avatar/runners/calendar-triage.js";
+import { normalizeRecommendation, markConflicts, eventInsideWorkingHours, eventSpillsAfterHours } from "../src/avatar/runners/calendar-triage.js";
 import type { CalendarEvent } from "../src/avatar/runners/calendar/types.js";
 
 function ev(eventId: string, start: string, end: string): CalendarEvent {
@@ -162,5 +162,42 @@ describe("eventInsideWorkingHours", () => {
   it("falls back to UTC when the tz is unknown", () => {
     const e = ev("a", "2026-06-29T12:00:00Z", "2026-06-29T12:30:00Z");
     expect(eventInsideWorkingHours(e, profile("Mars/Phobos"))).toBe(true);
+  });
+});
+
+describe("eventSpillsAfterHours", () => {
+  const profile = (tz: string) => ({
+    name: "o", role: "ops", working_hours: ["09:00", "17:00"] as [string, string], tz,
+  });
+
+  it("flags an invite that starts inside but runs past EOD", () => {
+    const e = ev("a", "2026-06-29T16:30:00Z", "2026-06-29T18:30:00Z");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(true);
+  });
+
+  it("leaves a fully-inside invite unflagged", () => {
+    const e = ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(false);
+  });
+
+  it("treats an end exactly on the boundary as inside", () => {
+    const e = ev("a", "2026-06-29T16:00:00Z", "2026-06-29T17:00:00Z");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(false);
+  });
+
+  it("ignores invites that start outside hours", () => {
+    const e = ev("a", "2026-06-29T07:00:00Z", "2026-06-29T08:30:00Z");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(false);
+  });
+
+  it("resolves the spill in the operator's tz", () => {
+    // 23:30Z-01:30Z is 16:30-18:30 in Los Angeles — inside start, ends after 17:00 there
+    const e = ev("a", "2026-06-29T23:30:00Z", "2026-06-30T01:30:00Z");
+    expect(eventSpillsAfterHours(e, profile("America/Los_Angeles"))).toBe(true);
+  });
+
+  it("can't spill on an unparseable end", () => {
+    const e = ev("a", "2026-06-29T16:30:00Z", "not-a-date");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(false);
   });
 });
