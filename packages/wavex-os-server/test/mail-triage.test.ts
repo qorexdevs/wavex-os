@@ -3,7 +3,7 @@
  *  gate and the dashboard. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeClassification } from "../src/avatar/runners/mail-triage.js";
+import { matchVip, normalizeClassification } from "../src/avatar/runners/mail-triage.js";
 
 describe("normalizeClassification", () => {
   it("passes a well-formed classification through unchanged", () => {
@@ -40,5 +40,23 @@ describe("normalizeClassification", () => {
     expect(cls.draft).toBeNull();
     expect(cls.open_question).toBeNull();
     expect(cls.reasoning).toBe("no reasoning provided");
+  });
+});
+
+describe("matchVip", () => {
+  const vips = [
+    { email: "ceo@acme.com", label: "CEO" },
+    { email: "Lead@partner.io" },
+  ];
+
+  it("matches a sender ignoring case and surrounding whitespace", () => {
+    expect(matchVip("CEO@Acme.com", vips)).toEqual({ email: "ceo@acme.com", label: "CEO" });
+    expect(matchVip("  lead@partner.io ", vips)).toEqual({ email: "Lead@partner.io" });
+  });
+
+  it("returns null for a non-VIP sender or empty inputs", () => {
+    expect(matchVip("random@nowhere.com", vips)).toBeNull();
+    expect(matchVip("", vips)).toBeNull();
+    expect(matchVip("ceo@acme.com", [])).toBeNull();
   });
 });
