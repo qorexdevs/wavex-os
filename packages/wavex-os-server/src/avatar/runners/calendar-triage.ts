@@ -62,23 +62,45 @@ async function readJson<T>(path: string): Promise<T | null> {
  *  invite resolved to 23:00 UTC and fell outside a 09:00-17:00 window it was
  *  squarely inside; resolve hour/minute in profile.tz instead. An unknown tz
  *  (Intl throws) falls back to UTC rather than dropping the signal. */
-function localStartMinutes(start: Date, tz: string): number {
+function localMinutes(instant: Date, tz: string): number {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: tz, hour12: false, hour: "2-digit", minute: "2-digit",
-    }).formatToParts(start);
+    }).formatToParts(instant);
     const h = Number(parts.find((p) => p.type === "hour")?.value);
     const m = Number(parts.find((p) => p.type === "minute")?.value);
     if (Number.isFinite(h) && Number.isFinite(m)) return (h % 24) * 60 + m;
   } catch { /* unknown tz — fall through to UTC */ }
-  return start.getUTCHours() * 60 + start.getUTCMinutes();
+  return instant.getUTCHours() * 60 + instant.getUTCMinutes();
+}
+
+function dayBounds(profile: AvatarProfile): [number, number] {
+  const [sH, sM] = profile.working_hours[0].split(":").map(Number);
+  const [eH, eM] = profile.working_hours[1].split(":").map(Number);
+  return [sH * 60 + sM, eH * 60 + eM];
 }
 
 export function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): boolean {
-  const [sH, sM] = profile.working_hours[0].split(":").map(Number);
-  const [eH, eM] = profile.working_hours[1].split(":").map(Number);
-  const startMin = localStartMinutes(new Date(event.start), profile.tz);
-  return startMin >= (sH * 60 + sM) && startMin <= (eH * 60 + eM);
+  const [dayStart, dayEnd] = dayBounds(profile);
+  const startMin = localMinutes(new Date(event.start), profile.tz);
+  return startMin >= dayStart && startMin <= dayEnd;
+}
+
+/** A meeting can start inside working hours yet run well past the end of the
+ *  operator's day — eventInsideWorkingHours only weighs the start, so a
+ *  16:30-18:30 invite against 09:00-17:00 reads as fully inside while it
+ *  actually eats 90 minutes of off-hours. Flag that tail so the recommender
+ *  can lean propose-time over a clean accept. End is resolved in profile.tz
+ *  like the start; an unparseable or earlier-on-the-clock end (cross-midnight)
+ *  can't spill. */
+export function eventSpillsAfterHours(event: CalendarEvent, profile: AvatarProfile): boolean {
+  const [dayStart, dayEnd] = dayBounds(profile);
+  const startMin = localMinutes(new Date(event.start), profile.tz);
+  if (startMin < dayStart || startMin > dayEnd) return false;
+  const end = new Date(event.end);
+  if (!Number.isFinite(end.getTime())) return false;
+  const endMin = localMinutes(end, profile.tz);
+  return endMin > dayEnd && endMin >= startMin;
 }
 
 /** Flag invites that overlap another pending invite in the same batch. The
@@ -129,6 +151,7 @@ ${vips ? `VIPs (favor accept):\n${vips}\n\n` : ""}${prefBlock}Invite:
 - End: ${event.end}
 - Attendees: ${event.attendees.join(", ") || "(none listed)"}
 - Conflicts with another pending invite: ${event.hasConflict ? `yes (${event.conflictKind ?? "soft"})` : "no"}
+- Runs past working hours: ${eventSpillsAfterHours(event, profile) ? "yes (starts inside but ends after EOD)" : "no"}
 ${event.body ? `- Body: ${event.body}` : ""}
 
 Decide ONE of:
@@ -302,6 +325,7 @@ export async function runCalendarTriage(
           start: event.start,
           end: event.end,
           inside_working_hours: insideHours,
+          spills_after_hours: eventSpillsAfterHours(event, profile),
           has_conflict: event.hasConflict ?? false,
           conflict_kind: event.conflictKind ?? null,
           suggested: rec.suggested,
