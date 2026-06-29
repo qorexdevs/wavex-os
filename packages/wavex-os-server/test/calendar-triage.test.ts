@@ -104,4 +104,40 @@ describe("markConflicts", () => {
     ]);
     expect(events.every((e) => e.hasConflict)).toBe(false);
   });
+
+  it("grades a half-or-more overlap as a hard conflict", () => {
+    // both 1h, overlapping 30min -> 0.5 of the shorter event
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z"),
+      ev("b", "2026-06-29T10:30:00Z", "2026-06-29T11:30:00Z"),
+    ]);
+    expect(events.map((e) => e.conflictKind)).toEqual(["hard", "hard"]);
+  });
+
+  it("grades a tail overlap as a soft conflict", () => {
+    // a is 2h, b is 1h, they share 15min -> 0.25 of the shorter (b)
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T12:00:00Z"),
+      ev("b", "2026-06-29T11:45:00Z", "2026-06-29T12:45:00Z"),
+    ]);
+    expect(events.map((e) => e.conflictKind)).toEqual(["soft", "soft"]);
+  });
+
+  it("keeps the strongest grade when an invite clashes both ways", () => {
+    // b sits fully inside a (hard with a); c only clips b's tail (soft)
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T13:00:00Z"),
+      ev("b", "2026-06-29T11:00:00Z", "2026-06-29T12:00:00Z"),
+      ev("c", "2026-06-29T11:50:00Z", "2026-06-29T12:30:00Z"),
+    ]);
+    expect(events[1].conflictKind).toBe("hard");
+  });
+
+  it("leaves conflictKind unset when nothing clashes", () => {
+    const events = markConflicts([
+      ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z"),
+      ev("b", "2026-06-29T14:00:00Z", "2026-06-29T15:00:00Z"),
+    ]);
+    expect(events.every((e) => e.conflictKind === undefined)).toBe(true);
+  });
 });
