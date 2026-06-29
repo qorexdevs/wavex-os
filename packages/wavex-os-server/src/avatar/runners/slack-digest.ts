@@ -43,6 +43,7 @@ interface RunResult {
   agentId: string | null;
   processed: number;
   approvalsCreated: number;
+  skipped: number;
   errors: Array<{ ts: string; message: string }>;
 }
 
@@ -116,6 +117,16 @@ const STUB_CLASSIFICATIONS: Record<string, SlackClassification> = {
 function classifyStub(mention: SlackMention): SlackClassification {
   const last = mention.permalink.slice(-1);
   return STUB_CLASSIFICATIONS[last] ?? STUB_CLASSIFICATIONS["1"];
+}
+
+/** A mention is in a privacy zone when any configured zone term shows up in its
+ *  channel or author — the operator marks #hr, a coach's name, etc. as private,
+ *  and those mentions are dropped before classification so they never reach an
+ *  inference call or the dashboard. Same substring match the mail runner uses. */
+export function inPrivacyZone(mention: Pick<SlackMention, "channel" | "author">, zones: string[]): boolean {
+  if (zones.length === 0) return false;
+  const hay = `${mention.channel} ${mention.author.name} ${mention.author.email ?? ""}`.toLowerCase();
+  return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
 }
 
 const VALID_IMPORTANCE = new Set(["urgent", "info", "fyi"]);
@@ -227,7 +238,7 @@ export async function runSlackDigest(
   const skipInference = opts.skipInference ?? true;
   const result: RunResult = {
     avatarId, paperclipCompanyId: "", agentId: null,
-    processed: 0, approvalsCreated: 0, errors: [],
+    processed: 0, approvalsCreated: 0, skipped: 0, errors: [],
   };
 
   const profile = await readJson<AvatarProfile>(join(avatarDir(avatarId), "profile.json"));
@@ -248,6 +259,14 @@ export async function runSlackDigest(
   for (const mention of mentions) {
     result.processed += 1;
     try {
+      if (inPrivacyZone(mention, trust?.privacy_zones ?? [])) {
+        await logActivity(handoff.paperclipUrl, handoff.paperclipCompanyId, agentId, "avatar.slack.privacy_skip", {
+          approvalId: mention.channelId,
+          channel: mention.channel,
+        });
+        result.skipped += 1;
+        continue;
+      }
       const cls = await classifyOne(avatarId, mention, profile, trust, preferences, { dryRun, skipInference });
       const id = `apv_${randomBytes(8).toString("hex")}`;
       const now = new Date().toISOString();
