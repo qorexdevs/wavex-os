@@ -31,6 +31,7 @@ Operator-facing CLI hardening. The `wavex-os` command in `@wavex-os/cloud-client
 - **License hygiene** — `LICENSE` truncated to canonical Apache-2.0, `NOTICE` added, and the community README badge corrected MIT → Apache-2.0. `CODE_OF_CONDUCT` added and linked from `CONTRIBUTING`.
 - **WCAG touch target** — the `+ New` link padded to a 44px minimum so it meets the tap-target guideline.
 - **Avatar triage robustness** — the slack-digest, mail-triage, and calendar-triage runners coerce the model's raw JSON to the allowed enum and a `[0,1]` confidence before writing an approval, so a drifted `"critical"` importance or a `1.5` confidence can't reach the dashboard. The calendar runner also drops `proposed_times` entries that don't parse as a datetime, so an `"any time Tuesday"` answer can't reach the RSVP path as a sendable slot.
+- **Calendar working-hours honor the operator's tz** — the inside/outside-hours signal read the start hour off UTC and ignored `profile.tz`, so a 16:00 Los Angeles invite resolved to 23:00 and looked after-hours to the recommender. It now resolves the start on the operator's wall clock and falls back to UTC only when the tz is unknown.
 
 ---
 
