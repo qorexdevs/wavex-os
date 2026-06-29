@@ -129,6 +129,28 @@ export function inPrivacyZone(mention: Pick<SlackMention, "channel" | "author">,
   return zones.some((z) => z.trim().length > 0 && hay.includes(z.toLowerCase()));
 }
 
+const MASS_MENTION = /@(everyone|channel|here)\b/i;
+
+/** True when the mention's author is on the trust file's VIP list (email match,
+ *  case-insensitive). An author with no email can never be a VIP. */
+export function isVipAuthor(author: { email?: string }, vips: Array<{ email: string }>): boolean {
+  const email = author.email?.trim().toLowerCase();
+  if (!email) return false;
+  return vips.some((v) => v.email.trim().toLowerCase() === email);
+}
+
+/** The classifier is told to favor urgent for VIPs but can still drift a VIP's
+ *  direct ping down to "fyi", where it sorts below everything. Floor a VIP
+ *  author back up to "urgent" — but leave a broadcast (@everyone/@channel/@here)
+ *  alone, since a VIP blasting the whole channel is the Slack equivalent of the
+ *  mail runner's "transactional" carve-out, not a personal ask. */
+export function applyVipFloor(cls: SlackClassification, mention: SlackMention, vips: Array<{ email: string }>): SlackClassification {
+  if (cls.importance !== "fyi") return cls;
+  if (!isVipAuthor(mention.author, vips)) return cls;
+  if (MASS_MENTION.test(mention.text)) return cls;
+  return { ...cls, importance: "urgent", reasoning: `${cls.reasoning} (VIP author, raised from fyi)` };
+}
+
 const VALID_IMPORTANCE = new Set(["urgent", "info", "fyi"]);
 
 /** Coerce a model's raw JSON into a valid classification. The classifier is
@@ -267,7 +289,8 @@ export async function runSlackDigest(
         result.skipped += 1;
         continue;
       }
-      const cls = await classifyOne(avatarId, mention, profile, trust, preferences, { dryRun, skipInference });
+      const raw = await classifyOne(avatarId, mention, profile, trust, preferences, { dryRun, skipInference });
+      const cls = applyVipFloor(raw, mention, trust?.vips ?? []);
       const id = `apv_${randomBytes(8).toString("hex")}`;
       const now = new Date().toISOString();
       const approval: AvatarApproval = {
