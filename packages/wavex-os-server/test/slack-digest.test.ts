@@ -2,7 +2,7 @@
  *  classification JSON to the urgent/info/fyi enum and a [0,1] confidence. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeClassification } from "../src/avatar/runners/slack-digest.js";
+import { normalizeClassification, inPrivacyZone } from "../src/avatar/runners/slack-digest.js";
 
 describe("normalizeClassification", () => {
   it("passes a well-formed classification through unchanged", () => {
@@ -27,5 +27,27 @@ describe("normalizeClassification", () => {
 
   it("supplies a placeholder reasoning when absent", () => {
     expect(normalizeClassification({ importance: "fyi" }).reasoning).toBe("no reasoning provided");
+  });
+});
+
+describe("inPrivacyZone", () => {
+  const mention = { channel: "#hr-confidential", author: { name: "People Ops", email: "people@yourco.example" } };
+
+  it("never skips when no zones are configured", () => {
+    expect(inPrivacyZone(mention, [])).toBe(false);
+    expect(inPrivacyZone(mention, ["", "  "])).toBe(false);
+  });
+
+  it("matches a zone term in the channel", () => {
+    expect(inPrivacyZone(mention, ["#hr"])).toBe(true);
+    expect(inPrivacyZone(mention, ["Confidential"])).toBe(true);
+  });
+
+  it("matches a zone term in the author", () => {
+    expect(inPrivacyZone(mention, ["people@yourco"])).toBe(true);
+  });
+
+  it("leaves an unrelated mention alone", () => {
+    expect(inPrivacyZone({ channel: "#general", author: { name: "Sam" } }, ["#hr", "legal"])).toBe(false);
   });
 });
