@@ -21,6 +21,7 @@ Operator-facing CLI hardening. The `wavex-os` command in `@wavex-os/cloud-client
 - **Offline smoke suite** (`packages/cloud-client/scripts/smoke-offline.mjs`) — covers the CLI dispatcher, both `--json` paths, and paired/unpaired bundle states with no network. Package README documents it.
 - **Calendar conflict detection** — the calendar-triage runner now flags invites whose time ranges overlap another pending invite, feeds that signal into the recommender prompt, and surfaces `has_conflict` on the approval card. The runner is the only place that sees the whole batch, so the model finally gets the conflict cue it was already prompted to weigh.
 - **Graded calendar conflicts** — the runner now also classifies each clash as `hard` (the overlap covers at least half the shorter invite) or `soft` (a tail overlap), passes the grade into the prompt, and writes `conflict_kind` on the approval. The prompt already split decline (hard conflict) from propose-time (soft conflict), so the bare boolean under-informed it; an invite keeps its strongest grade across everything it clashes with.
+- **Privacy zones in the Slack digest** — the slack-digest runner now honours `trust.privacy_zones`, the same as the mail runner: a mention whose channel or author matches a zone is dropped before classification (no inference call, no dashboard card) and logged as `avatar.slack.privacy_skip`. The trust file already declared the field on this runner but nothing read it.
 
 ### Fixed
 
