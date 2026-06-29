@@ -3,7 +3,7 @@
  *  confidence, and proposed_times that only ride with propose-time. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeRecommendation, markConflicts } from "../src/avatar/runners/calendar-triage.js";
+import { normalizeRecommendation, markConflicts, eventInsideWorkingHours } from "../src/avatar/runners/calendar-triage.js";
 import type { CalendarEvent } from "../src/avatar/runners/calendar/types.js";
 
 function ev(eventId: string, start: string, end: string): CalendarEvent {
@@ -139,5 +139,28 @@ describe("markConflicts", () => {
       ev("b", "2026-06-29T14:00:00Z", "2026-06-29T15:00:00Z"),
     ]);
     expect(events.every((e) => e.conflictKind === undefined)).toBe(true);
+  });
+});
+
+describe("eventInsideWorkingHours", () => {
+  const profile = (tz: string) => ({
+    name: "o", role: "ops", working_hours: ["09:00", "17:00"] as [string, string], tz,
+  });
+
+  it("resolves the start hour in the operator's tz, not UTC", () => {
+    // 23:00Z is 16:00 in Los Angeles (PDT) — inside 09-17 there, outside in UTC
+    const e = ev("a", "2026-06-29T23:00:00Z", "2026-06-29T23:30:00Z");
+    expect(eventInsideWorkingHours(e, profile("America/Los_Angeles"))).toBe(true);
+    expect(eventInsideWorkingHours(e, profile("UTC"))).toBe(false);
+  });
+
+  it("counts the working-hours boundaries as inside", () => {
+    const e = ev("a", "2026-06-29T16:00:00Z", "2026-06-29T16:30:00Z"); // 09:00 PDT
+    expect(eventInsideWorkingHours(e, profile("America/Los_Angeles"))).toBe(true);
+  });
+
+  it("falls back to UTC when the tz is unknown", () => {
+    const e = ev("a", "2026-06-29T12:00:00Z", "2026-06-29T12:30:00Z");
+    expect(eventInsideWorkingHours(e, profile("Mars/Phobos"))).toBe(true);
   });
 });
