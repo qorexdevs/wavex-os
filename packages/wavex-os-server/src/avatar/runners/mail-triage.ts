@@ -182,6 +182,23 @@ export function matchVip(
   return vips.find((v) => v.email.trim().toLowerCase() === needle) ?? null;
 }
 
+/** Detect automated no-reply senders by local-part (noreply@, no-reply@,
+ *  do-not-reply@, mailer-daemon@, postmaster@). A reply to one of these
+ *  bounces or vanishes, so surface it on the approval card and let the
+ *  operator skip the send instead of drafting into a void. Separators in
+ *  the local-part are ignored, so no_reply and do.not.reply both match. */
+export function isNoReplySender(email: string): boolean {
+  const local = email.trim().toLowerCase().split("@")[0] ?? "";
+  const normalized = local.replace(/[._-]/g, "");
+  if (!normalized) return false;
+  return (
+    normalized.includes("noreply") ||
+    normalized.includes("donotreply") ||
+    normalized === "mailerdaemon" ||
+    normalized === "postmaster"
+  );
+}
+
 const VALID_CLASSIFICATION = new Set(["now", "soon", "fyi"]);
 
 /** Coerce the classifier's raw JSON into a valid MailClassification. The
@@ -317,6 +334,7 @@ async function createApproval(
       receivedAt: thread.receivedAt,
       fromVip: vip !== null,
       vipLabel: vip?.label ?? null,
+      noReply: isNoReplySender(thread.from.email),
       draftText: classification.draft,
       classification: classification.classification,
       confidence: classification.confidence,
