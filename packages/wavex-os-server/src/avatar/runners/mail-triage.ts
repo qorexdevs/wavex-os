@@ -186,7 +186,9 @@ export function matchVip(
  *  do-not-reply@, mailer-daemon@, postmaster@, bounce@/bounces@). A reply to
  *  one of these bounces or vanishes, so surface it on the approval card and
  *  let the operator skip the send instead of drafting into a void. Separators
- *  in the local-part are ignored, so no_reply and do.not.reply both match. */
+ *  in the local-part are ignored, so no_reply and do.not.reply both match.
+ *  VERP bounce addresses carry an id suffix (bounces+token@, bounce-12345@),
+ *  so a numbered bounce or a bounces* prefix counts, but bouncer@ stays human. */
 export function isNoReplySender(email: string): boolean {
   const local = email.trim().toLowerCase().split("@")[0] ?? "";
   const normalized = local.replace(/[._-]/g, "");
@@ -197,7 +199,8 @@ export function isNoReplySender(email: string): boolean {
     normalized === "mailerdaemon" ||
     normalized === "postmaster" ||
     normalized === "bounce" ||
-    normalized === "bounces"
+    normalized.startsWith("bounces") ||
+    /^bounce[0-9]/.test(normalized)
   );
 }
 
