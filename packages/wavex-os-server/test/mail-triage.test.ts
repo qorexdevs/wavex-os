@@ -72,6 +72,8 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("noreply-bounce@sendgrid.net")).toBe(true);
     expect(isNoReplySender("bounce@em.acme.com")).toBe(true);
     expect(isNoReplySender("bounces@mailchimp.com")).toBe(true);
+    expect(isNoReplySender("bounces+SRS=abc@sendgrid.net")).toBe(true);
+    expect(isNoReplySender("bounce-12345@em.acme.com")).toBe(true);
   });
 
   it("leaves a normal human sender alone", () => {
