@@ -70,12 +70,15 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("mailer-daemon@acme.com")).toBe(true);
     expect(isNoReplySender("postmaster@acme.com")).toBe(true);
     expect(isNoReplySender("noreply-bounce@sendgrid.net")).toBe(true);
+    expect(isNoReplySender("bounce@em.acme.com")).toBe(true);
+    expect(isNoReplySender("bounces@mailchimp.com")).toBe(true);
   });
 
   it("leaves a normal human sender alone", () => {
     expect(isNoReplySender("ceo@acme.com")).toBe(false);
     expect(isNoReplySender("jane.doe@partner.io")).toBe(false);
     expect(isNoReplySender("replies@acme.com")).toBe(false);
+    expect(isNoReplySender("bouncer@club.com")).toBe(false);
     expect(isNoReplySender("")).toBe(false);
   });
 });
