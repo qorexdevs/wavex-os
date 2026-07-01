@@ -189,9 +189,11 @@ export function matchVip(
  *  in the local-part are ignored, so no_reply and do.not.reply both match.
  *  VERP bounce addresses carry an id suffix (bounces+token@, bounce+token@,
  *  bounce-12345@), so a plus-tagged or numbered bounce or a bounces* prefix
- *  counts, but bouncer@ stays human. SRS forwarding rewrites the return path
- *  to srs0=/srs1= (a bounce-routing address, not a person), so those match on
- *  the leading tag while srsly@ stays human. */
+ *  counts, but bouncer@ stays human. Mailman routes list bounces to
+ *  <list>-bounces@ (and <list>-bounces+token@), so a -bounces infix counts too,
+ *  while list-owner@/list-request@ stay repliable. SRS forwarding rewrites the
+ *  return path to srs0=/srs1= (a bounce-routing address, not a person), so those
+ *  match on the leading tag while srsly@ stays human. */
 export function isNoReplySender(email: string): boolean {
   const local = email.trim().toLowerCase().split("@")[0] ?? "";
   const normalized = local.replace(/[._-]/g, "");
@@ -205,6 +207,7 @@ export function isNoReplySender(email: string): boolean {
     normalized.startsWith("bounces") ||
     normalized.startsWith("bounce+") ||
     /^bounce[0-9]/.test(normalized) ||
+    local.includes("-bounces") ||
     /^srs[01]=/.test(normalized)
   );
 }
