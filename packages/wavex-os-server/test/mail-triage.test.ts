@@ -75,6 +75,8 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("bounces+SRS=abc@sendgrid.net")).toBe(true);
     expect(isNoReplySender("bounce+SRS=abc@amazonses.com")).toBe(true);
     expect(isNoReplySender("bounce-12345@em.acme.com")).toBe(true);
+    expect(isNoReplySender("dev-list-bounces@lists.acme.org")).toBe(true);
+    expect(isNoReplySender("dev-list-bounces+jane=partner.io@lists.acme.org")).toBe(true);
     expect(isNoReplySender("SRS0=abc=tt=partner.io=jane@fwd.acme.com")).toBe(true);
     expect(isNoReplySender("srs1=xyz@relay.example.net")).toBe(true);
   });
@@ -84,6 +86,7 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("jane.doe@partner.io")).toBe(false);
     expect(isNoReplySender("replies@acme.com")).toBe(false);
     expect(isNoReplySender("bouncer@club.com")).toBe(false);
+    expect(isNoReplySender("dev-list-owner@lists.acme.org")).toBe(false);
     expect(isNoReplySender("srsly@acme.com")).toBe(false);
     expect(isNoReplySender("")).toBe(false);
   });
