@@ -73,6 +73,7 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("bounce@em.acme.com")).toBe(true);
     expect(isNoReplySender("bounces@mailchimp.com")).toBe(true);
     expect(isNoReplySender("bounces+SRS=abc@sendgrid.net")).toBe(true);
+    expect(isNoReplySender("bounce+SRS=abc@amazonses.com")).toBe(true);
     expect(isNoReplySender("bounce-12345@em.acme.com")).toBe(true);
   });
 
