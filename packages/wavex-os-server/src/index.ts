@@ -56,9 +56,9 @@ import { registerWizardEventsRoute } from "./routes/wizard-events.js";
 import { registerReferralRoutes } from "./routes/referrals.js";
 import { registerGitHubReposRoute } from "./routes/github-repos.js";
 import { registerMissionControlRoutes } from "./routes/mission-control.js";
-import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
-import { startProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
-import { startBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanup.js";
+import { startReferralEmailBScheduler, stopReferralEmailBScheduler } from "./jobs/referral-email-b.js";
+import { startProfessionalReengagementScheduler, stopProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
+import { startBookingIntentCleanupScheduler, stopBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanup.js";
 import { runAbandonedBookingRecoveryJob } from "./jobs/abandoned-booking-recovery.js";
 import { registerReengagementRoutes } from "./routes/reengagement.js";
 import { registerBookingRecoveryRoute } from "./routes/booking-recovery.js";
@@ -123,6 +123,13 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerMissionControlRoutes(app);
   registerReengagementRoutes(app);
   registerBookingRecoveryRoute(app);
+  app.addHook("onClose", async () => {
+    stopBookingIntentCleanupScheduler();
+    await Promise.all([
+      stopReferralEmailBScheduler(),
+      stopProfessionalReengagementScheduler(),
+    ]);
+  });
   startReferralEmailBScheduler();
   startProfessionalReengagementScheduler();
   startBookingIntentCleanupScheduler();

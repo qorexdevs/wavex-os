@@ -271,18 +271,23 @@ export async function runProfessionalReengagementJob(): Promise<ReengagementRunR
 
 const HOUR_MS = 60 * 60 * 1000;
 let schedulerHandle: ReturnType<typeof setInterval> | null = null;
+const activeRuns = new Set<Promise<unknown>>();
+
+function runScheduledJob(label: string): void {
+  const task = runProfessionalReengagementJob().catch((err) =>
+    console.error(`[professional-reengagement] ${label} failed:`, err),
+  );
+  activeRuns.add(task);
+  void task.finally(() => activeRuns.delete(task));
+}
 
 export function startProfessionalReengagementScheduler(): void {
   if (schedulerHandle) return;
 
-  void runProfessionalReengagementJob().catch((err) =>
-    console.error("[professional-reengagement] initial run failed:", err),
-  );
+  runScheduledJob("initial run");
 
   schedulerHandle = setInterval(() => {
-    void runProfessionalReengagementJob().catch((err) =>
-      console.error("[professional-reengagement] scheduled run failed:", err),
-    );
+    runScheduledJob("scheduled run");
   }, HOUR_MS);
 
   schedulerHandle.unref?.();
@@ -292,9 +297,10 @@ export function startProfessionalReengagementScheduler(): void {
   );
 }
 
-export function stopProfessionalReengagementScheduler(): void {
+export async function stopProfessionalReengagementScheduler(): Promise<void> {
   if (schedulerHandle) {
     clearInterval(schedulerHandle);
     schedulerHandle = null;
   }
+  await Promise.allSettled(activeRuns);
 }

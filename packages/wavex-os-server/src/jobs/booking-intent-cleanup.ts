@@ -82,3 +82,10 @@ export function startBookingIntentCleanupScheduler(): void {
   void run();
   cleanupTimer = setInterval(() => void run(), INTERVAL_MS);
 }
+
+export function stopBookingIntentCleanupScheduler(): void {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+}

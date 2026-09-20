@@ -174,19 +174,24 @@ export async function runReferralEmailBJob(): Promise<{
 
 const HOUR_MS = 60 * 60 * 1000;
 let schedulerHandle: ReturnType<typeof setInterval> | null = null;
+const activeRuns = new Set<Promise<unknown>>();
+
+function runScheduledJob(label: string): void {
+  const task = runReferralEmailBJob().catch((err) =>
+    console.error(`[referral-email-b] ${label} failed:`, err),
+  );
+  activeRuns.add(task);
+  void task.finally(() => activeRuns.delete(task));
+}
 
 export function startReferralEmailBScheduler(): void {
   if (schedulerHandle) return;
 
   // Run once at startup (catches any backlog from the last hour window)
-  void runReferralEmailBJob().catch((err) =>
-    console.error("[referral-email-b] initial run failed:", err)
-  );
+  runScheduledJob("initial run");
 
   schedulerHandle = setInterval(() => {
-    void runReferralEmailBJob().catch((err) =>
-      console.error("[referral-email-b] scheduled run failed:", err)
-    );
+    runScheduledJob("scheduled run");
   }, HOUR_MS);
 
   // Don't hold the process open just for this timer
@@ -195,9 +200,10 @@ export function startReferralEmailBScheduler(): void {
   console.log("[referral-email-b] hourly scheduler started");
 }
 
-export function stopReferralEmailBScheduler(): void {
+export async function stopReferralEmailBScheduler(): Promise<void> {
   if (schedulerHandle) {
     clearInterval(schedulerHandle);
     schedulerHandle = null;
   }
+  await Promise.allSettled(activeRuns);
 }
