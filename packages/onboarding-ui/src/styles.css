@@ -27,7 +27,11 @@ body {
 }
 
 a {
+  align-items: center;
   color: var(--accent);
+  display: inline-flex;
+  min-height: 44px;
+  min-width: 44px;
   text-decoration: none;
 }
 a:hover { text-decoration: underline; }
@@ -47,6 +51,8 @@ button {
   padding: 0.65rem 1.25rem;
   cursor: pointer;
   font-weight: 600;
+  min-height: 44px;
+  min-width: 44px;
   transition: background 80ms;
 }
 button:hover { background: var(--accent-dim); }
