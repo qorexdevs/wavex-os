@@ -28,6 +28,12 @@ interface KpisPayload {
   }>;
 }
 
+const onboardingLinkStyle = {
+  alignItems: "center",
+  display: "inline-flex",
+  minHeight: 44,
+};
+
 export function KpiBoard() {
   const { companyId } = useCompany();
 
@@ -59,7 +65,7 @@ export function KpiBoard() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>KPI scoreboard</h3>
         <p className="text-dim" style={{ margin: 0 }}>
-          No company selected. <Link to="/onboarding-chat">Complete onboarding</Link> to populate this scoreboard.
+          No company selected. <Link to="/onboarding-chat" style={onboardingLinkStyle}>Complete onboarding</Link> to populate this scoreboard.
         </p>
       </div>
     );
@@ -74,7 +80,7 @@ export function KpiBoard() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>KPI scoreboard</h3>
         <p className="text-dim" style={{ margin: 0 }}>
-          No manifest yet for <code>{companyId}</code>. <Link to="/onboarding-chat">Run onboarding to finalize</Link>.
+          No manifest yet for <code>{companyId}</code>. <Link to="/onboarding-chat" style={onboardingLinkStyle}>Run onboarding to finalize</Link>.
         </p>
       </div>
     );
