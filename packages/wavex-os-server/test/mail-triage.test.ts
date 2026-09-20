@@ -41,6 +41,19 @@ describe("normalizeClassification", () => {
     expect(cls.open_question).toBeNull();
     expect(cls.reasoning).toBe("no reasoning provided");
   });
+
+  it("rejects non-string text fields from classifier JSON", () => {
+    const cls = normalizeClassification({
+      classification: "soon",
+      draft: { body: "reply" } as unknown as string,
+      reasoning: 42 as unknown as string,
+      open_question: ["which account?"] as unknown as string,
+    });
+
+    expect(cls.draft).toBeNull();
+    expect(cls.reasoning).toBe("no reasoning provided");
+    expect(cls.open_question).toBeNull();
+  });
 });
 
 describe("matchVip", () => {

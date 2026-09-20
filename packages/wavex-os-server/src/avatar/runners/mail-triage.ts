@@ -218,8 +218,9 @@ const VALID_CLASSIFICATION = new Set(["now", "soon", "fyi"]);
 
 /** Coerce the classifier's raw JSON into a valid MailClassification. The
  *  model is prompted for the now/soon/fyi enum but can drift; an off-enum
- *  value breaks statusForPreset's autonomy gate and a >1 confidence shows
- *  as 150% on the dashboard, so pin both to their allowed range. */
+ *  value breaks statusForPreset's autonomy gate, a >1 confidence shows as
+ *  150% on the dashboard, and non-string text fields break approval-card
+ *  rendering, so pin each field to its allowed runtime type. */
 export function normalizeClassification(raw: {
   classification?: string;
   draft?: string | null;
@@ -231,12 +232,12 @@ export function normalizeClassification(raw: {
     classification: VALID_CLASSIFICATION.has(raw.classification ?? "")
       ? (raw.classification as MailClassification["classification"])
       : "fyi",
-    draft: raw.draft ?? null,
+    draft: typeof raw.draft === "string" ? raw.draft : null,
     confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
       ? Math.min(1, Math.max(0, raw.confidence))
       : 0.5,
-    reasoning: raw.reasoning ?? "no reasoning provided",
-    open_question: raw.open_question ?? null,
+    reasoning: typeof raw.reasoning === "string" ? raw.reasoning : "no reasoning provided",
+    open_question: typeof raw.open_question === "string" ? raw.open_question : null,
   };
 }
 
