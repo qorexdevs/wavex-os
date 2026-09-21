@@ -8,12 +8,27 @@ import {
   validateApiKey,
 } from "../src/index.js";
 
+const composioSdk = vi.hoisted(() => ({
+  listConnections: vi.fn(),
+  getToolkit: vi.fn(),
+}));
+
+vi.mock("@composio/core", () => ({
+  Composio: class {
+    connectedAccounts = { list: composioSdk.listConnections };
+    toolkits = { get: composioSdk.getToolkit };
+  },
+}));
+
 const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   delete process.env.WAVEX_COMPOSIO_DISABLED;
   delete process.env.COMPOSIO_API_KEY;
   delete process.env.NODE_ENV;
+  composioSdk.listConnections.mockReset();
+  composioSdk.getToolkit.mockReset();
+  composioSdk.getToolkit.mockRejectedValue(new Error("invalid test key"));
 });
 
 afterEach(() => {
@@ -74,6 +89,7 @@ describe("live-mode stub behavior (returns empty + warns)", () => {
 
   it("listConnections returns [] with a warn breadcrumb", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    composioSdk.listConnections.mockRejectedValue(new Error("offline"));
     expect(await listConnections("c1")).toEqual([]);
     expect(warn).toHaveBeenCalled();
   });
