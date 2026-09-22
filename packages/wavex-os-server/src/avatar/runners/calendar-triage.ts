@@ -102,11 +102,15 @@ export function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarPro
 export function eventSpillsAfterHours(event: CalendarEvent, profile: AvatarProfile): boolean {
   const [dayStart, dayEnd] = dayBounds(profile);
   const startMin = localMinutes(new Date(event.start), profile.tz);
-  if (startMin < dayStart || startMin > dayEnd) return false;
+  if (!inWorkingWindow(startMin, dayStart, dayEnd)) return false;
   const end = new Date(event.end);
   if (!Number.isFinite(end.getTime())) return false;
   const endMin = localMinutes(end, profile.tz);
-  return endMin > dayEnd && endMin >= startMin;
+  if (dayStart <= dayEnd) return endMin > dayEnd && endMin >= startMin;
+
+  const normalizedEnd = endMin < startMin ? endMin + 24 * 60 : endMin;
+  const windowEnd = startMin >= dayStart ? dayEnd + 24 * 60 : dayEnd;
+  return normalizedEnd > windowEnd;
 }
 
 /** Flag invites that overlap another pending invite in the same batch. The

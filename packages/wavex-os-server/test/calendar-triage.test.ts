@@ -179,6 +179,14 @@ describe("eventSpillsAfterHours", () => {
     name: "o", role: "ops", working_hours: ["09:00", "17:00"] as [string, string], tz,
   });
 
+  it("flags an overnight-window invite that runs past its morning end", () => {
+    const overnight = {
+      name: "o", role: "ops", working_hours: ["22:00", "06:00"] as [string, string], tz: "UTC",
+    };
+    const e = ev("a", "2026-06-30T05:00:00Z", "2026-06-30T07:00:00Z");
+    expect(eventSpillsAfterHours(e, overnight)).toBe(true);
+  });
+
   it("flags an invite that starts inside but runs past EOD", () => {
     const e = ev("a", "2026-06-29T16:30:00Z", "2026-06-29T18:30:00Z");
     expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(true);
