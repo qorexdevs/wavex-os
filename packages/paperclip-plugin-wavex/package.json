@@ -14,7 +14,7 @@
     "ui": "./dist/ui/"
   },
   "scripts": {
-    "prebuild": "pnpm --filter @paperclipai/plugin-sdk ensure-build-deps 2>/dev/null || true",
+    "prebuild": "pnpm --filter @paperclipai/plugin-sdk... build",
     "build": "tsc",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
