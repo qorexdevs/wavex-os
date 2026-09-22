@@ -80,10 +80,16 @@ function dayBounds(profile: AvatarProfile): [number, number] {
   return [sH * 60 + sM, eH * 60 + eM];
 }
 
+function inWorkingWindow(minute: number, dayStart: number, dayEnd: number): boolean {
+  return dayStart <= dayEnd
+    ? minute >= dayStart && minute <= dayEnd
+    : minute >= dayStart || minute <= dayEnd;
+}
+
 export function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarProfile): boolean {
   const [dayStart, dayEnd] = dayBounds(profile);
   const startMin = localMinutes(new Date(event.start), profile.tz);
-  return startMin >= dayStart && startMin <= dayEnd;
+  return inWorkingWindow(startMin, dayStart, dayEnd);
 }
 
 /** A meeting can start inside working hours yet run well past the end of the

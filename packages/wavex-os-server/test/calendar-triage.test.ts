@@ -159,6 +159,15 @@ describe("eventInsideWorkingHours", () => {
     expect(eventInsideWorkingHours(e, profile("America/Los_Angeles"))).toBe(true);
   });
 
+  it("keeps overnight working hours open across midnight", () => {
+    const overnight = {
+      name: "o", role: "ops", working_hours: ["22:00", "06:00"] as [string, string], tz: "UTC",
+    };
+    expect(eventInsideWorkingHours(ev("late", "2026-06-29T23:00:00Z", "2026-06-29T23:30:00Z"), overnight)).toBe(true);
+    expect(eventInsideWorkingHours(ev("early", "2026-06-30T02:00:00Z", "2026-06-30T02:30:00Z"), overnight)).toBe(true);
+    expect(eventInsideWorkingHours(ev("day", "2026-06-30T12:00:00Z", "2026-06-30T12:30:00Z"), overnight)).toBe(false);
+  });
+
   it("falls back to UTC when the tz is unknown", () => {
     const e = ev("a", "2026-06-29T12:00:00Z", "2026-06-29T12:30:00Z");
     expect(eventInsideWorkingHours(e, profile("Mars/Phobos"))).toBe(true);
