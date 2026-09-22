@@ -110,6 +110,7 @@ describe("isNoReplySender", () => {
     expect(isNoReplySender("replies@acme.com")).toBe(false);
     expect(isNoReplySender("bouncer@club.com")).toBe(false);
     expect(isNoReplySender("bouncesmith@club.com")).toBe(false);
+    expect(isNoReplySender("team-bouncesmith@club.com")).toBe(false);
     expect(isNoReplySender("dev-list-owner@lists.acme.org")).toBe(false);
     expect(isNoReplySender("srsly@acme.com")).toBe(false);
     expect(isNoReplySender("")).toBe(false);

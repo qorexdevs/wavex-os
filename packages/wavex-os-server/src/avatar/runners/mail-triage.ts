@@ -195,8 +195,8 @@ export function matchVip(
  *  bounce-12345@), so a plus-tagged or numbered bounce counts. The bounces
  *  form must be exact or plus-tagged, so bouncesmith@ stays human. Mailman
  *  routes list bounces to
- *  <list>-bounces@ (and <list>-bounces+token@), so a -bounces infix counts too,
- *  while list-owner@/list-request@ stay repliable. SRS forwarding rewrites the
+ *  <list>-bounces@ (and <list>-bounces+token@), so that exact segment counts,
+ *  while list-owner@/list-request@ and -bouncesmith@ stay repliable. SRS forwarding rewrites the
  *  return path to srs0=/srs1= (a bounce-routing address, not a person), so those
  *  match on the leading tag while srsly@ stays human. */
 export function isNoReplySender(email: string): boolean {
@@ -213,7 +213,7 @@ export function isNoReplySender(email: string): boolean {
     normalized.startsWith("bounces+") ||
     normalized.startsWith("bounce+") ||
     /^bounce[0-9]/.test(normalized) ||
-    local.includes("-bounces") ||
+    /(?:^|-)bounces(?:\+|$)/.test(local) ||
     /^srs[01]=/.test(normalized)
   );
 }
