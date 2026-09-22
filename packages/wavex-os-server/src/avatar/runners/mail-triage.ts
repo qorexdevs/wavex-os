@@ -179,7 +179,11 @@ export function matchVip(
 ): { email: string; label?: string } | null {
   const needle = email.trim().toLowerCase();
   if (!needle) return null;
-  return vips.find((v) => v.email.trim().toLowerCase() === needle) ?? null;
+  for (const vip of vips) {
+    if (!vip || typeof vip.email !== "string" || vip.email.trim().toLowerCase() !== needle) continue;
+    return typeof vip.label === "string" ? { email: vip.email, label: vip.label } : { email: vip.email };
+  }
+  return null;
 }
 
 /** Detect automated no-reply senders by local-part (noreply@, no-reply@,

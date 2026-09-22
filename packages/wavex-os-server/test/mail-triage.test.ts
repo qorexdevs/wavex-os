@@ -72,6 +72,16 @@ describe("matchVip", () => {
     expect(matchVip("", vips)).toBeNull();
     expect(matchVip("ceo@acme.com", [])).toBeNull();
   });
+
+  it("skips malformed VIP entries from the trust file", () => {
+    const entries = [
+      null,
+      { email: null },
+      { email: "ceo@acme.com", label: "CEO" },
+    ] as unknown as Array<{ email: string; label?: string }>;
+
+    expect(matchVip("ceo@acme.com", entries)).toEqual({ email: "ceo@acme.com", label: "CEO" });
+  });
 });
 
 describe("isNoReplySender", () => {
