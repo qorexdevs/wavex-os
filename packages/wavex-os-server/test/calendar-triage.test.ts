@@ -192,6 +192,11 @@ describe("eventSpillsAfterHours", () => {
     expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(true);
   });
 
+  it("flags an invite that continues into the next day", () => {
+    const e = ev("a", "2026-06-29T16:30:00Z", "2026-06-30T09:00:00Z");
+    expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(true);
+  });
+
   it("leaves a fully-inside invite unflagged", () => {
     const e = ev("a", "2026-06-29T10:00:00Z", "2026-06-29T11:00:00Z");
     expect(eventSpillsAfterHours(e, profile("UTC"))).toBe(false);

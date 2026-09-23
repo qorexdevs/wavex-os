@@ -97,16 +97,16 @@ export function eventInsideWorkingHours(event: CalendarEvent, profile: AvatarPro
  *  16:30-18:30 invite against 09:00-17:00 reads as fully inside while it
  *  actually eats 90 minutes of off-hours. Flag that tail so the recommender
  *  can lean propose-time over a clean accept. End is resolved in profile.tz
- *  like the start; an unparseable or earlier-on-the-clock end (cross-midnight)
- *  can't spill. */
+ *  like the start; an unparseable or non-forward end can't spill. */
 export function eventSpillsAfterHours(event: CalendarEvent, profile: AvatarProfile): boolean {
   const [dayStart, dayEnd] = dayBounds(profile);
-  const startMin = localMinutes(new Date(event.start), profile.tz);
+  const start = new Date(event.start);
+  const startMin = localMinutes(start, profile.tz);
   if (!inWorkingWindow(startMin, dayStart, dayEnd)) return false;
   const end = new Date(event.end);
-  if (!Number.isFinite(end.getTime())) return false;
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return false;
   const endMin = localMinutes(end, profile.tz);
-  if (dayStart <= dayEnd) return endMin > dayEnd && endMin >= startMin;
+  if (dayStart <= dayEnd) return endMin < startMin || endMin > dayEnd;
 
   const normalizedEnd = endMin < startMin ? endMin + 24 * 60 : endMin;
   const windowEnd = startMin >= dayStart ? dayEnd + 24 * 60 : dayEnd;
