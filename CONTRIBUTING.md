@@ -97,10 +97,11 @@ The subject line must be ≤72 characters. Use the body for "why", not "what".
 ### TypeScript
 Every package uses strict TypeScript. Before pushing:
 ```bash
+pnpm -r --filter "./vendor/wavex-os/*" build
 pnpm --filter @wavex-os/onboarding-ui exec tsc --noEmit
 pnpm --filter @wavex-os/mock-core exec tsc -p tsconfig.json
 ```
-The CI for individual packages should pass `tsc --noEmit` and `vite build` (UI) cleanly.
+Build the vendored packages first so the onboarding UI can resolve the local Plugin SDK. The CI for individual packages should pass `tsc --noEmit` and `vite build` (UI) cleanly.
 
 ### Bash
 The wrapper script (`scripts/wrappers/*.sh`) is `set -euo pipefail` strict bash. Test on macOS at minimum; Linux/Windows paths land in Phase F.
